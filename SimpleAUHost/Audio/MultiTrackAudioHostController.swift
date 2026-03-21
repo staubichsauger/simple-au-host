@@ -605,6 +605,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
     private var droppedFrameCounter = SAHAtomicCounter()
     private var nextExpectedInputSampleTime: Double?
     private var nextExpectedOutputSampleTime: Double?
+    private let priorityController = AudioHostingPriorityController()
 
     deinit {
         stop()
@@ -616,47 +617,53 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         SAHAtomicCounterReset(&droppedFrameCounter)
         nextExpectedInputSampleTime = nil
         nextExpectedOutputSampleTime = nil
+        priorityController.activate(reason: "Low-latency audio hosting")
 
-        let sampleRateDifference = abs(configuration.inputDevice.nominalSampleRate - configuration.outputDevice.nominalSampleRate)
-        guard sampleRateDifference < 0.5 else {
-            throw AudioHostError("Input and output sample rates must already match for multi track mode.")
-        }
-
-        try applyBufferSize(configuration.bufferSize, to: configuration.inputDevice.id)
-        if configuration.outputDevice.id != configuration.inputDevice.id {
-            try applyBufferSize(configuration.bufferSize, to: configuration.outputDevice.id)
-        }
-
-        self.configuration = configuration
-        maxFramesPerSlice = UInt32(configuration.bufferSize)
-
-        try prepareCaptureBuffers(inputChannelCount: configuration.inputDevice.inputChannelCount)
-
-        let availablePlugins = try AudioHostController().availablePlugins()
-
-        trackRuntimes = try configuration.tracks.map { track in
-            let plugin = track.pluginID.flatMap { id in
-                availablePlugins.first { $0.id == id }
+        do {
+            let sampleRateDifference = abs(configuration.inputDevice.nominalSampleRate - configuration.outputDevice.nominalSampleRate)
+            guard sampleRateDifference < 0.5 else {
+                throw AudioHostError("Input and output sample rates must already match for multi track mode.")
             }
-            return try TrackRuntime(
-                configuration: track,
-                plugin: plugin,
-                sampleRate: configuration.inputDevice.nominalSampleRate,
-                hardwareBufferSize: configuration.bufferSize,
-                internalBufferFrames: configuration.latencyBufferSettings.internalFrames(
-                    for: track.latencyClass,
-                    hardwareBufferSize: configuration.bufferSize
+
+            try applyBufferSize(configuration.bufferSize, to: configuration.inputDevice.id)
+            if configuration.outputDevice.id != configuration.inputDevice.id {
+                try applyBufferSize(configuration.bufferSize, to: configuration.outputDevice.id)
+            }
+
+            self.configuration = configuration
+            maxFramesPerSlice = UInt32(configuration.bufferSize)
+
+            try prepareCaptureBuffers(inputChannelCount: configuration.inputDevice.inputChannelCount)
+
+            let availablePlugins = try AudioHostController().availablePlugins()
+
+            trackRuntimes = try configuration.tracks.map { track in
+                let plugin = track.pluginID.flatMap { id in
+                    availablePlugins.first { $0.id == id }
+                }
+                return try TrackRuntime(
+                    configuration: track,
+                    plugin: plugin,
+                    sampleRate: configuration.inputDevice.nominalSampleRate,
+                    hardwareBufferSize: configuration.bufferSize,
+                    internalBufferFrames: configuration.latencyBufferSettings.internalFrames(
+                        for: track.latencyClass,
+                        hardwareBufferSize: configuration.bufferSize
+                    )
                 )
-            )
-        }
+            }
 
-        try createAndConfigureIOUnits(for: configuration)
+            try createAndConfigureIOUnits(for: configuration)
 
-        if let outputUnit {
-            try checkStatus(AudioOutputUnitStart(outputUnit), "Failed to start multi-track output audio")
-        }
-        if let inputUnit {
-            try checkStatus(AudioOutputUnitStart(inputUnit), "Failed to start multi-track input audio")
+            if let outputUnit {
+                try checkStatus(AudioOutputUnitStart(outputUnit), "Failed to start multi-track output audio")
+            }
+            if let inputUnit {
+                try checkStatus(AudioOutputUnitStart(inputUnit), "Failed to start multi-track input audio")
+            }
+        } catch {
+            stop()
+            throw error
         }
     }
 
@@ -716,6 +723,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         maxFramesPerSlice = 0
         nextExpectedInputSampleTime = nil
         nextExpectedOutputSampleTime = nil
+        priorityController.deactivate()
     }
 
     private func prepareCaptureBuffers(inputChannelCount: Int) throws {

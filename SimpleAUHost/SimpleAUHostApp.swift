@@ -2,6 +2,9 @@ import SwiftUI
 
 @main
 struct SimpleAUHostApp: App {
+    init() {
+        Thread.current.qualityOfService = .userInteractive
+    }
     var body: some Scene {
         WindowGroup {
             HostModeRootView()

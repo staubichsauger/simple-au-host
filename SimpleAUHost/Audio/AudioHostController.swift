@@ -83,6 +83,7 @@ final class AudioHostController: @unchecked Sendable {
     private var nextExpectedInputSampleTime: Double?
     private var nextExpectedOutputSampleTime: Double?
     private var effectRenderSampleTime: Double = 0
+    private let priorityController = AudioHostingPriorityController()
     private let workerStateLock = NSLock()
     private var workerThread: Thread?
     private var shouldRunWorker = false
@@ -220,48 +221,54 @@ final class AudioHostController: @unchecked Sendable {
         nextExpectedInputSampleTime = nil
         nextExpectedOutputSampleTime = nil
         effectRenderSampleTime = 0
+        priorityController.activate(reason: "Low-latency audio hosting")
 
-        guard configuration.inputDevice.inputChannelCount >= configuration.inputChannel else {
-            throw AudioHostError("The selected input channel does not exist on the chosen input interface.")
-        }
-        guard configuration.outputDevice.outputChannelCount >= configuration.outputChannel else {
-            throw AudioHostError("The selected output channel does not exist on the chosen output interface.")
-        }
+        do {
+            guard configuration.inputDevice.inputChannelCount >= configuration.inputChannel else {
+                throw AudioHostError("The selected input channel does not exist on the chosen input interface.")
+            }
+            guard configuration.outputDevice.outputChannelCount >= configuration.outputChannel else {
+                throw AudioHostError("The selected output channel does not exist on the chosen output interface.")
+            }
 
-        let sampleRateDifference = abs(configuration.inputDevice.nominalSampleRate - configuration.outputDevice.nominalSampleRate)
-        guard sampleRateDifference < 0.5 else {
-            throw AudioHostError("Input and output sample rates must already match for v1.")
-        }
+            let sampleRateDifference = abs(configuration.inputDevice.nominalSampleRate - configuration.outputDevice.nominalSampleRate)
+            guard sampleRateDifference < 0.5 else {
+                throw AudioHostError("Input and output sample rates must already match for v1.")
+            }
 
-        try applyBufferSize(configuration.bufferSize, to: configuration.inputDevice.id)
-        if configuration.outputDevice.id != configuration.inputDevice.id {
-            try applyBufferSize(configuration.bufferSize, to: configuration.outputDevice.id)
-        }
+            try applyBufferSize(configuration.bufferSize, to: configuration.inputDevice.id)
+            if configuration.outputDevice.id != configuration.inputDevice.id {
+                try applyBufferSize(configuration.bufferSize, to: configuration.outputDevice.id)
+            }
 
-        currentConfiguration = configuration
-        ioMaxFramesPerSlice = UInt32(configuration.bufferSize)
-        let threadedMaxFrames = configuration.threadedProcessingEnabled && configuration.plugin != nil
-            ? max(configuration.bufferSize, configuration.threadedProcessingBufferSize)
-            : configuration.bufferSize
-        effectMaxFramesPerSlice = UInt32(threadedMaxFrames)
+            currentConfiguration = configuration
+            ioMaxFramesPerSlice = UInt32(configuration.bufferSize)
+            let threadedMaxFrames = configuration.threadedProcessingEnabled && configuration.plugin != nil
+                ? max(configuration.bufferSize, configuration.threadedProcessingBufferSize)
+                : configuration.bufferSize
+            effectMaxFramesPerSlice = UInt32(threadedMaxFrames)
 
-        try prepareBuffers(maxFrames: Int(effectMaxFramesPerSlice))
-        try createAndConfigureIOUnits(for: configuration)
-        if let plugin = configuration.plugin {
-            try createAndConfigureEffectUnit(plugin: plugin, sampleRate: configuration.inputDevice.nominalSampleRate)
-        }
-        if shouldUseThreadedProcessing {
-            startWorkerThread()
-        }
+            try prepareBuffers(maxFrames: Int(effectMaxFramesPerSlice))
+            try createAndConfigureIOUnits(for: configuration)
+            if let plugin = configuration.plugin {
+                try createAndConfigureEffectUnit(plugin: plugin, sampleRate: configuration.inputDevice.nominalSampleRate)
+            }
+            if shouldUseThreadedProcessing {
+                startWorkerThread()
+            }
 
-        if let outputUnit {
-            try checkStatus(AudioOutputUnitStart(outputUnit), "Failed to start output audio")
-        }
-        if let inputUnit {
-            try checkStatus(AudioOutputUnitStart(inputUnit), "Failed to start input audio")
-        }
+            if let outputUnit {
+                try checkStatus(AudioOutputUnitStart(outputUnit), "Failed to start output audio")
+            }
+            if let inputUnit {
+                try checkStatus(AudioOutputUnitStart(inputUnit), "Failed to start input audio")
+            }
 
-        isRunning = true
+            isRunning = true
+        } catch {
+            stop()
+            throw error
+        }
     }
 
     func audioDropoutCount() -> UInt64 {
@@ -344,6 +351,7 @@ final class AudioHostController: @unchecked Sendable {
         nextExpectedOutputSampleTime = nil
         effectRenderSampleTime = 0
         isRunning = false
+        priorityController.deactivate()
     }
 
     private func createAndConfigureIOUnits(for configuration: AudioHostConfiguration) throws {
@@ -1056,7 +1064,7 @@ final class AudioHostController: @unchecked Sendable {
             self?.workerLoop()
         }
         workerThread.name = "SimpleAUHost.SimpleWorker"
-        workerThread.qualityOfService = .userInitiated
+        workerThread.qualityOfService = .userInteractive
         self.workerThread = workerThread
         workerThread.start()
     }
@@ -1289,4 +1297,27 @@ func describe(status: OSStatus) -> String {
         return "'\(fourCC)'"
     }
     return String(status)
+}
+
+final class AudioHostingPriorityController {
+    private var activityToken: NSObjectProtocol?
+
+    func activate(reason: String) {
+        guard activityToken == nil else { return }
+
+        Thread.current.qualityOfService = .userInteractive
+        var options: ProcessInfo.ActivityOptions = [
+            .userInitiatedAllowingIdleSystemSleep,
+            .suddenTerminationDisabled,
+            .automaticTerminationDisabled
+        ]
+        options.insert(.latencyCritical)
+        activityToken = ProcessInfo.processInfo.beginActivity(options: options, reason: reason)
+    }
+
+    func deactivate() {
+        guard let activityToken else { return }
+        ProcessInfo.processInfo.endActivity(activityToken)
+        self.activityToken = nil
+    }
 }
