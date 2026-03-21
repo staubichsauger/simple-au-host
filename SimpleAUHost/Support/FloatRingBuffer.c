@@ -141,3 +141,11 @@ void SAHAtomicCounterIncrement(SAHAtomicCounter *counter) {
 
     atomic_fetch_add_explicit(&counter->value, 1, memory_order_relaxed);
 }
+
+void SAHAtomicCounterAdd(SAHAtomicCounter *counter, uint64_t amount) {
+    if (counter == NULL || amount == 0) {
+        return;
+    }
+
+    atomic_fetch_add_explicit(&counter->value, amount, memory_order_relaxed);
+}

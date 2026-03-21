@@ -19,6 +19,7 @@ final class HostViewModel: ObservableObject {
     @Published var isBusy = false
     @Published var statusMessage = "Ready."
     @Published private(set) var audioDropoutCount: UInt64 = 0
+    @Published private(set) var droppedFrameCount: UInt64 = 0
 
     private let controller = AudioHostController()
     private var audioDropoutMonitorTask: Task<Void, Never>?
@@ -125,6 +126,7 @@ final class HostViewModel: ObservableObject {
             handleDeviceSelectionChange()
             if !isRunning {
                 audioDropoutCount = 0
+                droppedFrameCount = 0
             }
             statusMessage = isRunning ? "Running." : "Ready."
         } catch {
@@ -184,6 +186,7 @@ final class HostViewModel: ObservableObject {
             audioDropoutMonitorTask?.cancel()
             audioDropoutMonitorTask = nil
             audioDropoutCount = controller.audioDropoutCount()
+            droppedFrameCount = controller.droppedFrameCount()
             controller.stop()
             isRunning = false
             statusMessage = "Stopped."
@@ -213,12 +216,14 @@ final class HostViewModel: ObservableObject {
                 try self.controller.start(configuration: configuration)
                 self.isRunning = true
                 self.audioDropoutCount = self.controller.audioDropoutCount()
+                self.droppedFrameCount = self.controller.droppedFrameCount()
                 self.startAudioDropoutMonitoring()
                 self.statusMessage = configuration.plugin == nil ? "Running in bypass." : "Running."
             } catch {
                 self.audioDropoutMonitorTask?.cancel()
                 self.audioDropoutMonitorTask = nil
                 self.audioDropoutCount = self.controller.audioDropoutCount()
+                self.droppedFrameCount = self.controller.droppedFrameCount()
                 self.statusMessage = error.localizedDescription
                 self.controller.stop()
                 self.isRunning = false
@@ -226,6 +231,12 @@ final class HostViewModel: ObservableObject {
 
             self.isBusy = false
         }
+    }
+
+    func resetDropoutCounters() {
+        controller.resetDropoutCounters()
+        audioDropoutCount = controller.audioDropoutCount()
+        droppedFrameCount = controller.droppedFrameCount()
     }
 
     private func makeConfiguration() throws -> AudioHostConfiguration {
@@ -270,6 +281,7 @@ final class HostViewModel: ObservableObject {
             while !Task.isCancelled {
                 guard let self else { return }
                 self.audioDropoutCount = self.controller.audioDropoutCount()
+                self.droppedFrameCount = self.controller.droppedFrameCount()
                 try? await Task.sleep(for: .milliseconds(250))
             }
         }

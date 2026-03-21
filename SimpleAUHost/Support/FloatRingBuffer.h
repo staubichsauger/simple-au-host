@@ -22,3 +22,4 @@ uint32_t SAHFloatRingBufferWrite(SAHFloatRingBuffer *buffer, const float *input,
 void SAHAtomicCounterReset(SAHAtomicCounter *counter);
 uint64_t SAHAtomicCounterLoad(const SAHAtomicCounter *counter);
 void SAHAtomicCounterIncrement(SAHAtomicCounter *counter);
+void SAHAtomicCounterAdd(SAHAtomicCounter *counter, uint64_t amount);

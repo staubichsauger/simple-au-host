@@ -73,6 +73,9 @@ final class AudioHostController: @unchecked Sendable {
     private var drySourceForEffect: UnsafeMutablePointer<Float>?
     private var dryRingBuffer = SAHFloatRingBuffer()
     private var audioDropoutCounter = SAHAtomicCounter()
+    private var droppedFrameCounter = SAHAtomicCounter()
+    private var nextExpectedInputSampleTime: Double?
+    private var nextExpectedOutputSampleTime: Double?
 
     private var isRunning = false
 
@@ -203,6 +206,9 @@ final class AudioHostController: @unchecked Sendable {
     func start(configuration: AudioHostConfiguration) throws {
         stop()
         SAHAtomicCounterReset(&audioDropoutCounter)
+        SAHAtomicCounterReset(&droppedFrameCounter)
+        nextExpectedInputSampleTime = nil
+        nextExpectedOutputSampleTime = nil
 
         guard configuration.inputDevice.inputChannelCount >= configuration.inputChannel else {
             throw AudioHostError("The selected input channel does not exist on the chosen input interface.")
@@ -244,6 +250,45 @@ final class AudioHostController: @unchecked Sendable {
         SAHAtomicCounterLoad(&audioDropoutCounter)
     }
 
+    func droppedFrameCount() -> UInt64 {
+        SAHAtomicCounterLoad(&droppedFrameCounter)
+    }
+
+    func resetDropoutCounters() {
+        SAHAtomicCounterReset(&audioDropoutCounter)
+        SAHAtomicCounterReset(&droppedFrameCounter)
+        nextExpectedInputSampleTime = nil
+        nextExpectedOutputSampleTime = nil
+    }
+
+    private func recordDroppedFrames(_ frameCount: UInt32) {
+        guard frameCount > 0 else { return }
+        SAHAtomicCounterIncrement(&audioDropoutCounter)
+        SAHAtomicCounterAdd(&droppedFrameCounter, UInt64(frameCount))
+    }
+
+    private func updateExpectedSampleTime(
+        with inTimeStamp: UnsafePointer<AudioTimeStamp>?,
+        frameCount: UInt32,
+        expectedSampleTime: inout Double?
+    ) {
+        guard let inTimeStamp else { return }
+
+        let sampleTimeValidRawValue: UInt32 = 1 << 0
+        guard (inTimeStamp.pointee.mFlags.rawValue & sampleTimeValidRawValue) != 0 else {
+            expectedSampleTime = nil
+            return
+        }
+
+        let currentSampleTime = inTimeStamp.pointee.mSampleTime
+        if let expectedSampleTime, currentSampleTime > expectedSampleTime + 0.5 {
+            let missingFrames = UInt32((currentSampleTime - expectedSampleTime).rounded())
+            recordDroppedFrames(missingFrames)
+        }
+
+        expectedSampleTime = currentSampleTime + Double(frameCount)
+    }
+
     func stop() {
         if let inputUnit {
             AudioOutputUnitStop(inputUnit)
@@ -275,6 +320,8 @@ final class AudioHostController: @unchecked Sendable {
         currentConfiguration = nil
         effectChannelCount = 1
         maxFramesPerSlice = 0
+        nextExpectedInputSampleTime = nil
+        nextExpectedOutputSampleTime = nil
         isRunning = false
     }
 
@@ -798,6 +845,12 @@ final class AudioHostController: @unchecked Sendable {
             return noErr
         }
 
+        updateExpectedSampleTime(
+            with: inTimeStamp,
+            frameCount: inNumberFrames,
+            expectedSampleTime: &nextExpectedInputSampleTime
+        )
+
         captureBufferList[0].mDataByteSize = inNumberFrames * UInt32(MemoryLayout<Float>.size)
 
         var renderFlags = ioActionFlags?.pointee ?? []
@@ -812,10 +865,13 @@ final class AudioHostController: @unchecked Sendable {
             captureBufferList.unsafeMutablePointer
         )
         if status != noErr {
+            recordDroppedFrames(inNumberFrames)
             return status
         }
-
-        _ = SAHFloatRingBufferWrite(&dryRingBuffer, captureBuffer, inNumberFrames)
+        let writtenFrames = SAHFloatRingBufferWrite(&dryRingBuffer, captureBuffer, inNumberFrames)
+        if writtenFrames < inNumberFrames {
+            recordDroppedFrames(inNumberFrames - writtenFrames)
+        }
         return noErr
     }
 
@@ -833,6 +889,12 @@ final class AudioHostController: @unchecked Sendable {
             return noErr
         }
 
+        updateExpectedSampleTime(
+            with: inTimeStamp,
+            frameCount: inNumberFrames,
+            expectedSampleTime: &nextExpectedOutputSampleTime
+        )
+
         let requestedFrames = Int(inNumberFrames)
         let bytes = requestedFrames * MemoryLayout<Float>.size
         for frame in 0..<requestedFrames {
@@ -841,7 +903,7 @@ final class AudioHostController: @unchecked Sendable {
 
         let readFrames = Int(SAHFloatRingBufferRead(&dryRingBuffer, dryScratchBuffer, inNumberFrames))
         if readFrames < requestedFrames {
-            SAHAtomicCounterIncrement(&audioDropoutCounter)
+            recordDroppedFrames(UInt32(requestedFrames - readFrames))
             for frame in readFrames..<requestedFrames {
                 dryScratchBuffer[frame] = 0
             }
@@ -877,6 +939,7 @@ final class AudioHostController: @unchecked Sendable {
         drySourceForEffect = nil
 
         if renderStatus != noErr {
+            recordDroppedFrames(inNumberFrames)
             outputBuffer.update(from: dryScratchBuffer, count: requestedFrames)
             ioData.pointee.mBuffers.mDataByteSize = UInt32(bytes)
             return noErr

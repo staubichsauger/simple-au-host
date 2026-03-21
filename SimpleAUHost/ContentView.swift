@@ -95,16 +95,22 @@ struct ContentView: View {
                 .keyboardShortcut(.defaultAction)
                 .disabled(!viewModel.canStart && !viewModel.isRunning)
 
+                Button("Reset counters") {
+                    viewModel.resetDropoutCounters()
+                }
+
                 Spacer()
                 VStack(alignment: .trailing, spacing: 4) {
                     Text("Audio dropout count: \(viewModel.audioDropoutCount)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("Dropped frames: \(viewModel.droppedFrameCount)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
                     Text(viewModel.statusMessage)
                         .foregroundStyle(viewModel.statusColor)
                 }
-                    .foregroundStyle(viewModel.statusColor)
             }
         }
         .padding(20)

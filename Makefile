@@ -22,7 +22,7 @@ help:
 	@printf "  make run      Launch the built app\n"
 	@printf "  make clean    Remove build and dist artifacts\n"
 
-$(BUILT_APP):
+build:
 	@mkdir -p "$(DERIVED_DATA)" "$(DIST_DIR)"
 	xcodebuild \
 		-project "$(PROJECT)" \
@@ -31,8 +31,6 @@ $(BUILT_APP):
 		-derivedDataPath "$(DERIVED_DATA)" \
 		-destination "$(DESTINATION)" \
 		build
-
-build: $(BUILT_APP)
 
 bundle: build
 	@rm -rf "$(STAGED_APP)"
