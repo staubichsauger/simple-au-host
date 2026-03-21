@@ -83,6 +83,29 @@ struct ContentView: View {
                             Text(plugin.name).tag(Optional(plugin.id))
                         }
                     }
+
+                    Toggle("Run plugin on worker thread", isOn: $viewModel.threadedProcessingEnabled)
+
+                    if viewModel.threadedProcessingEnabled {
+                        HStack {
+                            Text("Threaded plugin buffer")
+                            TextField("Frames", text: $viewModel.threadedProcessingBufferSizeText)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(maxWidth: 140)
+                                .onSubmit {
+                                    viewModel.applyThreadedProcessingBufferSize()
+                                }
+
+                            Button("Apply") {
+                                viewModel.applyThreadedProcessingBufferSize()
+                            }
+                            .disabled(viewModel.isBusy || viewModel.isRunning)
+                        }
+
+                        Text(viewModel.threadedProcessingHelpText)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
             .formStyle(.grouped)
@@ -112,6 +135,11 @@ struct ContentView: View {
 
                 Spacer()
                 VStack(alignment: .trailing, spacing: 4) {
+                    if let validationMessage = viewModel.threadedProcessingValidationMessage {
+                        Text(validationMessage)
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
                     Text("Audio dropout count: \(viewModel.audioDropoutCount)")
                         .font(.caption)
                         .foregroundStyle(.secondary)

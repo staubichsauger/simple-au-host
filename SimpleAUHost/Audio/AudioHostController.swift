@@ -39,6 +39,8 @@ struct AudioHostConfiguration {
     let inputChannel: Int
     let outputChannel: Int
     let plugin: AudioUnitPluginInfo?
+    let threadedProcessingEnabled: Bool
+    let threadedProcessingBufferSize: Int
 }
 
 struct AudioHostError: LocalizedError {
@@ -60,22 +62,30 @@ final class AudioHostController: @unchecked Sendable {
 
     private var currentConfiguration: AudioHostConfiguration?
     private var effectChannelCount: UInt32 = 1
-    private var maxFramesPerSlice: UInt32 = 0
+    private var ioMaxFramesPerSlice: UInt32 = 0
+    private var effectMaxFramesPerSlice: UInt32 = 0
 
     private var captureBuffer: UnsafeMutablePointer<Float>?
     private var dryScratchBuffer: UnsafeMutablePointer<Float>?
     private var wetBuffer1: UnsafeMutablePointer<Float>?
     private var wetBuffer2: UnsafeMutablePointer<Float>?
+    private var threadedInputScratchBuffer: UnsafeMutablePointer<Float>?
+    private var threadedOutputScratchBuffer: UnsafeMutablePointer<Float>?
 
     private var captureBufferList: UnsafeMutableAudioBufferListPointer?
     private var wetBufferList: UnsafeMutableAudioBufferListPointer?
 
     private var drySourceForEffect: UnsafeMutablePointer<Float>?
     private var dryRingBuffer = SAHFloatRingBuffer()
+    private var threadedOutputRingBuffer = SAHFloatRingBuffer()
     private var audioDropoutCounter = SAHAtomicCounter()
     private var droppedFrameCounter = SAHAtomicCounter()
     private var nextExpectedInputSampleTime: Double?
     private var nextExpectedOutputSampleTime: Double?
+    private var effectRenderSampleTime: Double = 0
+    private let workerStateLock = NSLock()
+    private var workerThread: Thread?
+    private var shouldRunWorker = false
 
     private var isRunning = false
 
@@ -209,6 +219,7 @@ final class AudioHostController: @unchecked Sendable {
         SAHAtomicCounterReset(&droppedFrameCounter)
         nextExpectedInputSampleTime = nil
         nextExpectedOutputSampleTime = nil
+        effectRenderSampleTime = 0
 
         guard configuration.inputDevice.inputChannelCount >= configuration.inputChannel else {
             throw AudioHostError("The selected input channel does not exist on the chosen input interface.")
@@ -228,12 +239,19 @@ final class AudioHostController: @unchecked Sendable {
         }
 
         currentConfiguration = configuration
-        maxFramesPerSlice = UInt32(configuration.bufferSize)
+        ioMaxFramesPerSlice = UInt32(configuration.bufferSize)
+        let threadedMaxFrames = configuration.threadedProcessingEnabled && configuration.plugin != nil
+            ? max(configuration.bufferSize, configuration.threadedProcessingBufferSize)
+            : configuration.bufferSize
+        effectMaxFramesPerSlice = UInt32(threadedMaxFrames)
 
-        try prepareBuffers(maxFrames: Int(maxFramesPerSlice))
+        try prepareBuffers(maxFrames: Int(effectMaxFramesPerSlice))
         try createAndConfigureIOUnits(for: configuration)
         if let plugin = configuration.plugin {
             try createAndConfigureEffectUnit(plugin: plugin, sampleRate: configuration.inputDevice.nominalSampleRate)
+        }
+        if shouldUseThreadedProcessing {
+            startWorkerThread()
         }
 
         if let outputUnit {
@@ -290,6 +308,7 @@ final class AudioHostController: @unchecked Sendable {
     }
 
     func stop() {
+        stopWorkerThread()
         if let inputUnit {
             AudioOutputUnitStop(inputUnit)
         }
@@ -319,9 +338,11 @@ final class AudioHostController: @unchecked Sendable {
 
         currentConfiguration = nil
         effectChannelCount = 1
-        maxFramesPerSlice = 0
+        ioMaxFramesPerSlice = 0
+        effectMaxFramesPerSlice = 0
         nextExpectedInputSampleTime = nil
         nextExpectedOutputSampleTime = nil
+        effectRenderSampleTime = 0
         isRunning = false
     }
 
@@ -416,7 +437,7 @@ final class AudioHostController: @unchecked Sendable {
             )
         }
 
-        var maxFrames = maxFramesPerSlice
+        var maxFrames = ioMaxFramesPerSlice
         try checkStatus(
             AudioUnitSetProperty(
                 inputUnit,
@@ -538,7 +559,7 @@ final class AudioHostController: @unchecked Sendable {
         effectChannelCount = try preferredEffectChannelCount(for: createdUnit)
 
         var effectFormat = streamFormat(channels: effectChannelCount, sampleRate: sampleRate)
-        var maxFrames = maxFramesPerSlice
+        var maxFrames = effectMaxFramesPerSlice
 
         var effectInputCallback = AURenderCallbackStruct(
             inputProc: Self.effectInputCallback,
@@ -590,7 +611,7 @@ final class AudioHostController: @unchecked Sendable {
         )
         try checkStatus(AudioUnitInitialize(createdUnit), "Failed to initialize Audio Unit")
 
-        try prepareBuffers(maxFrames: Int(maxFramesPerSlice))
+        try prepareBuffers(maxFrames: Int(effectMaxFramesPerSlice))
     }
 
     private func createHALOutputUnit() throws -> AudioUnit {
@@ -692,11 +713,20 @@ final class AudioHostController: @unchecked Sendable {
         guard SAHFloatRingBufferInit(&dryRingBuffer, desiredCapacity) else {
             throw AudioHostError("Failed to allocate the realtime bridge buffer.")
         }
+        if shouldUseThreadedProcessing {
+            guard SAHFloatRingBufferInit(&threadedOutputRingBuffer, desiredCapacity) else {
+                throw AudioHostError("Failed to allocate the threaded output buffer.")
+            }
+        }
 
         captureBuffer = UnsafeMutablePointer<Float>.allocate(capacity: maxFrames)
         dryScratchBuffer = UnsafeMutablePointer<Float>.allocate(capacity: maxFrames)
         wetBuffer1 = UnsafeMutablePointer<Float>.allocate(capacity: maxFrames)
         wetBuffer2 = UnsafeMutablePointer<Float>.allocate(capacity: maxFrames)
+        if shouldUseThreadedProcessing {
+            threadedInputScratchBuffer = UnsafeMutablePointer<Float>.allocate(capacity: maxFrames)
+            threadedOutputScratchBuffer = UnsafeMutablePointer<Float>.allocate(capacity: maxFrames)
+        }
 
         captureBufferList = AudioBufferList.allocate(maximumBuffers: 1)
         captureBufferList?.count = 1
@@ -726,11 +756,15 @@ final class AudioHostController: @unchecked Sendable {
         dryScratchBuffer?.deallocate()
         wetBuffer1?.deallocate()
         wetBuffer2?.deallocate()
+        threadedInputScratchBuffer?.deallocate()
+        threadedOutputScratchBuffer?.deallocate()
 
         captureBuffer = nil
         dryScratchBuffer = nil
         wetBuffer1 = nil
         wetBuffer2 = nil
+        threadedInputScratchBuffer = nil
+        threadedOutputScratchBuffer = nil
 
         captureBufferList?.unsafeMutablePointer.deallocate()
         wetBufferList?.unsafeMutablePointer.deallocate()
@@ -738,6 +772,7 @@ final class AudioHostController: @unchecked Sendable {
         wetBufferList = nil
 
         drySourceForEffect = nil
+        SAHFloatRingBufferDeinit(&threadedOutputRingBuffer)
     }
 
     private func applyBufferSize(_ bufferSize: Int, to deviceID: AudioDeviceID) throws {
@@ -901,6 +936,19 @@ final class AudioHostController: @unchecked Sendable {
             outputBuffer[frame] = 0
         }
 
+        if shouldUseThreadedProcessing {
+            let readFrames = Int(SAHFloatRingBufferRead(&threadedOutputRingBuffer, outputBuffer, inNumberFrames))
+            if readFrames < requestedFrames {
+                recordDroppedFrames(UInt32(requestedFrames - readFrames))
+                for frame in readFrames..<requestedFrames {
+                    outputBuffer[frame] = 0
+                }
+            }
+            ioData.pointee.mBuffers.mDataByteSize = UInt32(bytes)
+            _ = ioActionFlags
+            return noErr
+        }
+
         let readFrames = Int(SAHFloatRingBufferRead(&dryRingBuffer, dryScratchBuffer, inNumberFrames))
         if readFrames < requestedFrames {
             recordDroppedFrames(UInt32(requestedFrames - readFrames))
@@ -992,6 +1040,145 @@ final class AudioHostController: @unchecked Sendable {
         }
 
         return noErr
+    }
+
+    private var shouldUseThreadedProcessing: Bool {
+        guard let currentConfiguration else { return false }
+        return currentConfiguration.threadedProcessingEnabled && currentConfiguration.plugin != nil
+    }
+
+    private func startWorkerThread() {
+        workerStateLock.lock()
+        shouldRunWorker = true
+        workerStateLock.unlock()
+
+        let workerThread = Thread { [weak self] in
+            self?.workerLoop()
+        }
+        workerThread.name = "SimpleAUHost.SimpleWorker"
+        workerThread.qualityOfService = .userInitiated
+        self.workerThread = workerThread
+        workerThread.start()
+    }
+
+    private func stopWorkerThread() {
+        workerStateLock.lock()
+        shouldRunWorker = false
+        workerStateLock.unlock()
+
+        workerThread?.cancel()
+        while let workerThread, !workerThread.isFinished {
+            Thread.sleep(forTimeInterval: 0.005)
+        }
+        workerThread = nil
+    }
+
+    private func workerLoop() {
+        guard shouldUseThreadedProcessing else { return }
+
+        while shouldWorkerContinue() && !Thread.current.isCancelled {
+            let frames = UInt32(effectMaxFramesPerSlice)
+            let hasInput = SAHFloatRingBufferAvailableRead(&dryRingBuffer) >= frames
+            let hasOutputSpace = SAHFloatRingBufferAvailableWrite(&threadedOutputRingBuffer) >= frames
+
+            guard hasInput, hasOutputSpace else {
+                Thread.sleep(forTimeInterval: 0.001)
+                continue
+            }
+
+            guard
+                let threadedInputScratchBuffer,
+                let threadedOutputScratchBuffer
+            else {
+                Thread.sleep(forTimeInterval: 0.001)
+                continue
+            }
+
+            let readFrames = SAHFloatRingBufferRead(&dryRingBuffer, threadedInputScratchBuffer, frames)
+            if readFrames < frames {
+                recordDroppedFrames(frames - readFrames)
+                for frame in Int(readFrames)..<Int(frames) {
+                    threadedInputScratchBuffer[frame] = 0
+                }
+            }
+
+            renderThreadedEffect(
+                frameCount: Int(frames),
+                dryInput: threadedInputScratchBuffer,
+                monoOutput: threadedOutputScratchBuffer
+            )
+
+            let writtenFrames = SAHFloatRingBufferWrite(&threadedOutputRingBuffer, threadedOutputScratchBuffer, frames)
+            if writtenFrames < frames {
+                recordDroppedFrames(frames - writtenFrames)
+            }
+        }
+    }
+
+    private func shouldWorkerContinue() -> Bool {
+        workerStateLock.lock()
+        defer { workerStateLock.unlock() }
+        return shouldRunWorker
+    }
+
+    private func renderThreadedEffect(
+        frameCount: Int,
+        dryInput: UnsafeMutablePointer<Float>,
+        monoOutput: UnsafeMutablePointer<Float>
+    ) {
+        guard let effectUnit else {
+            monoOutput.update(from: dryInput, count: frameCount)
+            return
+        }
+
+        drySourceForEffect = dryInput
+        guard let wetBufferList else {
+            drySourceForEffect = nil
+            monoOutput.update(from: dryInput, count: frameCount)
+            return
+        }
+
+        let bytes = UInt32(frameCount * MemoryLayout<Float>.size)
+        for index in 0..<wetBufferList.count {
+            wetBufferList[index].mDataByteSize = bytes
+        }
+
+        var renderFlags: AudioUnitRenderActionFlags = []
+        var timeStamp = AudioTimeStamp()
+        timeStamp.mSampleTime = effectRenderSampleTime
+        timeStamp.mFlags = AudioTimeStampFlags(rawValue: 1 << 0)
+
+        let renderStatus = AudioUnitRender(
+            effectUnit,
+            &renderFlags,
+            &timeStamp,
+            0,
+            UInt32(frameCount),
+            wetBufferList.unsafeMutablePointer
+        )
+        drySourceForEffect = nil
+        effectRenderSampleTime += Double(frameCount)
+
+        if renderStatus != noErr {
+            recordDroppedFrames(UInt32(frameCount))
+            monoOutput.update(from: dryInput, count: frameCount)
+            return
+        }
+
+        guard let wetBuffer1 else {
+            monoOutput.update(from: dryInput, count: frameCount)
+            return
+        }
+
+        if wetBufferList.count == 1 {
+            monoOutput.update(from: wetBuffer1, count: frameCount)
+        } else if let wetBuffer2 {
+            for frame in 0..<frameCount {
+                monoOutput[frame] = (wetBuffer1[frame] + wetBuffer2[frame]) * 0.5
+            }
+        } else {
+            monoOutput.update(from: wetBuffer1, count: frameCount)
+        }
     }
 }
 

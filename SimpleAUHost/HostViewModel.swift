@@ -11,6 +11,8 @@ final class HostViewModel: ObservableObject {
         let outputChannel: Int
         let bufferSize: Int
         let pluginID: String?
+        let threadedProcessingEnabled: Bool
+        let threadedProcessingBufferSize: Int
     }
 
     private static let persistedSettingsKey = "HostViewModel.persistedSettings"
@@ -24,6 +26,8 @@ final class HostViewModel: ObservableObject {
     @Published var selectedBufferSize: Int = 128
     @Published var customBufferSizeText = "128"
     @Published var selectedPluginID: String?
+    @Published var threadedProcessingEnabled = false
+    @Published var threadedProcessingBufferSizeText = "512"
 
     @Published var isRunning = false
     @Published var isBusy = false
@@ -47,6 +51,8 @@ final class HostViewModel: ObservableObject {
             selectedBufferSize = settings.bufferSize
             customBufferSizeText = String(settings.bufferSize)
             selectedPluginID = settings.pluginID
+            threadedProcessingEnabled = settings.threadedProcessingEnabled
+            threadedProcessingBufferSizeText = String(settings.threadedProcessingBufferSize)
         }
 
         setupPersistenceObservers()
@@ -121,6 +127,7 @@ final class HostViewModel: ObservableObject {
         availableInputChannels.contains(selectedInputChannel) &&
         availableOutputChannels.contains(selectedOutputChannel) &&
         isSelectedBufferSizeValid &&
+        threadedProcessingValidationMessage == nil &&
         !isBusy
     }
 
@@ -132,6 +139,31 @@ final class HostViewModel: ObservableObject {
             return .red
         }
         return .secondary
+    }
+
+    var threadedProcessingValidationMessage: String? {
+        guard threadedProcessingEnabled else { return nil }
+        let trimmed = threadedProcessingBufferSizeText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let value = Int(trimmed) else {
+            return "Threaded plugin buffer must be numeric."
+        }
+        guard value >= selectedBufferSize else {
+            return "Threaded plugin buffer must be at least the hardware buffer size."
+        }
+        guard value <= 16_384 else {
+            return "Threaded plugin buffer must not exceed 16384 frames."
+        }
+        guard value % selectedBufferSize == 0 else {
+            return "Threaded plugin buffer must be a whole multiple of the hardware buffer size."
+        }
+        return nil
+    }
+
+    var threadedProcessingHelpText: String {
+        if selectedPluginID == nil {
+            return "This only affects the selected plugin. In bypass, audio stays on the direct path."
+        }
+        return "Runs the plugin on a dedicated worker thread with added latency, similar to buffered mode."
     }
 
     func load() {
@@ -155,6 +187,7 @@ final class HostViewModel: ObservableObject {
             }
 
             handleDeviceSelectionChange()
+            sanitizeThreadedProcessingBufferSize()
             if !isRunning {
                 audioDropoutCount = 0
                 droppedFrameCount = 0
@@ -163,6 +196,27 @@ final class HostViewModel: ObservableObject {
         } catch {
             statusMessage = error.localizedDescription
         }
+    }
+
+    private func currentThreadedProcessingBufferSize() -> Int {
+        Int(threadedProcessingBufferSizeText.trimmingCharacters(in: .whitespacesAndNewlines)) ?? normalizedThreadedProcessingBufferSize()
+    }
+
+    private func normalizedThreadedProcessingBufferSize() -> Int {
+        let defaultValue = max(selectedBufferSize * 4, selectedBufferSize)
+        let parsedValue = Int(threadedProcessingBufferSizeText.trimmingCharacters(in: .whitespacesAndNewlines)) ?? defaultValue
+        let minimum = max(1, selectedBufferSize)
+        let maximum = 16_384
+        let clamped = min(max(parsedValue, minimum), maximum)
+        let remainder = clamped % minimum
+        if remainder == 0 {
+            return clamped
+        }
+        return min(clamped + (minimum - remainder), maximum)
+    }
+
+    private func sanitizeThreadedProcessingBufferSize() {
+        threadedProcessingBufferSizeText = String(normalizedThreadedProcessingBufferSize())
     }
 
     func handleDeviceSelectionChange() {
@@ -185,6 +239,7 @@ final class HostViewModel: ObservableObject {
         }
 
         customBufferSizeText = String(selectedBufferSize)
+        sanitizeThreadedProcessingBufferSize()
     }
 
     func applyCustomBufferSize() {
@@ -209,6 +264,18 @@ final class HostViewModel: ObservableObject {
 
         selectedBufferSize = value
         customBufferSizeText = String(value)
+        sanitizeThreadedProcessingBufferSize()
+        statusMessage = "Ready."
+    }
+
+    func applyThreadedProcessingBufferSize() {
+        if let message = threadedProcessingValidationMessage {
+            statusMessage = message
+            threadedProcessingBufferSizeText = String(normalizedThreadedProcessingBufferSize())
+            return
+        }
+
+        threadedProcessingBufferSizeText = String(currentThreadedProcessingBufferSize())
         statusMessage = "Ready."
     }
 
@@ -286,7 +353,9 @@ final class HostViewModel: ObservableObject {
             bufferSize: selectedBufferSize,
             inputChannel: selectedInputChannel,
             outputChannel: selectedOutputChannel,
-            plugin: plugin
+            plugin: plugin,
+            threadedProcessingEnabled: threadedProcessingEnabled,
+            threadedProcessingBufferSize: currentThreadedProcessingBufferSize()
         )
     }
 
@@ -360,6 +429,20 @@ final class HostViewModel: ObservableObject {
                 self?.persistSettings()
             }
             .store(in: &persistenceCancellables)
+
+        $threadedProcessingEnabled
+            .dropFirst()
+            .sink { [weak self] _ in
+                self?.persistSettings()
+            }
+            .store(in: &persistenceCancellables)
+
+        $threadedProcessingBufferSizeText
+            .dropFirst()
+            .sink { [weak self] _ in
+                self?.persistSettings()
+            }
+            .store(in: &persistenceCancellables)
     }
 
     private func persistSettings() {
@@ -369,7 +452,9 @@ final class HostViewModel: ObservableObject {
             inputChannel: selectedInputChannel,
             outputChannel: selectedOutputChannel,
             bufferSize: selectedBufferSize,
-            pluginID: selectedPluginID
+            pluginID: selectedPluginID,
+            threadedProcessingEnabled: threadedProcessingEnabled,
+            threadedProcessingBufferSize: currentThreadedProcessingBufferSize()
         )
 
         guard let data = try? JSONEncoder().encode(settings) else {
