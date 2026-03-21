@@ -10,9 +10,15 @@ typedef struct SAHFloatRingBuffer {
     _Atomic uint64_t read_index;
     _Atomic uint64_t write_index;
 } SAHFloatRingBuffer;
+typedef struct SAHAtomicCounter {
+    _Atomic uint64_t value;
+} SAHAtomicCounter;
 
 bool SAHFloatRingBufferInit(SAHFloatRingBuffer *buffer, uint32_t minimumCapacity);
 void SAHFloatRingBufferDeinit(SAHFloatRingBuffer *buffer);
 void SAHFloatRingBufferClear(SAHFloatRingBuffer *buffer);
 uint32_t SAHFloatRingBufferRead(SAHFloatRingBuffer *buffer, float *output, uint32_t count);
 uint32_t SAHFloatRingBufferWrite(SAHFloatRingBuffer *buffer, const float *input, uint32_t count);
+void SAHAtomicCounterReset(SAHAtomicCounter *counter);
+uint64_t SAHAtomicCounterLoad(const SAHAtomicCounter *counter);
+void SAHAtomicCounterIncrement(SAHAtomicCounter *counter);

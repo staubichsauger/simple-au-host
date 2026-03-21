@@ -96,8 +96,14 @@ struct ContentView: View {
                 .disabled(!viewModel.canStart && !viewModel.isRunning)
 
                 Spacer()
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text("Audio dropout count: \(viewModel.audioDropoutCount)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
 
-                Text(viewModel.statusMessage)
+                    Text(viewModel.statusMessage)
+                        .foregroundStyle(viewModel.statusColor)
+                }
                     .foregroundStyle(viewModel.statusColor)
             }
         }

@@ -72,6 +72,7 @@ final class AudioHostController: @unchecked Sendable {
 
     private var drySourceForEffect: UnsafeMutablePointer<Float>?
     private var dryRingBuffer = SAHFloatRingBuffer()
+    private var audioDropoutCounter = SAHAtomicCounter()
 
     private var isRunning = false
 
@@ -201,6 +202,7 @@ final class AudioHostController: @unchecked Sendable {
 
     func start(configuration: AudioHostConfiguration) throws {
         stop()
+        SAHAtomicCounterReset(&audioDropoutCounter)
 
         guard configuration.inputDevice.inputChannelCount >= configuration.inputChannel else {
             throw AudioHostError("The selected input channel does not exist on the chosen input interface.")
@@ -236,6 +238,10 @@ final class AudioHostController: @unchecked Sendable {
         }
 
         isRunning = true
+    }
+
+    func audioDropoutCount() -> UInt64 {
+        SAHAtomicCounterLoad(&audioDropoutCounter)
     }
 
     func stop() {
@@ -835,6 +841,7 @@ final class AudioHostController: @unchecked Sendable {
 
         let readFrames = Int(SAHFloatRingBufferRead(&dryRingBuffer, dryScratchBuffer, inNumberFrames))
         if readFrames < requestedFrames {
+            SAHAtomicCounterIncrement(&audioDropoutCounter)
             for frame in readFrames..<requestedFrames {
                 dryScratchBuffer[frame] = 0
             }

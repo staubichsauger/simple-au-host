@@ -117,3 +117,27 @@ uint32_t SAHFloatRingBufferRead(SAHFloatRingBuffer *buffer, float *output, uint3
     atomic_store_explicit(&buffer->read_index, read_index + read_count, memory_order_release);
     return read_count;
 }
+
+void SAHAtomicCounterReset(SAHAtomicCounter *counter) {
+    if (counter == NULL) {
+        return;
+    }
+
+    atomic_store_explicit(&counter->value, 0, memory_order_relaxed);
+}
+
+uint64_t SAHAtomicCounterLoad(const SAHAtomicCounter *counter) {
+    if (counter == NULL) {
+        return 0;
+    }
+
+    return atomic_load_explicit(&counter->value, memory_order_relaxed);
+}
+
+void SAHAtomicCounterIncrement(SAHAtomicCounter *counter) {
+    if (counter == NULL) {
+        return;
+    }
+
+    atomic_fetch_add_explicit(&counter->value, 1, memory_order_relaxed);
+}

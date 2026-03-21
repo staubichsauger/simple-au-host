@@ -18,10 +18,13 @@ final class HostViewModel: ObservableObject {
     @Published var isRunning = false
     @Published var isBusy = false
     @Published var statusMessage = "Ready."
+    @Published private(set) var audioDropoutCount: UInt64 = 0
 
     private let controller = AudioHostController()
+    private var audioDropoutMonitorTask: Task<Void, Never>?
 
     deinit {
+        audioDropoutMonitorTask?.cancel()
         controller.stop()
     }
 
@@ -120,6 +123,9 @@ final class HostViewModel: ObservableObject {
             }
 
             handleDeviceSelectionChange()
+            if !isRunning {
+                audioDropoutCount = 0
+            }
             statusMessage = isRunning ? "Running." : "Ready."
         } catch {
             statusMessage = error.localizedDescription
@@ -175,6 +181,9 @@ final class HostViewModel: ObservableObject {
 
     func toggleStartStop() {
         if isRunning {
+            audioDropoutMonitorTask?.cancel()
+            audioDropoutMonitorTask = nil
+            audioDropoutCount = controller.audioDropoutCount()
             controller.stop()
             isRunning = false
             statusMessage = "Stopped."
@@ -203,8 +212,13 @@ final class HostViewModel: ObservableObject {
                 let configuration = try self.makeConfiguration()
                 try self.controller.start(configuration: configuration)
                 self.isRunning = true
+                self.audioDropoutCount = self.controller.audioDropoutCount()
+                self.startAudioDropoutMonitoring()
                 self.statusMessage = configuration.plugin == nil ? "Running in bypass." : "Running."
             } catch {
+                self.audioDropoutMonitorTask?.cancel()
+                self.audioDropoutMonitorTask = nil
+                self.audioDropoutCount = self.controller.audioDropoutCount()
                 self.statusMessage = error.localizedDescription
                 self.controller.stop()
                 self.isRunning = false
@@ -246,6 +260,18 @@ final class HostViewModel: ObservableObject {
             }
         default:
             return false
+        }
+    }
+
+    private func startAudioDropoutMonitoring() {
+        audioDropoutMonitorTask?.cancel()
+        audioDropoutMonitorTask = nil
+        audioDropoutMonitorTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                self.audioDropoutCount = self.controller.audioDropoutCount()
+                try? await Task.sleep(for: .milliseconds(250))
+            }
         }
     }
 }
