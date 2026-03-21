@@ -16,12 +16,16 @@ final class MultiTrackViewModel: ObservableObject {
     @Published var isRunning = false
     @Published var isBusy = false
     @Published var statusMessage = "Ready."
+    @Published private(set) var audioDropoutCount: UInt64 = 0
+    @Published private(set) var droppedFrameCount: UInt64 = 0
 
     private let catalog = AudioHostController()
     private let controller = MultiTrackAudioHostController()
     private var latencyBufferSettings = MultiTrackLatencyBufferSettings(hardwareBufferSize: 128)
+    private var audioDropoutMonitorTask: Task<Void, Never>?
 
     deinit {
+        audioDropoutMonitorTask?.cancel()
         controller.stop()
     }
 
@@ -123,6 +127,10 @@ final class MultiTrackViewModel: ObservableObject {
 
             sanitizeTracks()
             sanitizeLatencyBufferSettings()
+            if !isRunning {
+                audioDropoutCount = 0
+                droppedFrameCount = 0
+            }
             statusMessage = isRunning ? "Running." : "Ready."
         } catch {
             statusMessage = error.localizedDescription
@@ -209,6 +217,10 @@ final class MultiTrackViewModel: ObservableObject {
 
     func toggleStartStop() {
         if isRunning {
+            audioDropoutMonitorTask?.cancel()
+            audioDropoutMonitorTask = nil
+            audioDropoutCount = controller.audioDropoutCount()
+            droppedFrameCount = controller.droppedFrameCount()
             controller.stop()
             isRunning = false
             statusMessage = "Stopped."
@@ -237,8 +249,15 @@ final class MultiTrackViewModel: ObservableObject {
                 let configuration = try self.makeConfiguration()
                 try self.controller.start(configuration: configuration)
                 self.isRunning = true
+                self.audioDropoutCount = self.controller.audioDropoutCount()
+                self.droppedFrameCount = self.controller.droppedFrameCount()
+                self.startAudioDropoutMonitoring()
                 self.statusMessage = "Running."
             } catch {
+                self.audioDropoutMonitorTask?.cancel()
+                self.audioDropoutMonitorTask = nil
+                self.audioDropoutCount = self.controller.audioDropoutCount()
+                self.droppedFrameCount = self.controller.droppedFrameCount()
                 self.controller.stop()
                 self.isRunning = false
                 self.statusMessage = error.localizedDescription
@@ -416,6 +435,12 @@ final class MultiTrackViewModel: ObservableObject {
         )
     }
 
+
+    func resetDropoutCounters() {
+        controller.resetDropoutCounters()
+        audioDropoutCount = controller.audioDropoutCount()
+        droppedFrameCount = controller.droppedFrameCount()
+    }
     private func requestMicrophoneAccessIfNeeded() async -> Bool {
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
         case .authorized:
@@ -428,6 +453,19 @@ final class MultiTrackViewModel: ObservableObject {
             }
         default:
             return false
+        }
+    }
+
+    private func startAudioDropoutMonitoring() {
+        audioDropoutMonitorTask?.cancel()
+        audioDropoutMonitorTask = nil
+        audioDropoutMonitorTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                self.audioDropoutCount = self.controller.audioDropoutCount()
+                self.droppedFrameCount = self.controller.droppedFrameCount()
+                try? await Task.sleep(for: .milliseconds(250))
+            }
         }
     }
 }

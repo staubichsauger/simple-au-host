@@ -207,6 +207,10 @@ struct MultiTrackView: View {
                 .keyboardShortcut(.defaultAction)
                 .disabled(!viewModel.canStart && !viewModel.isRunning)
 
+                Button("Reset counters") {
+                    viewModel.resetDropoutCounters()
+                }
+
                 Spacer()
 
                 VStack(alignment: .trailing, spacing: 4) {
@@ -220,6 +224,12 @@ struct MultiTrackView: View {
                             .font(.caption)
                             .foregroundStyle(.orange)
                     }
+                    Text("Audio dropout count: \(viewModel.audioDropoutCount)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("Dropped frames: \(viewModel.droppedFrameCount)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
 
                     Text(viewModel.statusMessage)
                         .foregroundStyle(viewModel.statusMessage.lowercased().contains("error") ? .red : .secondary)

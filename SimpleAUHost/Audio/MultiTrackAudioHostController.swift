@@ -24,6 +24,8 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         private let workerStateLock = NSLock()
         private var shouldRunWorker = false
         private var renderSampleTime: Double = 0
+        private var audioDropoutCounter = SAHAtomicCounter()
+        private var droppedFrameCounter = SAHAtomicCounter()
 
         init(
             configuration: MultiTrackTrackConfiguration,
@@ -37,6 +39,8 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             self.processingFrames = configuration.latencyClass == .realtime
                 ? hardwareBufferSize
                 : max(hardwareBufferSize, internalBufferFrames)
+            SAHAtomicCounterReset(&audioDropoutCounter)
+            SAHAtomicCounterReset(&droppedFrameCounter)
 
             try prepareBuffers()
 
@@ -72,6 +76,19 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             SAHFloatRingBufferDeinit(&outputRing2)
         }
 
+        func audioDropoutCount() -> UInt64 {
+            SAHAtomicCounterLoad(&audioDropoutCounter)
+        }
+
+        func droppedFrameCount() -> UInt64 {
+            SAHAtomicCounterLoad(&droppedFrameCounter)
+        }
+
+        func resetDropoutCounters() {
+            SAHAtomicCounterReset(&audioDropoutCounter)
+            SAHAtomicCounterReset(&droppedFrameCounter)
+        }
+
         func enqueueInput(
             captureBuffers: UnsafeMutableAudioBufferListPointer,
             frameCount: UInt32
@@ -79,13 +96,28 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             guard configuration.isEnabled else { return }
 
             let inputChannelOffset = configuration.inputStartChannel - 1
+            var droppedFrames: UInt32 = 0
             if let source = captureBuffers[inputChannelOffset].mData?.assumingMemoryBound(to: Float.self) {
-                _ = SAHFloatRingBufferWrite(&inputRing1, source, frameCount)
+                let writtenFrames = SAHFloatRingBufferWrite(&inputRing1, source, frameCount)
+                if writtenFrames < frameCount {
+                    droppedFrames = max(droppedFrames, frameCount - writtenFrames)
+                }
+            } else {
+                droppedFrames = max(droppedFrames, frameCount)
             }
 
             if configuration.channelCount == 2,
                let source = captureBuffers[inputChannelOffset + 1].mData?.assumingMemoryBound(to: Float.self) {
-                _ = SAHFloatRingBufferWrite(&inputRing2, source, frameCount)
+                let writtenFrames = SAHFloatRingBufferWrite(&inputRing2, source, frameCount)
+                if writtenFrames < frameCount {
+                    droppedFrames = max(droppedFrames, frameCount - writtenFrames)
+                }
+            } else if configuration.channelCount == 2 {
+                droppedFrames = max(droppedFrames, frameCount)
+            }
+
+            if droppedFrames > 0 {
+                recordDroppedFrames(droppedFrames)
             }
         }
 
@@ -160,6 +192,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
 
             let requestedFrames = UInt32(frames)
             let receivedFrames1 = SAHFloatRingBufferRead(&inputRing1, inputScratch1, requestedFrames)
+            var droppedFrames = requestedFrames - receivedFrames1
             if Int(receivedFrames1) < frames {
                 for frame in Int(receivedFrames1)..<frames {
                     inputScratch1[frame] = 0
@@ -168,11 +201,16 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
 
             if configuration.channelCount == 2, let inputScratch2 {
                 let receivedFrames2 = SAHFloatRingBufferRead(&inputRing2, inputScratch2, requestedFrames)
+                droppedFrames = max(droppedFrames, requestedFrames - receivedFrames2)
                 if Int(receivedFrames2) < frames {
                     for frame in Int(receivedFrames2)..<frames {
                         inputScratch2[frame] = 0
                     }
                 }
+            }
+
+            if droppedFrames > 0 {
+                recordDroppedFrames(droppedFrames)
             }
 
             _ = render(
@@ -190,6 +228,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             guard let outputScratch1 else { return }
             let requestedFrames = UInt32(frames)
             let receivedFrames1 = SAHFloatRingBufferRead(&outputRing1, outputScratch1, requestedFrames)
+            var droppedFrames = requestedFrames - receivedFrames1
             if Int(receivedFrames1) < frames {
                 for frame in Int(receivedFrames1)..<frames {
                     outputScratch1[frame] = 0
@@ -198,11 +237,16 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
 
             if configuration.channelCount == 2, let outputScratch2 {
                 let receivedFrames2 = SAHFloatRingBufferRead(&outputRing2, outputScratch2, requestedFrames)
+                droppedFrames = max(droppedFrames, requestedFrames - receivedFrames2)
                 if Int(receivedFrames2) < frames {
                     for frame in Int(receivedFrames2)..<frames {
                         outputScratch2[frame] = 0
                     }
                 }
+            }
+
+            if droppedFrames > 0 {
+                recordDroppedFrames(droppedFrames)
             }
         }
 
@@ -264,10 +308,15 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
                     input1: inputScratch1,
                     input2: inputScratch2Pointer
                 )
-
-                _ = SAHFloatRingBufferWrite(&outputRing1, outputScratch1, frames)
+                let writtenFrames1 = SAHFloatRingBufferWrite(&outputRing1, outputScratch1, frames)
+                var droppedFrames = frames - writtenFrames1
                 if configuration.channelCount == 2, let outputScratch2 {
-                    _ = SAHFloatRingBufferWrite(&outputRing2, outputScratch2, frames)
+                    let writtenFrames2 = SAHFloatRingBufferWrite(&outputRing2, outputScratch2, frames)
+                    droppedFrames = max(droppedFrames, frames - writtenFrames2)
+                }
+
+                if droppedFrames > 0 {
+                    recordDroppedFrames(droppedFrames)
                 }
             }
         }
@@ -324,6 +373,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             renderSampleTime += Double(frameCount)
 
             if status != noErr {
+                recordDroppedFrames(UInt32(frameCount))
                 outputScratch1.update(from: input1, count: frameCount)
                 if configuration.channelCount == 2, let input2, let outputScratch2 {
                     outputScratch2.update(from: input2, count: frameCount)
@@ -332,6 +382,12 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             }
 
             return true
+        }
+
+        private func recordDroppedFrames(_ frameCount: UInt32) {
+            guard frameCount > 0 else { return }
+            SAHAtomicCounterIncrement(&audioDropoutCounter)
+            SAHAtomicCounterAdd(&droppedFrameCounter, UInt64(frameCount))
         }
 
         private func provideEffectInput(
@@ -510,6 +566,34 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         }
     }
 
+    private func recordDroppedFrames(_ frameCount: UInt32) {
+        guard frameCount > 0 else { return }
+        SAHAtomicCounterIncrement(&audioDropoutCounter)
+        SAHAtomicCounterAdd(&droppedFrameCounter, UInt64(frameCount))
+    }
+
+    private func updateExpectedSampleTime(
+        with inTimeStamp: UnsafePointer<AudioTimeStamp>?,
+        frameCount: UInt32,
+        expectedSampleTime: inout Double?
+    ) {
+        guard let inTimeStamp else { return }
+
+        let sampleTimeValidRawValue: UInt32 = 1 << 0
+        guard (inTimeStamp.pointee.mFlags.rawValue & sampleTimeValidRawValue) != 0 else {
+            expectedSampleTime = nil
+            return
+        }
+
+        let currentSampleTime = inTimeStamp.pointee.mSampleTime
+        if let expectedSampleTime, currentSampleTime > expectedSampleTime + 0.5 {
+            let missingFrames = UInt32((currentSampleTime - expectedSampleTime).rounded())
+            recordDroppedFrames(missingFrames)
+        }
+
+        expectedSampleTime = currentSampleTime + Double(frameCount)
+    }
+
     private var inputUnit: AudioUnit?
     private var outputUnit: AudioUnit?
     private var configuration: MultiTrackHostConfiguration?
@@ -517,6 +601,10 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
     private var captureBufferList: UnsafeMutableAudioBufferListPointer?
     private var captureChannelBuffers: [UnsafeMutablePointer<Float>] = []
     private var maxFramesPerSlice: UInt32 = 0
+    private var audioDropoutCounter = SAHAtomicCounter()
+    private var droppedFrameCounter = SAHAtomicCounter()
+    private var nextExpectedInputSampleTime: Double?
+    private var nextExpectedOutputSampleTime: Double?
 
     deinit {
         stop()
@@ -524,6 +612,10 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
 
     func start(configuration: MultiTrackHostConfiguration) throws {
         stop()
+        SAHAtomicCounterReset(&audioDropoutCounter)
+        SAHAtomicCounterReset(&droppedFrameCounter)
+        nextExpectedInputSampleTime = nil
+        nextExpectedOutputSampleTime = nil
 
         let sampleRateDifference = abs(configuration.inputDevice.nominalSampleRate - configuration.outputDevice.nominalSampleRate)
         guard sampleRateDifference < 0.5 else {
@@ -568,6 +660,30 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         }
     }
 
+    func audioDropoutCount() -> UInt64 {
+        let controllerCount = SAHAtomicCounterLoad(&audioDropoutCounter)
+        return trackRuntimes.reduce(controllerCount) { partialResult, runtime in
+            partialResult + runtime.audioDropoutCount()
+        }
+    }
+
+    func droppedFrameCount() -> UInt64 {
+        let controllerCount = SAHAtomicCounterLoad(&droppedFrameCounter)
+        return trackRuntimes.reduce(controllerCount) { partialResult, runtime in
+            partialResult + runtime.droppedFrameCount()
+        }
+    }
+
+    func resetDropoutCounters() {
+        SAHAtomicCounterReset(&audioDropoutCounter)
+        SAHAtomicCounterReset(&droppedFrameCounter)
+        nextExpectedInputSampleTime = nil
+        nextExpectedOutputSampleTime = nil
+        for runtime in trackRuntimes {
+            runtime.resetDropoutCounters()
+        }
+    }
+
     func stop() {
         if let inputUnit {
             AudioOutputUnitStop(inputUnit)
@@ -598,6 +714,8 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
 
         configuration = nil
         maxFramesPerSlice = 0
+        nextExpectedInputSampleTime = nil
+        nextExpectedOutputSampleTime = nil
     }
 
     private func prepareCaptureBuffers(inputChannelCount: Int) throws {
@@ -767,6 +885,11 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         inNumberFrames: UInt32
     ) -> OSStatus {
         guard let inputUnit, let captureBufferList else { return noErr }
+        updateExpectedSampleTime(
+            with: inTimeStamp,
+            frameCount: inNumberFrames,
+            expectedSampleTime: &nextExpectedInputSampleTime
+        )
 
         for index in 0..<captureBufferList.count {
             captureBufferList[index].mDataByteSize = inNumberFrames * UInt32(MemoryLayout<Float>.size)
@@ -783,6 +906,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             captureBufferList.unsafeMutablePointer
         )
         if status != noErr {
+            recordDroppedFrames(inNumberFrames)
             return status
         }
 
@@ -799,6 +923,11 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         ioData: UnsafeMutablePointer<AudioBufferList>?
     ) -> OSStatus {
         guard let ioData else { return noErr }
+        updateExpectedSampleTime(
+            with: inTimeStamp,
+            frameCount: inNumberFrames,
+            expectedSampleTime: &nextExpectedOutputSampleTime
+        )
 
         let outputBuffers = UnsafeMutableAudioBufferListPointer(ioData)
         let frameCount = Int(inNumberFrames)
@@ -813,7 +942,6 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             }
         }
 
-        _ = inTimeStamp
 
         for runtime in trackRuntimes {
             runtime.mixOutput(into: outputBuffers, hardwareFrames: frameCount)
