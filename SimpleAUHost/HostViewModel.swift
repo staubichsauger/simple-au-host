@@ -380,6 +380,14 @@ final class HostViewModel: ObservableObject {
         audioDropoutMonitorTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
+                if let runtimeStatus = self.controller.runtimeStatusMessage() {
+                    self.audioDropoutCount = self.controller.audioDropoutCount()
+                    self.droppedFrameCount = self.controller.droppedFrameCount()
+                    self.controller.stop()
+                    self.isRunning = false
+                    self.statusMessage = runtimeStatus
+                    return
+                }
                 self.audioDropoutCount = self.controller.audioDropoutCount()
                 self.droppedFrameCount = self.controller.droppedFrameCount()
                 try? await Task.sleep(for: .milliseconds(250))

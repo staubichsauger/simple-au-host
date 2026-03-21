@@ -56,6 +56,9 @@ struct AudioHostError: LocalizedError {
 }
 
 final class AudioHostController: @unchecked Sendable {
+    private static let pluginCatalogLock = NSLock()
+    private nonisolated(unsafe) static var cachedPlugins: [AudioUnitPluginInfo]?
+
     private var inputUnit: AudioUnit?
     private var outputUnit: AudioUnit?
     private var effectUnit: AudioUnit?
@@ -64,6 +67,7 @@ final class AudioHostController: @unchecked Sendable {
     private var effectChannelCount: UInt32 = 1
     private var ioMaxFramesPerSlice: UInt32 = 0
     private var effectMaxFramesPerSlice: UInt32 = 0
+    private var callbackFrameCapacity: Int = 0
 
     private var captureBuffer: UnsafeMutablePointer<Float>?
     private var dryScratchBuffer: UnsafeMutablePointer<Float>?
@@ -85,11 +89,14 @@ final class AudioHostController: @unchecked Sendable {
     private var effectRenderSampleTime: Double = 0
     private let priorityController = AudioHostingPriorityController()
     private let workerStateLock = NSLock()
+    private let runtimeStateLock = NSLock()
     private let workerWakeup = AudioWorkerWakeup()
     private let workerExitGroup = DispatchGroup()
+    private let deviceObserver = AudioHardwareChangeObserver()
     private var workerThread: Thread?
     private var shouldRunWorker = false
     private var threadedOutputPrimed = false
+    private var runtimeStatus: String?
 
     private var isRunning = false
 
@@ -147,6 +154,13 @@ final class AudioHostController: @unchecked Sendable {
     }
 
     func availablePlugins() throws -> [AudioUnitPluginInfo] {
+        Self.pluginCatalogLock.lock()
+        if let cachedPlugins = Self.cachedPlugins {
+            Self.pluginCatalogLock.unlock()
+            return cachedPlugins
+        }
+        Self.pluginCatalogLock.unlock()
+
         var plugins: [AudioUnitPluginInfo] = []
         var seenIDs = Set<String>()
 
@@ -196,7 +210,11 @@ final class AudioHostController: @unchecked Sendable {
             }
         }
 
-        return plugins.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        let sortedPlugins = plugins.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        Self.pluginCatalogLock.lock()
+        Self.cachedPlugins = sortedPlugins
+        Self.pluginCatalogLock.unlock()
+        return sortedPlugins
     }
 
     func defaultInputDeviceID() throws -> AudioDeviceID {
@@ -225,6 +243,7 @@ final class AudioHostController: @unchecked Sendable {
         nextExpectedOutputSampleTime = nil
         effectRenderSampleTime = 0
         threadedOutputPrimed = false
+        clearRuntimeStatus()
         priorityController.activate(reason: "Low-latency audio hosting")
 
         do {
@@ -246,17 +265,25 @@ final class AudioHostController: @unchecked Sendable {
             }
 
             currentConfiguration = configuration
-            ioMaxFramesPerSlice = UInt32(configuration.bufferSize)
             let threadedMaxFrames = configuration.threadedProcessingEnabled && configuration.plugin != nil
                 ? max(configuration.bufferSize, configuration.threadedProcessingBufferSize)
                 : configuration.bufferSize
+            ioMaxFramesPerSlice = UInt32(suggestedMaximumFramesPerSlice(for: threadedMaxFrames, nominalBufferSize: configuration.bufferSize))
             effectMaxFramesPerSlice = UInt32(threadedMaxFrames)
 
-            try prepareBuffers(maxFrames: Int(effectMaxFramesPerSlice))
             try createAndConfigureIOUnits(for: configuration)
             if let plugin = configuration.plugin {
                 try createAndConfigureEffectUnit(plugin: plugin, sampleRate: configuration.inputDevice.nominalSampleRate)
             }
+            let actualInputMaxFrames = try actualMaximumFramesPerSlice(for: inputUnit)
+            let actualOutputMaxFrames = try actualMaximumFramesPerSlice(for: outputUnit)
+            let actualEffectMaxFrames = try actualMaximumFramesPerSlice(for: effectUnit)
+            callbackFrameCapacity = allocatedFrameCapacity(
+                actualMaximumFrames: max(actualInputMaxFrames, max(actualOutputMaxFrames, actualEffectMaxFrames)),
+                nominalBufferSize: configuration.bufferSize
+            )
+            try prepareBuffers(maxFrames: callbackFrameCapacity)
+            installDeviceObservers(for: configuration)
             if shouldUseThreadedProcessing {
                 startWorkerThread()
             }
@@ -290,6 +317,12 @@ final class AudioHostController: @unchecked Sendable {
         nextExpectedOutputSampleTime = nil
     }
 
+    func runtimeStatusMessage() -> String? {
+        runtimeStateLock.lock()
+        defer { runtimeStateLock.unlock() }
+        return runtimeStatus
+    }
+
     private func recordDroppedFrames(_ frameCount: UInt32) {
         guard frameCount > 0 else { return }
         SAHAtomicCounterIncrement(&audioDropoutCounter)
@@ -320,6 +353,7 @@ final class AudioHostController: @unchecked Sendable {
 
     func stop() {
         stopWorkerThread()
+        deviceObserver.stop()
         if let inputUnit {
             AudioOutputUnitStop(inputUnit)
         }
@@ -351,10 +385,12 @@ final class AudioHostController: @unchecked Sendable {
         effectChannelCount = 1
         ioMaxFramesPerSlice = 0
         effectMaxFramesPerSlice = 0
+        callbackFrameCapacity = 0
         nextExpectedInputSampleTime = nil
         nextExpectedOutputSampleTime = nil
         effectRenderSampleTime = 0
         threadedOutputPrimed = false
+        clearRuntimeStatus()
         isRunning = false
         priorityController.deactivate()
     }
@@ -892,6 +928,12 @@ final class AudioHostController: @unchecked Sendable {
         else {
             return noErr
         }
+        if let status = statusForInvalidCallbackFrameCount(Int(inNumberFrames)) {
+            return status
+        }
+        if runtimeStatusMessage() != nil {
+            return noErr
+        }
 
         updateExpectedSampleTime(
             with: inTimeStamp,
@@ -939,18 +981,23 @@ final class AudioHostController: @unchecked Sendable {
         else {
             return noErr
         }
+        let requestedFrames = Int(inNumberFrames)
+        let bytes = requestedFrames * MemoryLayout<Float>.size
+        clearAudioBuffer(outputBuffer, frameCount: requestedFrames)
+        if let status = statusForInvalidCallbackFrameCount(requestedFrames) {
+            ioData.pointee.mBuffers.mDataByteSize = UInt32(bytes)
+            return status
+        }
+        if runtimeStatusMessage() != nil {
+            ioData.pointee.mBuffers.mDataByteSize = UInt32(bytes)
+            return noErr
+        }
 
         updateExpectedSampleTime(
             with: inTimeStamp,
             frameCount: inNumberFrames,
             expectedSampleTime: &nextExpectedOutputSampleTime
         )
-
-        let requestedFrames = Int(inNumberFrames)
-        let bytes = requestedFrames * MemoryLayout<Float>.size
-        for frame in 0..<requestedFrames {
-            outputBuffer[frame] = 0
-        }
 
         if shouldUseThreadedProcessing {
             let prerollFrames = max(effectMaxFramesPerSlice, inNumberFrames * 2)
@@ -1059,9 +1106,7 @@ final class AudioHostController: @unchecked Sendable {
             if let drySourceForEffect {
                 destination.update(from: drySourceForEffect, count: frameCount)
             } else {
-                for frame in 0..<frameCount {
-                    destination[frame] = 0
-                }
+                clearAudioBuffer(destination, frameCount: frameCount)
             }
             bufferList[bufferIndex].mDataByteSize = UInt32(frameCount * MemoryLayout<Float>.size)
         }
@@ -1087,7 +1132,7 @@ final class AudioHostController: @unchecked Sendable {
             self?.workerLoop()
         }
         workerThread.name = "SimpleAUHost.SimpleWorker"
-        workerThread.qualityOfService = .userInteractive
+        workerThread.qualityOfService = .userInitiated
         self.workerThread = workerThread
         workerThread.start()
     }
@@ -1107,8 +1152,12 @@ final class AudioHostController: @unchecked Sendable {
 
     private func workerLoop() {
         guard shouldUseThreadedProcessing else { return }
+        promoteCurrentThreadToAudioWorkerQoS()
 
         while shouldWorkerContinue() && !Thread.current.isCancelled {
+            if runtimeStatusMessage() != nil {
+                return
+            }
             let frames = UInt32(effectMaxFramesPerSlice)
             let hasInput = SAHFloatRingBufferAvailableRead(&dryRingBuffer) >= frames
             let hasOutputSpace = SAHFloatRingBufferAvailableWrite(&threadedOutputRingBuffer) >= frames
@@ -1210,6 +1259,61 @@ final class AudioHostController: @unchecked Sendable {
         } else {
             monoOutput.update(from: wetBuffer1, count: frameCount)
         }
+    }
+}
+
+private extension AudioHostController {
+    func actualMaximumFramesPerSlice(for unit: AudioUnit?) throws -> Int {
+        guard let unit else { return 0 }
+        var frames: UInt32 = 0
+        var dataSize = UInt32(MemoryLayout<UInt32>.size)
+        try checkStatus(
+            AudioUnitGetProperty(
+                unit,
+                kAudioUnitProperty_MaximumFramesPerSlice,
+                kAudioUnitScope_Global,
+                0,
+                &frames,
+                &dataSize
+            ),
+            "Failed to query Audio Unit maximum frames per slice"
+        )
+        return Int(frames)
+    }
+
+    func installDeviceObservers(for configuration: AudioHostConfiguration) {
+        var observedDevices = [configuration.inputDevice.id]
+        if configuration.outputDevice.id != configuration.inputDevice.id {
+            observedDevices.append(configuration.outputDevice.id)
+        }
+
+        deviceObserver.startMonitoring(deviceIDs: observedDevices) { [weak self] message in
+            self?.invalidateRuntime(message)
+        }
+    }
+
+    func invalidateRuntime(_ message: String) {
+        runtimeStateLock.lock()
+        if runtimeStatus == nil {
+            runtimeStatus = message
+        }
+        runtimeStateLock.unlock()
+        workerWakeup.signal()
+    }
+
+    func clearRuntimeStatus() {
+        runtimeStateLock.lock()
+        runtimeStatus = nil
+        runtimeStateLock.unlock()
+    }
+
+    func statusForInvalidCallbackFrameCount(_ frameCount: Int) -> OSStatus? {
+        guard frameCount > callbackFrameCapacity else {
+            return nil
+        }
+        invalidateRuntime("Audio stopped because the device changed its callback size beyond the allocated safety margin. Restart the engine.")
+        recordDroppedFrames(UInt32(frameCount))
+        return noErr
     }
 }
 
@@ -1328,7 +1432,6 @@ final class AudioHostingPriorityController {
     func activate(reason: String) {
         guard activityToken == nil else { return }
 
-        Thread.current.qualityOfService = .userInteractive
         var options: ProcessInfo.ActivityOptions = [
             .userInitiatedAllowingIdleSystemSleep,
             .suddenTerminationDisabled,
@@ -1375,4 +1478,73 @@ final class AudioWorkerWakeup {
         isSignaled = false
         pthread_mutex_unlock(&mutex)
     }
+}
+
+final class AudioHardwareChangeObserver {
+    private let queue = DispatchQueue(label: "SimpleAUHost.AudioHardwareChangeObserver")
+    private var registrations: [(AudioDeviceID, AudioObjectPropertyAddress, AudioObjectPropertyListenerBlock)] = []
+
+    func startMonitoring(deviceIDs: [AudioDeviceID], onChange: @escaping (String) -> Void) {
+        stop()
+
+        let addresses = [
+            AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyBufferFrameSize,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            ),
+            AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyNominalSampleRate,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            ),
+            AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyDeviceIsAlive,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+        ]
+
+        for deviceID in Set(deviceIDs) {
+            for address in addresses {
+                var propertyAddress = address
+                let block: AudioObjectPropertyListenerBlock = { _, _ in
+                    onChange("Audio stopped because the device configuration changed. Restart the engine to re-open the devices.")
+                }
+                let status = AudioObjectAddPropertyListenerBlock(deviceID, &propertyAddress, queue, block)
+                if status == noErr {
+                    registrations.append((deviceID, address, block))
+                }
+            }
+        }
+    }
+
+    func stop() {
+        for (deviceID, address, block) in registrations {
+            var propertyAddress = address
+            AudioObjectRemovePropertyListenerBlock(deviceID, &propertyAddress, queue, block)
+        }
+        registrations.removeAll()
+    }
+
+    deinit {
+        stop()
+    }
+}
+
+func clearAudioBuffer(_ pointer: UnsafeMutablePointer<Float>, frameCount: Int) {
+    guard frameCount > 0 else { return }
+    memset(pointer, 0, frameCount * MemoryLayout<Float>.size)
+}
+
+func suggestedMaximumFramesPerSlice(for processingFrames: Int, nominalBufferSize: Int) -> Int {
+    max(processingFrames, nominalBufferSize * 4)
+}
+
+func allocatedFrameCapacity(actualMaximumFrames: Int, nominalBufferSize: Int) -> Int {
+    max(actualMaximumFrames, nominalBufferSize) + nominalBufferSize
+}
+
+func promoteCurrentThreadToAudioWorkerQoS() {
+    pthread_set_qos_class_self_np(QOS_CLASS_USER_INITIATED, 0)
 }
