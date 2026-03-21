@@ -89,6 +89,7 @@ final class AudioHostController: @unchecked Sendable {
     private let workerExitGroup = DispatchGroup()
     private var workerThread: Thread?
     private var shouldRunWorker = false
+    private var threadedOutputPrimed = false
 
     private var isRunning = false
 
@@ -223,6 +224,7 @@ final class AudioHostController: @unchecked Sendable {
         nextExpectedInputSampleTime = nil
         nextExpectedOutputSampleTime = nil
         effectRenderSampleTime = 0
+        threadedOutputPrimed = false
         priorityController.activate(reason: "Low-latency audio hosting")
 
         do {
@@ -352,6 +354,7 @@ final class AudioHostController: @unchecked Sendable {
         nextExpectedInputSampleTime = nil
         nextExpectedOutputSampleTime = nil
         effectRenderSampleTime = 0
+        threadedOutputPrimed = false
         isRunning = false
         priorityController.deactivate()
     }
@@ -950,9 +953,19 @@ final class AudioHostController: @unchecked Sendable {
         }
 
         if shouldUseThreadedProcessing {
+            let prerollFrames = max(effectMaxFramesPerSlice, inNumberFrames * 2)
+            if !threadedOutputPrimed {
+                if SAHFloatRingBufferAvailableRead(&threadedOutputRingBuffer) < prerollFrames {
+                    ioData.pointee.mBuffers.mDataByteSize = UInt32(bytes)
+                    _ = ioActionFlags
+                    return noErr
+                }
+                threadedOutputPrimed = true
+            }
             let readFrames = Int(SAHFloatRingBufferRead(&threadedOutputRingBuffer, outputBuffer, inNumberFrames))
             workerWakeup.signal()
             if readFrames < requestedFrames {
+                threadedOutputPrimed = false
                 recordDroppedFrames(UInt32(requestedFrames - readFrames))
                 for frame in readFrames..<requestedFrames {
                     outputBuffer[frame] = 0

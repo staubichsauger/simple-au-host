@@ -25,6 +25,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         private let workerWakeup = AudioWorkerWakeup()
         private let workerExitGroup = DispatchGroup()
         private var shouldRunWorker = false
+        private var bufferedOutputPrimed = false
         private var renderSampleTime: Double = 0
         private var audioDropoutCounter = SAHAtomicCounter()
         private var droppedFrameCounter = SAHAtomicCounter()
@@ -232,6 +233,19 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
 
         private func drainBufferedOutput(frames: Int) {
             guard let outputScratch1 else { return }
+            let prerollFrames = UInt32(max(processingFrames, frames * 2))
+            let availableFrames1 = SAHFloatRingBufferAvailableRead(&outputRing1)
+            let availableFrames2 = configuration.channelCount == 1
+                ? availableFrames1
+                : SAHFloatRingBufferAvailableRead(&outputRing2)
+
+            if !bufferedOutputPrimed {
+                guard availableFrames1 >= prerollFrames, availableFrames2 >= prerollFrames else {
+                    fillBufferedOutputScratchWithSilence(frames: frames)
+                    return
+                }
+                bufferedOutputPrimed = true
+            }
             let requestedFrames = UInt32(frames)
             let receivedFrames1 = SAHFloatRingBufferRead(&outputRing1, outputScratch1, requestedFrames)
             var droppedFrames = requestedFrames - receivedFrames1
@@ -252,6 +266,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             }
 
             if droppedFrames > 0 {
+                bufferedOutputPrimed = false
                 recordDroppedFrames(droppedFrames)
             }
 
@@ -337,6 +352,18 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             workerStateLock.lock()
             defer { workerStateLock.unlock() }
             return shouldRunWorker
+        }
+
+        private func fillBufferedOutputScratchWithSilence(frames: Int) {
+            guard let outputScratch1 else { return }
+            for frame in 0..<frames {
+                outputScratch1[frame] = 0
+            }
+            if configuration.channelCount == 2, let outputScratch2 {
+                for frame in 0..<frames {
+                    outputScratch2[frame] = 0
+                }
+            }
         }
 
         @discardableResult
