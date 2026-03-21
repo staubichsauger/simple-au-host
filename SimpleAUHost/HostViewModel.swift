@@ -1,12 +1,22 @@
 import AVFoundation
+import Combine
 import SwiftUI
 
 @MainActor
 final class HostViewModel: ObservableObject {
+    private struct PersistedSettings: Codable {
+        let inputDeviceID: AudioDeviceID?
+        let outputDeviceID: AudioDeviceID?
+        let inputChannel: Int
+        let outputChannel: Int
+        let bufferSize: Int
+        let pluginID: String?
+    }
+
+    private static let persistedSettingsKey = "HostViewModel.persistedSettings"
     @Published private(set) var inputDevices: [AudioDeviceInfo] = []
     @Published private(set) var outputDevices: [AudioDeviceInfo] = []
     @Published private(set) var plugins: [AudioUnitPluginInfo] = []
-
     @Published var selectedInputDeviceID: AudioDeviceID?
     @Published var selectedOutputDeviceID: AudioDeviceID?
     @Published var selectedInputChannel: Int = 1
@@ -22,7 +32,25 @@ final class HostViewModel: ObservableObject {
     @Published private(set) var droppedFrameCount: UInt64 = 0
 
     private let controller = AudioHostController()
+    private let userDefaults: UserDefaults
     private var audioDropoutMonitorTask: Task<Void, Never>?
+    private var persistenceCancellables = Set<AnyCancellable>()
+
+    init(userDefaults: UserDefaults = .standard) {
+        self.userDefaults = userDefaults
+        if let data = userDefaults.data(forKey: Self.persistedSettingsKey),
+           let settings = try? JSONDecoder().decode(PersistedSettings.self, from: data) {
+            selectedInputDeviceID = settings.inputDeviceID
+            selectedOutputDeviceID = settings.outputDeviceID
+            selectedInputChannel = settings.inputChannel
+            selectedOutputChannel = settings.outputChannel
+            selectedBufferSize = settings.bufferSize
+            customBufferSizeText = String(settings.bufferSize)
+            selectedPluginID = settings.pluginID
+        }
+
+        setupPersistenceObservers()
+    }
 
     deinit {
         audioDropoutMonitorTask?.cancel()
@@ -121,6 +149,9 @@ final class HostViewModel: ObservableObject {
             }
             if selectedOutputDeviceID == nil || !outputDevices.contains(where: { $0.id == selectedOutputDeviceID }) {
                 selectedOutputDeviceID = outputDevices.first(where: { $0.id == defaultOutputID })?.id ?? outputDevices.first?.id
+            }
+            if selectedPluginID != nil && !plugins.contains(where: { $0.id == selectedPluginID }) {
+                selectedPluginID = nil
             }
 
             handleDeviceSelectionChange()
@@ -285,5 +316,66 @@ final class HostViewModel: ObservableObject {
                 try? await Task.sleep(for: .milliseconds(250))
             }
         }
+    }
+
+    private func setupPersistenceObservers() {
+        $selectedInputDeviceID
+            .dropFirst()
+            .sink { [weak self] _ in
+                self?.persistSettings()
+            }
+            .store(in: &persistenceCancellables)
+
+        $selectedOutputDeviceID
+            .dropFirst()
+            .sink { [weak self] _ in
+                self?.persistSettings()
+            }
+            .store(in: &persistenceCancellables)
+
+        $selectedInputChannel
+            .dropFirst()
+            .sink { [weak self] _ in
+                self?.persistSettings()
+            }
+            .store(in: &persistenceCancellables)
+
+        $selectedOutputChannel
+            .dropFirst()
+            .sink { [weak self] _ in
+                self?.persistSettings()
+            }
+            .store(in: &persistenceCancellables)
+
+        $selectedBufferSize
+            .dropFirst()
+            .sink { [weak self] _ in
+                self?.persistSettings()
+            }
+            .store(in: &persistenceCancellables)
+
+        $selectedPluginID
+            .dropFirst()
+            .sink { [weak self] _ in
+                self?.persistSettings()
+            }
+            .store(in: &persistenceCancellables)
+    }
+
+    private func persistSettings() {
+        let settings = PersistedSettings(
+            inputDeviceID: selectedInputDeviceID,
+            outputDeviceID: selectedOutputDeviceID,
+            inputChannel: selectedInputChannel,
+            outputChannel: selectedOutputChannel,
+            bufferSize: selectedBufferSize,
+            pluginID: selectedPluginID
+        )
+
+        guard let data = try? JSONEncoder().encode(settings) else {
+            return
+        }
+
+        userDefaults.set(data, forKey: Self.persistedSettingsKey)
     }
 }
