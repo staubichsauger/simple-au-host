@@ -42,7 +42,8 @@ package: bundle
 	@printf "Created %s\n" "$(PACKAGE)"
 
 run: build
-	open "$(BUILT_APP)"
+	@pkill -x "$(APP_NAME)" >/dev/null 2>&1 || true
+	open -n "$(BUILT_APP)"
 
 clean:
 	rm -rf "$(CURDIR)/build" "$(DIST_DIR)"

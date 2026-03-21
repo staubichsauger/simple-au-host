@@ -60,6 +60,28 @@ void SAHFloatRingBufferClear(SAHFloatRingBuffer *buffer) {
     atomic_store_explicit(&buffer->read_index, write_index, memory_order_release);
 }
 
+uint32_t SAHFloatRingBufferAvailableRead(const SAHFloatRingBuffer *buffer) {
+    if (buffer == NULL || buffer->storage == NULL) {
+        return 0;
+    }
+
+    uint64_t write_index = atomic_load_explicit(&buffer->write_index, memory_order_acquire);
+    uint64_t read_index = atomic_load_explicit(&buffer->read_index, memory_order_relaxed);
+    uint64_t available = write_index - read_index;
+    return available > UINT32_MAX ? UINT32_MAX : (uint32_t)available;
+}
+
+uint32_t SAHFloatRingBufferAvailableWrite(const SAHFloatRingBuffer *buffer) {
+    if (buffer == NULL || buffer->storage == NULL) {
+        return 0;
+    }
+
+    uint64_t write_index = atomic_load_explicit(&buffer->write_index, memory_order_relaxed);
+    uint64_t read_index = atomic_load_explicit(&buffer->read_index, memory_order_acquire);
+    uint64_t available = (uint64_t)buffer->capacity - (write_index - read_index);
+    return available > UINT32_MAX ? UINT32_MAX : (uint32_t)available;
+}
+
 uint32_t SAHFloatRingBufferWrite(SAHFloatRingBuffer *buffer, const float *input, uint32_t count) {
     if (buffer == NULL || buffer->storage == NULL || input == NULL || count == 0) {
         return 0;

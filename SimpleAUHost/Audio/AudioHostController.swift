@@ -995,7 +995,7 @@ final class AudioHostController: @unchecked Sendable {
     }
 }
 
-private func getAudioObjectProperty<T>(
+func getAudioObjectProperty<T>(
     objectID: AudioObjectID,
     selector: AudioObjectPropertySelector,
     scope: AudioObjectPropertyScope,
@@ -1034,7 +1034,7 @@ private func getAudioObjectProperty<T>(
     return values
 }
 
-private func getAudioObjectScalarProperty<T>(
+func getAudioObjectScalarProperty<T>(
     objectID: AudioObjectID,
     selector: AudioObjectPropertySelector,
     scope: AudioObjectPropertyScope,
@@ -1057,7 +1057,7 @@ private func getAudioObjectScalarProperty<T>(
     return pointer.move()
 }
 
-private func getCFStringProperty(
+func getCFStringProperty(
     objectID: AudioObjectID,
     selector: AudioObjectPropertySelector,
     scope: AudioObjectPropertyScope,
@@ -1082,14 +1082,14 @@ private func getCFStringProperty(
 }
 
 @discardableResult
-private func checkStatus(_ status: OSStatus, _ message: String) throws -> OSStatus {
+func checkStatus(_ status: OSStatus, _ message: String) throws -> OSStatus {
     guard status == noErr else {
         throw AudioHostError("\(message) (\(describe(status: status))).")
     }
     return status
 }
 
-private func describe(status: OSStatus) -> String {
+func describe(status: OSStatus) -> String {
     let n = UInt32(bitPattern: status)
     let chars = [
         Character(UnicodeScalar((n >> 24) & 0xFF)!),

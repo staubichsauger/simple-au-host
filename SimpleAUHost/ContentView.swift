@@ -2,6 +2,11 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var viewModel = HostViewModel()
+    let onBackToModeSelection: (() -> Void)?
+
+    init(onBackToModeSelection: (() -> Void)? = nil) {
+        self.onBackToModeSelection = onBackToModeSelection
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -84,6 +89,12 @@ struct ContentView: View {
             .disabled(viewModel.isBusy || viewModel.isRunning)
 
             HStack(spacing: 12) {
+                if let onBackToModeSelection {
+                    Button("Change mode") {
+                        onBackToModeSelection()
+                    }
+                    .disabled(viewModel.isRunning)
+                }
                 Button("Refresh") {
                     viewModel.load()
                 }
