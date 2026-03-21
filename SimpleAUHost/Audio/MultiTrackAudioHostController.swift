@@ -12,6 +12,14 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         }
     }
 
+    private final class SharedOutputChannelBuffer {
+        var ring = SAHFloatRingBuffer()
+
+        deinit {
+            SAHFloatRingBufferDeinit(&ring)
+        }
+    }
+
     private final class TrackRuntime: @unchecked Sendable {
         let configuration: MultiTrackTrackConfiguration
         let processingFrames: Int
@@ -104,6 +112,14 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             SAHAtomicCounterLoad(&peakOutputRingOccupancyFrames)
         }
 
+        func hasBufferedOutput(frames: Int) -> Bool {
+            guard configuration.latencyClass != .realtime else { return false }
+            let requestedFrames = UInt32(frames)
+            let available1 = SAHFloatRingBufferAvailableRead(&outputRing1)
+            let available2 = configuration.channelCount == 1 ? available1 : SAHFloatRingBufferAvailableRead(&outputRing2)
+            return available1 >= requestedFrames && available2 >= requestedFrames
+        }
+
         func resetDropoutCounters() {
             SAHAtomicCounterReset(&audioDropoutCounter)
             SAHAtomicCounterReset(&droppedFrameCounter)
@@ -116,13 +132,21 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             }
         }
 
-        func mixOutput(into outputBuffers: UnsafeMutableAudioBufferListPointer, hardwareFrames: Int) {
-            guard configuration.isEnabled else { return }
-            if configuration.latencyClass == .realtime {
-                renderRealtime(frames: hardwareFrames)
-            } else {
-                drainBufferedOutput(frames: hardwareFrames)
-            }
+        var isRealtime: Bool {
+            configuration.latencyClass == .realtime
+        }
+
+        var outputChannelCount: Int {
+            configuration.channelCount
+        }
+
+        var outputStartChannelOffset: Int {
+            configuration.outputStartChannel - 1
+        }
+
+        func mixRealtimeOutput(into outputBuffers: UnsafeMutableAudioBufferListPointer, hardwareFrames: Int) {
+            guard configuration.isEnabled, configuration.latencyClass == .realtime else { return }
+            renderRealtime(frames: hardwareFrames)
 
             let outputChannelOffset = configuration.outputStartChannel - 1
             if let destination = outputBuffers[outputChannelOffset].mData?.assumingMemoryBound(to: Float.self),
@@ -134,6 +158,25 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
                let destination = outputBuffers[outputChannelOffset + 1].mData?.assumingMemoryBound(to: Float.self),
                let source = outputScratch2 {
                 accumulateAudioBuffer(source, into: destination, frameCount: hardwareFrames)
+            }
+        }
+
+        func mixBufferedOutput(
+            into premixBuffers: [UnsafeMutablePointer<Float>],
+            frames: Int
+        ) {
+            guard configuration.isEnabled, configuration.latencyClass != .realtime else { return }
+            drainBufferedOutput(frames: frames)
+
+            let outputChannelOffset = configuration.outputStartChannel - 1
+            if outputChannelOffset < premixBuffers.count, let source = outputScratch1 {
+                accumulateAudioBuffer(source, into: premixBuffers[outputChannelOffset], frameCount: frames)
+            }
+
+            if configuration.channelCount == 2,
+               outputChannelOffset + 1 < premixBuffers.count,
+               let source = outputScratch2 {
+                accumulateAudioBuffer(source, into: premixBuffers[outputChannelOffset + 1], frameCount: frames)
             }
         }
 
@@ -606,9 +649,13 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
     private var outputUnit: AudioUnit?
     private var configuration: MultiTrackHostConfiguration?
     private var trackRuntimes: [TrackRuntime] = []
+    private var bufferedTrackRuntimes: [TrackRuntime] = []
+    private var realtimeTrackRuntimes: [TrackRuntime] = []
     private var captureBufferList: UnsafeMutableAudioBufferListPointer?
     private var captureChannelBuffers: [UnsafeMutablePointer<Float>] = []
     private var sharedInputChannelBuffers: [SharedInputChannelBuffer] = []
+    private var sharedPremixOutputBuffers: [SharedOutputChannelBuffer] = []
+    private var premixScratchBuffers: [UnsafeMutablePointer<Float>] = []
     private var maxFramesPerSlice: UInt32 = 0
     private var callbackFrameCapacity: Int = 0
     private var audioDropoutCounter = SAHAtomicCounter()
@@ -616,14 +663,22 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
     private var peakInputCallbackFrames = SAHAtomicCounter()
     private var peakOutputCallbackFrames = SAHAtomicCounter()
     private var peakSharedInputRingOccupancyFrames = SAHAtomicCounter()
+    private var peakPremixOutputRingOccupancyFrames = SAHAtomicCounter()
     private var nextExpectedInputSampleTime: Double?
     private var nextExpectedOutputSampleTime: Double?
     private let priorityController = AudioHostingPriorityController()
     private let runtimeStateLock = NSLock()
     private let deviceObserver = AudioHardwareChangeObserver()
+    private let premixStateLock = NSLock()
+    private let premixWakeup = AudioWorkerWakeup()
+    private let premixExitGroup = DispatchGroup()
     private var runtimeStatus: String?
+    private var premixThread: Thread?
+    private var shouldRunPremixWorker = false
+    private var premixOutputPrimed = false
     private var sharedInputRingCapacityFrames = 0
     private var peakTrackOutputRingCapacityFrames = 0
+    private var premixOutputRingCapacityFrames = 0
 
     deinit {
         stop()
@@ -682,6 +737,8 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
                     inputSource2: track.channelCount == 2 ? sharedInputChannelBuffers[inputChannelOffset + 1] : nil
                 )
             }
+            bufferedTrackRuntimes = trackRuntimes.filter { !$0.isRealtime }
+            realtimeTrackRuntimes = trackRuntimes.filter(\.isRealtime)
             peakTrackOutputRingCapacityFrames = configuration.tracks.reduce(0) { partialResult, track in
                 let processingFrames = max(
                     configuration.bufferSize,
@@ -700,7 +757,11 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
                 actualMaximumFrames: max(actualInputMaxFrames, actualOutputMaxFrames),
                 nominalBufferSize: configuration.bufferSize
             )
+            try preparePremixOutputBuffers(outputChannelCount: configuration.outputDevice.outputChannelCount)
             installDeviceObservers(for: configuration)
+            if !bufferedTrackRuntimes.isEmpty {
+                startPremixWorker()
+            }
 
             if let outputUnit {
                 try checkStatus(AudioOutputUnitStart(outputUnit), "Failed to start multi-track output audio")
@@ -749,18 +810,20 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         let peakTrackOutputOccupancy = trackRuntimes.reduce(UInt64(0)) { partialResult, runtime in
             max(partialResult, runtime.peakOutputRingOccupancy())
         }
+        let peakOutputOccupancy = max(peakTrackOutputOccupancy, SAHAtomicCounterLoad(&peakPremixOutputRingOccupancyFrames))
         return AudioEngineTelemetrySnapshot(
             peakInputCallbackFrames: SAHAtomicCounterLoad(&peakInputCallbackFrames),
             peakOutputCallbackFrames: SAHAtomicCounterLoad(&peakOutputCallbackFrames),
             peakEffectRenderFrames: 0,
             peakInputRingOccupancyFrames: SAHAtomicCounterLoad(&peakSharedInputRingOccupancyFrames),
-            peakOutputRingOccupancyFrames: peakTrackOutputOccupancy,
+            peakOutputRingOccupancyFrames: peakOutputOccupancy,
             inputRingCapacityFrames: sharedInputRingCapacityFrames,
-            outputRingCapacityFrames: peakTrackOutputRingCapacityFrames
+            outputRingCapacityFrames: max(peakTrackOutputRingCapacityFrames, premixOutputRingCapacityFrames)
         )
     }
 
     func stop() {
+        stopPremixWorker()
         deviceObserver.stop()
         if let inputUnit {
             AudioOutputUnitStop(inputUnit)
@@ -781,12 +844,19 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         inputUnit = nil
         outputUnit = nil
         trackRuntimes.removeAll()
+        bufferedTrackRuntimes.removeAll()
+        realtimeTrackRuntimes.removeAll()
         sharedInputChannelBuffers.removeAll()
+        sharedPremixOutputBuffers.removeAll()
 
         for pointer in captureChannelBuffers {
             pointer.deallocate()
         }
         captureChannelBuffers.removeAll()
+        for pointer in premixScratchBuffers {
+            pointer.deallocate()
+        }
+        premixScratchBuffers.removeAll()
         captureBufferList?.unsafeMutablePointer.deallocate()
         captureBufferList = nil
 
@@ -795,6 +865,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         callbackFrameCapacity = 0
         sharedInputRingCapacityFrames = 0
         peakTrackOutputRingCapacityFrames = 0
+        premixOutputRingCapacityFrames = 0
         nextExpectedInputSampleTime = nil
         nextExpectedOutputSampleTime = nil
         clearRuntimeStatus()
@@ -831,6 +902,28 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             captureBufferList?[channelIndex].mNumberChannels = 1
             captureBufferList?[channelIndex].mDataByteSize = UInt32(captureFrameCapacity * MemoryLayout<Float>.size)
             captureBufferList?[channelIndex].mData = UnsafeMutableRawPointer(pointer)
+        }
+    }
+
+    private func preparePremixOutputBuffers(outputChannelCount: Int) throws {
+        for pointer in premixScratchBuffers {
+            pointer.deallocate()
+        }
+        premixScratchBuffers.removeAll()
+        sharedPremixOutputBuffers.removeAll()
+        premixOutputPrimed = false
+
+        guard let configuration else { return }
+        let ringCapacity = UInt32(max(configuration.bufferSize * 32, 4096))
+
+        for _ in 0..<outputChannelCount {
+            let buffer = SharedOutputChannelBuffer()
+            guard SAHFloatRingBufferInit(&buffer.ring, ringCapacity) else {
+                throw AudioHostError("Failed to allocate premix output buffer.")
+            }
+            sharedPremixOutputBuffers.append(buffer)
+            premixScratchBuffers.append(UnsafeMutablePointer<Float>.allocate(capacity: configuration.bufferSize))
+            premixOutputRingCapacityFrames = max(premixOutputRingCapacityFrames, Int(buffer.ring.capacity))
         }
     }
 
@@ -1058,19 +1151,134 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             expectedSampleTime: &nextExpectedOutputSampleTime
         )
 
-        for runtime in trackRuntimes {
-            runtime.mixOutput(into: outputBuffers, hardwareFrames: frameCount)
+        drainPremixedOutput(into: outputBuffers, frameCount: frameCount)
+
+        for runtime in realtimeTrackRuntimes {
+            runtime.mixRealtimeOutput(into: outputBuffers, hardwareFrames: frameCount)
         }
+        premixWakeup.signal()
 
         return noErr
     }
 }
 
 private extension MultiTrackAudioHostController {
+    func startPremixWorker() {
+        premixStateLock.lock()
+        shouldRunPremixWorker = true
+        premixStateLock.unlock()
+        premixExitGroup.enter()
+
+        let premixThread = Thread { [weak self] in
+            defer {
+                self?.premixExitGroup.leave()
+            }
+            self?.premixWorkerLoop()
+        }
+        premixThread.name = "SimpleAUHost.MultiTrackPremix"
+        premixThread.qualityOfService = .userInitiated
+        self.premixThread = premixThread
+        premixThread.start()
+    }
+
+    func stopPremixWorker() {
+        premixStateLock.lock()
+        shouldRunPremixWorker = false
+        premixStateLock.unlock()
+
+        premixThread?.cancel()
+        premixWakeup.signal()
+        if premixThread != nil {
+            premixExitGroup.wait()
+        }
+        premixThread = nil
+    }
+
+    func shouldPremixWorkerContinue() -> Bool {
+        premixStateLock.lock()
+        defer { premixStateLock.unlock() }
+        return shouldRunPremixWorker
+    }
+
+    func premixWorkerLoop() {
+        guard let configuration, !bufferedTrackRuntimes.isEmpty else { return }
+        promoteCurrentThreadToAudioWorkerQoS()
+        let frames = configuration.bufferSize
+
+        while shouldPremixWorkerContinue() && !Thread.current.isCancelled {
+            if runtimeStatusMessage() != nil {
+                return
+            }
+
+            let hasRingSpace = sharedPremixOutputBuffers.allSatisfy {
+                SAHFloatRingBufferAvailableWrite(&$0.ring) >= UInt32(frames)
+            }
+            let hasTrackOutput = bufferedTrackRuntimes.contains { runtime in
+                runtime.hasBufferedOutput(frames: frames)
+            }
+
+            guard hasRingSpace, hasTrackOutput else {
+                premixWakeup.wait()
+                continue
+            }
+
+            for pointer in premixScratchBuffers {
+                clearAudioBuffer(pointer, frameCount: frames)
+            }
+
+            for runtime in bufferedTrackRuntimes {
+                runtime.mixBufferedOutput(into: premixScratchBuffers, frames: frames)
+            }
+
+            for (index, buffer) in sharedPremixOutputBuffers.enumerated() {
+                let writtenFrames = SAHFloatRingBufferWrite(&buffer.ring, premixScratchBuffers[index], UInt32(frames))
+                SAHAtomicCounterStoreMax(&peakPremixOutputRingOccupancyFrames, UInt64(SAHFloatRingBufferAvailableRead(&buffer.ring)))
+                if writtenFrames < UInt32(frames) {
+                    recordDroppedFrames(UInt32(frames) - writtenFrames)
+                }
+            }
+        }
+    }
+
+    func drainPremixedOutput(into outputBuffers: UnsafeMutableAudioBufferListPointer, frameCount: Int) {
+        guard !sharedPremixOutputBuffers.isEmpty else { return }
+        let requestedFrames = UInt32(frameCount)
+        let prerollFrames = UInt32(max(configuration?.bufferSize ?? frameCount, frameCount * 2))
+        let minAvailable = sharedPremixOutputBuffers.reduce(UInt32.max) { partialResult, buffer in
+            min(partialResult, SAHFloatRingBufferAvailableRead(&buffer.ring))
+        }
+
+        if !premixOutputPrimed {
+            guard minAvailable >= prerollFrames else {
+                return
+            }
+            premixOutputPrimed = true
+        }
+
+        var droppedFrames: UInt32 = 0
+        for index in 0..<min(outputBuffers.count, sharedPremixOutputBuffers.count) {
+            guard let destination = outputBuffers[index].mData?.assumingMemoryBound(to: Float.self) else {
+                continue
+            }
+            let readFrames = SAHFloatRingBufferRead(&sharedPremixOutputBuffers[index].ring, destination, requestedFrames)
+            SAHAtomicCounterStoreMax(&peakPremixOutputRingOccupancyFrames, UInt64(SAHFloatRingBufferAvailableRead(&sharedPremixOutputBuffers[index].ring)))
+            if readFrames < requestedFrames {
+                droppedFrames = max(droppedFrames, requestedFrames - readFrames)
+                destination.advanced(by: Int(readFrames)).update(repeating: 0, count: frameCount - Int(readFrames))
+            }
+        }
+
+        if droppedFrames > 0 {
+            premixOutputPrimed = false
+            recordDroppedFrames(droppedFrames)
+        }
+    }
+
     func resetTelemetry() {
         SAHAtomicCounterReset(&peakInputCallbackFrames)
         SAHAtomicCounterReset(&peakOutputCallbackFrames)
         SAHAtomicCounterReset(&peakSharedInputRingOccupancyFrames)
+        SAHAtomicCounterReset(&peakPremixOutputRingOccupancyFrames)
     }
 
     func actualMaximumFramesPerSlice(for unit: AudioUnit?) throws -> Int {
