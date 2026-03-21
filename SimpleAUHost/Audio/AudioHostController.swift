@@ -85,6 +85,8 @@ final class AudioHostController: @unchecked Sendable {
     private var effectRenderSampleTime: Double = 0
     private let priorityController = AudioHostingPriorityController()
     private let workerStateLock = NSLock()
+    private let workerWakeup = AudioWorkerWakeup()
+    private let workerExitGroup = DispatchGroup()
     private var workerThread: Thread?
     private var shouldRunWorker = false
 
@@ -915,6 +917,9 @@ final class AudioHostController: @unchecked Sendable {
         if writtenFrames < inNumberFrames {
             recordDroppedFrames(inNumberFrames - writtenFrames)
         }
+        if shouldUseThreadedProcessing {
+            workerWakeup.signal()
+        }
         return noErr
     }
 
@@ -946,6 +951,7 @@ final class AudioHostController: @unchecked Sendable {
 
         if shouldUseThreadedProcessing {
             let readFrames = Int(SAHFloatRingBufferRead(&threadedOutputRingBuffer, outputBuffer, inNumberFrames))
+            workerWakeup.signal()
             if readFrames < requestedFrames {
                 recordDroppedFrames(UInt32(requestedFrames - readFrames))
                 for frame in readFrames..<requestedFrames {
@@ -1059,8 +1065,12 @@ final class AudioHostController: @unchecked Sendable {
         workerStateLock.lock()
         shouldRunWorker = true
         workerStateLock.unlock()
+        workerExitGroup.enter()
 
         let workerThread = Thread { [weak self] in
+            defer {
+                self?.workerExitGroup.leave()
+            }
             self?.workerLoop()
         }
         workerThread.name = "SimpleAUHost.SimpleWorker"
@@ -1075,8 +1085,9 @@ final class AudioHostController: @unchecked Sendable {
         workerStateLock.unlock()
 
         workerThread?.cancel()
-        while let workerThread, !workerThread.isFinished {
-            Thread.sleep(forTimeInterval: 0.005)
+        workerWakeup.signal()
+        if workerThread != nil {
+            workerExitGroup.wait()
         }
         workerThread = nil
     }
@@ -1090,7 +1101,7 @@ final class AudioHostController: @unchecked Sendable {
             let hasOutputSpace = SAHFloatRingBufferAvailableWrite(&threadedOutputRingBuffer) >= frames
 
             guard hasInput, hasOutputSpace else {
-                Thread.sleep(forTimeInterval: 0.001)
+                workerWakeup.wait()
                 continue
             }
 
@@ -1098,8 +1109,7 @@ final class AudioHostController: @unchecked Sendable {
                 let threadedInputScratchBuffer,
                 let threadedOutputScratchBuffer
             else {
-                Thread.sleep(forTimeInterval: 0.001)
-                continue
+                return
             }
 
             let readFrames = SAHFloatRingBufferRead(&dryRingBuffer, threadedInputScratchBuffer, frames)
@@ -1319,5 +1329,37 @@ final class AudioHostingPriorityController {
         guard let activityToken else { return }
         ProcessInfo.processInfo.endActivity(activityToken)
         self.activityToken = nil
+    }
+}
+
+final class AudioWorkerWakeup {
+    private var mutex = pthread_mutex_t()
+    private var condition = pthread_cond_t()
+    private var isSignaled = false
+
+    init() {
+        pthread_mutex_init(&mutex, nil)
+        pthread_cond_init(&condition, nil)
+    }
+
+    deinit {
+        pthread_cond_destroy(&condition)
+        pthread_mutex_destroy(&mutex)
+    }
+
+    func signal() {
+        pthread_mutex_lock(&mutex)
+        isSignaled = true
+        pthread_cond_signal(&condition)
+        pthread_mutex_unlock(&mutex)
+    }
+
+    func wait() {
+        pthread_mutex_lock(&mutex)
+        while !isSignaled {
+            pthread_cond_wait(&condition, &mutex)
+        }
+        isSignaled = false
+        pthread_mutex_unlock(&mutex)
     }
 }

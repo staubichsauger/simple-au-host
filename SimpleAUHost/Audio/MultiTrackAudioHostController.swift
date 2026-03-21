@@ -22,6 +22,8 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         private var currentInputSource2: UnsafeMutablePointer<Float>?
         private var workerThread: Thread?
         private let workerStateLock = NSLock()
+        private let workerWakeup = AudioWorkerWakeup()
+        private let workerExitGroup = DispatchGroup()
         private var shouldRunWorker = false
         private var renderSampleTime: Double = 0
         private var audioDropoutCounter = SAHAtomicCounter()
@@ -118,6 +120,10 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
 
             if droppedFrames > 0 {
                 recordDroppedFrames(droppedFrames)
+            }
+
+            if configuration.latencyClass != .realtime {
+                workerWakeup.signal()
             }
         }
 
@@ -248,14 +254,20 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             if droppedFrames > 0 {
                 recordDroppedFrames(droppedFrames)
             }
+
+            workerWakeup.signal()
         }
 
         private func startWorker() {
             workerStateLock.lock()
             shouldRunWorker = true
             workerStateLock.unlock()
+            workerExitGroup.enter()
 
             let workerThread = Thread { [weak self] in
+                defer {
+                    self?.workerExitGroup.leave()
+                }
                 self?.workerLoop()
             }
             workerThread.name = "SimpleAUHost.TrackWorker.\(configuration.id.uuidString)"
@@ -270,8 +282,9 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             workerStateLock.unlock()
 
             workerThread?.cancel()
-            while let workerThread, !workerThread.isFinished {
-                Thread.sleep(forTimeInterval: 0.005)
+            workerWakeup.signal()
+            if workerThread != nil {
+                workerExitGroup.wait()
             }
             workerThread = nil
         }
@@ -287,13 +300,12 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
                 let hasOutput2 = configuration.channelCount == 1 || SAHFloatRingBufferAvailableWrite(&outputRing2) >= frames
 
                 guard hasInput1, hasOutput1, hasInput2, hasOutput2 else {
-                    Thread.sleep(forTimeInterval: 0.001)
+                    workerWakeup.wait()
                     continue
                 }
 
                 guard let inputScratch1, let outputScratch1 else {
-                    Thread.sleep(forTimeInterval: 0.001)
-                    continue
+                    return
                 }
 
                 _ = SAHFloatRingBufferRead(&inputRing1, inputScratch1, frames)
