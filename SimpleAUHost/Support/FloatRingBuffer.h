@@ -1,0 +1,18 @@
+#pragma once
+
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdatomic.h>
+
+typedef struct SAHFloatRingBuffer {
+    float *storage;
+    uint32_t capacity;
+    _Atomic uint64_t read_index;
+    _Atomic uint64_t write_index;
+} SAHFloatRingBuffer;
+
+bool SAHFloatRingBufferInit(SAHFloatRingBuffer *buffer, uint32_t minimumCapacity);
+void SAHFloatRingBufferDeinit(SAHFloatRingBuffer *buffer);
+void SAHFloatRingBufferClear(SAHFloatRingBuffer *buffer);
+uint32_t SAHFloatRingBufferRead(SAHFloatRingBuffer *buffer, float *output, uint32_t count);
+uint32_t SAHFloatRingBufferWrite(SAHFloatRingBuffer *buffer, const float *input, uint32_t count);

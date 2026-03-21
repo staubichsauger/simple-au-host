@@ -1,0 +1,26 @@
+name: SimpleAUHost
+options:
+  createIntermediateGroups: true
+settings:
+  base:
+    PRODUCT_BUNDLE_IDENTIFIER: dev.staubichsauger.SimpleAUHost
+    MACOSX_DEPLOYMENT_TARGET: 14.0
+    SWIFT_VERSION: 6.0
+    GENERATE_INFOPLIST_FILE: YES
+    INFOPLIST_KEY_NSMicrophoneUsageDescription: This app needs microphone access to route the selected input through the selected Audio Unit.
+    CODE_SIGN_STYLE: Automatic
+targets:
+  SimpleAUHost:
+    type: application
+    platform: macOS
+    sources:
+      - path: SimpleAUHost
+    settings:
+      base:
+        PRODUCT_NAME: SimpleAUHost
+        SWIFT_OBJC_BRIDGING_HEADER: SimpleAUHost/Support/SimpleAUHost-Bridging-Header.h
+        OTHER_CFLAGS: "$(inherited) -std=c11"
+    dependencies:
+      - sdk: AVFoundation.framework
+      - sdk: AudioToolbox.framework
+      - sdk: CoreAudio.framework
