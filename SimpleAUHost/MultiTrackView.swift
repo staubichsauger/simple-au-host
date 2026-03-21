@@ -230,6 +230,12 @@ struct MultiTrackView: View {
                     Text("Dropped frames: \(viewModel.droppedFrameCount)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    Text(viewModel.telemetrySummary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(viewModel.ringTelemetrySummary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
 
                     Text(viewModel.statusMessage)
                         .foregroundStyle(viewModel.statusMessage.lowercased().contains("error") ? .red : .secondary)

@@ -18,6 +18,8 @@ final class MultiTrackViewModel: ObservableObject {
     @Published var statusMessage = "Ready."
     @Published private(set) var audioDropoutCount: UInt64 = 0
     @Published private(set) var droppedFrameCount: UInt64 = 0
+    @Published private(set) var telemetrySummary = "Callbacks in/out: 0 / 0 frames"
+    @Published private(set) var ringTelemetrySummary = "Peak ring occupancy in/out: 0 / 0 frames"
 
     private let catalog = AudioHostController()
     private let controller = MultiTrackAudioHostController()
@@ -221,6 +223,7 @@ final class MultiTrackViewModel: ObservableObject {
             audioDropoutMonitorTask = nil
             audioDropoutCount = controller.audioDropoutCount()
             droppedFrameCount = controller.droppedFrameCount()
+            updateTelemetry()
             controller.stop()
             isRunning = false
             statusMessage = "Stopped."
@@ -258,6 +261,7 @@ final class MultiTrackViewModel: ObservableObject {
                 self.audioDropoutMonitorTask = nil
                 self.audioDropoutCount = self.controller.audioDropoutCount()
                 self.droppedFrameCount = self.controller.droppedFrameCount()
+                self.updateTelemetry()
                 self.controller.stop()
                 self.isRunning = false
                 self.statusMessage = error.localizedDescription
@@ -440,6 +444,7 @@ final class MultiTrackViewModel: ObservableObject {
         controller.resetDropoutCounters()
         audioDropoutCount = controller.audioDropoutCount()
         droppedFrameCount = controller.droppedFrameCount()
+        updateTelemetry()
     }
     private func requestMicrophoneAccessIfNeeded() async -> Bool {
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
@@ -465,6 +470,7 @@ final class MultiTrackViewModel: ObservableObject {
                 if let runtimeStatus = self.controller.runtimeStatusMessage() {
                     self.audioDropoutCount = self.controller.audioDropoutCount()
                     self.droppedFrameCount = self.controller.droppedFrameCount()
+                    self.updateTelemetry()
                     self.controller.stop()
                     self.isRunning = false
                     self.statusMessage = runtimeStatus
@@ -472,8 +478,23 @@ final class MultiTrackViewModel: ObservableObject {
                 }
                 self.audioDropoutCount = self.controller.audioDropoutCount()
                 self.droppedFrameCount = self.controller.droppedFrameCount()
+                self.updateTelemetry()
                 try? await Task.sleep(for: .milliseconds(250))
             }
         }
+    }
+
+    private func updateTelemetry() {
+        let telemetry = controller.telemetrySnapshot()
+        telemetrySummary = "Callbacks in/out: \(telemetry.peakInputCallbackFrames) / \(telemetry.peakOutputCallbackFrames) frames"
+        ringTelemetrySummary = "Peak ring occupancy in/out: \(telemetryOccupancyString(telemetry.peakInputRingOccupancyFrames, capacity: telemetry.inputRingCapacityFrames)) / \(telemetryOccupancyString(telemetry.peakOutputRingOccupancyFrames, capacity: telemetry.outputRingCapacityFrames))"
+    }
+
+    private func telemetryOccupancyString(_ frames: UInt64, capacity: Int) -> String {
+        guard capacity > 0 else {
+            return "\(frames) frames"
+        }
+        let percent = Double(frames) / Double(capacity) * 100
+        return "\(frames) frames (\(Int(percent.rounded()))%)"
     }
 }

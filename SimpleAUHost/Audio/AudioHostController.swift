@@ -55,6 +55,26 @@ struct AudioHostError: LocalizedError {
     }
 }
 
+struct AudioEngineTelemetrySnapshot {
+    let peakInputCallbackFrames: UInt64
+    let peakOutputCallbackFrames: UInt64
+    let peakEffectRenderFrames: UInt64
+    let peakInputRingOccupancyFrames: UInt64
+    let peakOutputRingOccupancyFrames: UInt64
+    let inputRingCapacityFrames: Int
+    let outputRingCapacityFrames: Int
+
+    static let zero = AudioEngineTelemetrySnapshot(
+        peakInputCallbackFrames: 0,
+        peakOutputCallbackFrames: 0,
+        peakEffectRenderFrames: 0,
+        peakInputRingOccupancyFrames: 0,
+        peakOutputRingOccupancyFrames: 0,
+        inputRingCapacityFrames: 0,
+        outputRingCapacityFrames: 0
+    )
+}
+
 final class AudioHostController: @unchecked Sendable {
     private static let pluginCatalogLock = NSLock()
     private nonisolated(unsafe) static var cachedPlugins: [AudioUnitPluginInfo]?
@@ -84,6 +104,11 @@ final class AudioHostController: @unchecked Sendable {
     private var threadedOutputRingBuffer = SAHFloatRingBuffer()
     private var audioDropoutCounter = SAHAtomicCounter()
     private var droppedFrameCounter = SAHAtomicCounter()
+    private var peakInputCallbackFrames = SAHAtomicCounter()
+    private var peakOutputCallbackFrames = SAHAtomicCounter()
+    private var peakEffectRenderFrames = SAHAtomicCounter()
+    private var peakInputRingOccupancyFrames = SAHAtomicCounter()
+    private var peakOutputRingOccupancyFrames = SAHAtomicCounter()
     private var nextExpectedInputSampleTime: Double?
     private var nextExpectedOutputSampleTime: Double?
     private var effectRenderSampleTime: Double = 0
@@ -97,6 +122,8 @@ final class AudioHostController: @unchecked Sendable {
     private var shouldRunWorker = false
     private var threadedOutputPrimed = false
     private var runtimeStatus: String?
+    private var inputRingCapacityFrames = 0
+    private var outputRingCapacityFrames = 0
 
     private var isRunning = false
 
@@ -239,6 +266,7 @@ final class AudioHostController: @unchecked Sendable {
         stop()
         SAHAtomicCounterReset(&audioDropoutCounter)
         SAHAtomicCounterReset(&droppedFrameCounter)
+        resetTelemetry()
         nextExpectedInputSampleTime = nil
         nextExpectedOutputSampleTime = nil
         effectRenderSampleTime = 0
@@ -313,6 +341,7 @@ final class AudioHostController: @unchecked Sendable {
     func resetDropoutCounters() {
         SAHAtomicCounterReset(&audioDropoutCounter)
         SAHAtomicCounterReset(&droppedFrameCounter)
+        resetTelemetry()
         nextExpectedInputSampleTime = nil
         nextExpectedOutputSampleTime = nil
     }
@@ -321,6 +350,18 @@ final class AudioHostController: @unchecked Sendable {
         runtimeStateLock.lock()
         defer { runtimeStateLock.unlock() }
         return runtimeStatus
+    }
+
+    func telemetrySnapshot() -> AudioEngineTelemetrySnapshot {
+        AudioEngineTelemetrySnapshot(
+            peakInputCallbackFrames: SAHAtomicCounterLoad(&peakInputCallbackFrames),
+            peakOutputCallbackFrames: SAHAtomicCounterLoad(&peakOutputCallbackFrames),
+            peakEffectRenderFrames: SAHAtomicCounterLoad(&peakEffectRenderFrames),
+            peakInputRingOccupancyFrames: SAHAtomicCounterLoad(&peakInputRingOccupancyFrames),
+            peakOutputRingOccupancyFrames: SAHAtomicCounterLoad(&peakOutputRingOccupancyFrames),
+            inputRingCapacityFrames: inputRingCapacityFrames,
+            outputRingCapacityFrames: outputRingCapacityFrames
+        )
     }
 
     private func recordDroppedFrames(_ frameCount: UInt32) {
@@ -386,6 +427,8 @@ final class AudioHostController: @unchecked Sendable {
         ioMaxFramesPerSlice = 0
         effectMaxFramesPerSlice = 0
         callbackFrameCapacity = 0
+        inputRingCapacityFrames = 0
+        outputRingCapacityFrames = 0
         nextExpectedInputSampleTime = nil
         nextExpectedOutputSampleTime = nil
         effectRenderSampleTime = 0
@@ -762,10 +805,14 @@ final class AudioHostController: @unchecked Sendable {
         guard SAHFloatRingBufferInit(&dryRingBuffer, desiredCapacity) else {
             throw AudioHostError("Failed to allocate the realtime bridge buffer.")
         }
+        inputRingCapacityFrames = Int(dryRingBuffer.capacity)
         if shouldUseThreadedProcessing {
             guard SAHFloatRingBufferInit(&threadedOutputRingBuffer, desiredCapacity) else {
                 throw AudioHostError("Failed to allocate the threaded output buffer.")
             }
+            outputRingCapacityFrames = Int(threadedOutputRingBuffer.capacity)
+        } else {
+            outputRingCapacityFrames = 0
         }
 
         captureBuffer = UnsafeMutablePointer<Float>.allocate(capacity: maxFrames)
@@ -934,6 +981,7 @@ final class AudioHostController: @unchecked Sendable {
         if runtimeStatusMessage() != nil {
             return noErr
         }
+        SAHAtomicCounterStoreMax(&peakInputCallbackFrames, UInt64(inNumberFrames))
 
         updateExpectedSampleTime(
             with: inTimeStamp,
@@ -959,6 +1007,7 @@ final class AudioHostController: @unchecked Sendable {
             return status
         }
         let writtenFrames = SAHFloatRingBufferWrite(&dryRingBuffer, captureBuffer, inNumberFrames)
+        SAHAtomicCounterStoreMax(&peakInputRingOccupancyFrames, UInt64(SAHFloatRingBufferAvailableRead(&dryRingBuffer)))
         if writtenFrames < inNumberFrames {
             recordDroppedFrames(inNumberFrames - writtenFrames)
         }
@@ -992,6 +1041,7 @@ final class AudioHostController: @unchecked Sendable {
             ioData.pointee.mBuffers.mDataByteSize = UInt32(bytes)
             return noErr
         }
+        SAHAtomicCounterStoreMax(&peakOutputCallbackFrames, UInt64(inNumberFrames))
 
         updateExpectedSampleTime(
             with: inTimeStamp,
@@ -1010,6 +1060,7 @@ final class AudioHostController: @unchecked Sendable {
                 threadedOutputPrimed = true
             }
             let readFrames = Int(SAHFloatRingBufferRead(&threadedOutputRingBuffer, outputBuffer, inNumberFrames))
+            SAHAtomicCounterStoreMax(&peakOutputRingOccupancyFrames, UInt64(SAHFloatRingBufferAvailableRead(&threadedOutputRingBuffer)))
             workerWakeup.signal()
             if readFrames < requestedFrames {
                 threadedOutputPrimed = false
@@ -1024,6 +1075,7 @@ final class AudioHostController: @unchecked Sendable {
         }
 
         let readFrames = Int(SAHFloatRingBufferRead(&dryRingBuffer, dryScratchBuffer, inNumberFrames))
+        SAHAtomicCounterStoreMax(&peakInputRingOccupancyFrames, UInt64(SAHFloatRingBufferAvailableRead(&dryRingBuffer)))
         if readFrames < requestedFrames {
             recordDroppedFrames(UInt32(requestedFrames - readFrames))
             for frame in readFrames..<requestedFrames {
@@ -1175,6 +1227,7 @@ final class AudioHostController: @unchecked Sendable {
             }
 
             let readFrames = SAHFloatRingBufferRead(&dryRingBuffer, threadedInputScratchBuffer, frames)
+            SAHAtomicCounterStoreMax(&peakInputRingOccupancyFrames, UInt64(SAHFloatRingBufferAvailableRead(&dryRingBuffer)))
             if readFrames < frames {
                 recordDroppedFrames(frames - readFrames)
                 for frame in Int(readFrames)..<Int(frames) {
@@ -1189,6 +1242,7 @@ final class AudioHostController: @unchecked Sendable {
             )
 
             let writtenFrames = SAHFloatRingBufferWrite(&threadedOutputRingBuffer, threadedOutputScratchBuffer, frames)
+            SAHAtomicCounterStoreMax(&peakOutputRingOccupancyFrames, UInt64(SAHFloatRingBufferAvailableRead(&threadedOutputRingBuffer)))
             if writtenFrames < frames {
                 recordDroppedFrames(frames - writtenFrames)
             }
@@ -1219,6 +1273,7 @@ final class AudioHostController: @unchecked Sendable {
         }
 
         let bytes = UInt32(frameCount * MemoryLayout<Float>.size)
+        SAHAtomicCounterStoreMax(&peakEffectRenderFrames, UInt64(frameCount))
         for index in 0..<wetBufferList.count {
             wetBufferList[index].mDataByteSize = bytes
         }
@@ -1263,6 +1318,14 @@ final class AudioHostController: @unchecked Sendable {
 }
 
 private extension AudioHostController {
+    func resetTelemetry() {
+        SAHAtomicCounterReset(&peakInputCallbackFrames)
+        SAHAtomicCounterReset(&peakOutputCallbackFrames)
+        SAHAtomicCounterReset(&peakEffectRenderFrames)
+        SAHAtomicCounterReset(&peakInputRingOccupancyFrames)
+        SAHAtomicCounterReset(&peakOutputRingOccupancyFrames)
+    }
+
     func actualMaximumFramesPerSlice(for unit: AudioUnit?) throws -> Int {
         guard let unit else { return 0 }
         var frames: UInt32 = 0

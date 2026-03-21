@@ -171,3 +171,21 @@ void SAHAtomicCounterAdd(SAHAtomicCounter *counter, uint64_t amount) {
 
     atomic_fetch_add_explicit(&counter->value, amount, memory_order_relaxed);
 }
+
+void SAHAtomicCounterStoreMax(SAHAtomicCounter *counter, uint64_t candidate) {
+    if (counter == NULL) {
+        return;
+    }
+
+    uint64_t current = atomic_load_explicit(&counter->value, memory_order_relaxed);
+    while (candidate > current) {
+        if (atomic_compare_exchange_weak_explicit(
+                &counter->value,
+                &current,
+                candidate,
+                memory_order_relaxed,
+                memory_order_relaxed)) {
+            return;
+        }
+    }
+}

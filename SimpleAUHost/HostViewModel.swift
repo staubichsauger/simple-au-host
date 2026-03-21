@@ -34,6 +34,8 @@ final class HostViewModel: ObservableObject {
     @Published var statusMessage = "Ready."
     @Published private(set) var audioDropoutCount: UInt64 = 0
     @Published private(set) var droppedFrameCount: UInt64 = 0
+    @Published private(set) var telemetrySummary = "Callbacks in/out/effect: 0 / 0 / 0 frames"
+    @Published private(set) var ringTelemetrySummary = "Peak ring occupancy in/out: 0 / 0 frames"
 
     private let controller = AudioHostController()
     private let userDefaults: UserDefaults
@@ -285,6 +287,7 @@ final class HostViewModel: ObservableObject {
             audioDropoutMonitorTask = nil
             audioDropoutCount = controller.audioDropoutCount()
             droppedFrameCount = controller.droppedFrameCount()
+            updateTelemetry()
             controller.stop()
             isRunning = false
             statusMessage = "Stopped."
@@ -322,6 +325,7 @@ final class HostViewModel: ObservableObject {
                 self.audioDropoutMonitorTask = nil
                 self.audioDropoutCount = self.controller.audioDropoutCount()
                 self.droppedFrameCount = self.controller.droppedFrameCount()
+                self.updateTelemetry()
                 self.statusMessage = error.localizedDescription
                 self.controller.stop()
                 self.isRunning = false
@@ -335,6 +339,7 @@ final class HostViewModel: ObservableObject {
         controller.resetDropoutCounters()
         audioDropoutCount = controller.audioDropoutCount()
         droppedFrameCount = controller.droppedFrameCount()
+        updateTelemetry()
     }
 
     private func makeConfiguration() throws -> AudioHostConfiguration {
@@ -383,6 +388,7 @@ final class HostViewModel: ObservableObject {
                 if let runtimeStatus = self.controller.runtimeStatusMessage() {
                     self.audioDropoutCount = self.controller.audioDropoutCount()
                     self.droppedFrameCount = self.controller.droppedFrameCount()
+                    self.updateTelemetry()
                     self.controller.stop()
                     self.isRunning = false
                     self.statusMessage = runtimeStatus
@@ -390,9 +396,24 @@ final class HostViewModel: ObservableObject {
                 }
                 self.audioDropoutCount = self.controller.audioDropoutCount()
                 self.droppedFrameCount = self.controller.droppedFrameCount()
+                self.updateTelemetry()
                 try? await Task.sleep(for: .milliseconds(250))
             }
         }
+    }
+
+    private func updateTelemetry() {
+        let telemetry = controller.telemetrySnapshot()
+        telemetrySummary = "Callbacks in/out/effect: \(telemetry.peakInputCallbackFrames) / \(telemetry.peakOutputCallbackFrames) / \(telemetry.peakEffectRenderFrames) frames"
+        ringTelemetrySummary = "Peak ring occupancy in/out: \(telemetryOccupancyString(telemetry.peakInputRingOccupancyFrames, capacity: telemetry.inputRingCapacityFrames)) / \(telemetryOccupancyString(telemetry.peakOutputRingOccupancyFrames, capacity: telemetry.outputRingCapacityFrames))"
+    }
+
+    private func telemetryOccupancyString(_ frames: UInt64, capacity: Int) -> String {
+        guard capacity > 0 else {
+            return "\(frames) frames"
+        }
+        let percent = Double(frames) / Double(capacity) * 100
+        return "\(frames) frames (\(Int(percent.rounded()))%)"
     }
 
     private func setupPersistenceObservers() {
