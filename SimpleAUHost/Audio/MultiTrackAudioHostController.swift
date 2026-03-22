@@ -5,34 +5,27 @@ import CoreAudio
 import Darwin
 import Foundation
 
-extension AUAudioUnit: @unchecked @retroactive Sendable {}
+@objc(AUCocoaUIBase)
+private protocol AUCocoaUIViewFactory: NSObjectProtocol {
+    @objc(interfaceVersion)
+    func interfaceVersion() -> UInt32
+
+    @objc(uiViewForAudioUnit:withSize:)
+    func uiViewForAudioUnit(_ audioUnit: AudioUnit, withSize size: NSSize) -> NSView?
+}
 
 final class MultiTrackAudioHostController: @unchecked Sendable {
     @MainActor
     private final class PluginEditorSession {
-        let audioUnit: AUAudioUnit
         let viewController: NSViewController
-        let parameterObserverToken: AUParameterObserverToken?
-        let stateSyncTimer: Timer?
 
         init(
-            audioUnit: AUAudioUnit,
-            viewController: NSViewController,
-            parameterObserverToken: AUParameterObserverToken?,
-            stateSyncTimer: Timer?
+            viewController: NSViewController
         ) {
-            self.audioUnit = audioUnit
             self.viewController = viewController
-            self.parameterObserverToken = parameterObserverToken
-            self.stateSyncTimer = stateSyncTimer
         }
 
-        func invalidate() {
-            if let parameterTree = audioUnit.parameterTree, let parameterObserverToken {
-                parameterTree.removeParameterObserver(parameterObserverToken)
-            }
-            stateSyncTimer?.invalidate()
-        }
+        func invalidate() {}
     }
 
     @MainActor
@@ -577,94 +570,157 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             return data
         }
 
-        func makePluginEditorSession(
-            onParameterChange: @escaping @Sendable (AUParameterAddress, AUValue) -> Void,
-            onPeriodicStateSync: @escaping @Sendable (AUAudioUnit) -> Void
-        ) async throws -> PluginEditorSession {
-            guard let plugin else {
+        @MainActor
+        func makePluginEditorSession() async throws -> PluginEditorSession {
+            guard let effectUnit else {
                 throw AudioHostError("This track does not have a plugin loaded.")
             }
+            let viewController = try await Self.requestPluginEditorViewController(for: effectUnit)
+            return PluginEditorSession(viewController: viewController)
+        }
 
-            let editorAudioUnit = try await Self.instantiateEditorAudioUnit(plugin: plugin)
-            try applyCurrentPluginState(to: editorAudioUnit)
-            let parameterObserverToken = editorAudioUnit.parameterTree?.token(byAddingParameterObserver: { address, value in
-                onParameterChange(address, value)
-            })
-            let viewController = try await Self.requestNativeViewControllerOrThrow(for: editorAudioUnit)
-            return await MainActor.run {
-                let stateSyncTimer = Timer.scheduledTimer(withTimeInterval: 0.35, repeats: true) { [weak editorAudioUnit] _ in
-                    guard let editorAudioUnit else { return }
-                    onPeriodicStateSync(editorAudioUnit)
+        @MainActor
+        private static func requestPluginEditorViewController(for effectUnit: AudioUnit) async throws -> NSViewController {
+            if let nativeViewController = try await Self.requestNativeViewController(for: effectUnit) {
+                return nativeViewController
+            }
+            if let cocoaViewController = try Self.makeCocoaPluginEditorViewController(for: effectUnit) {
+                return cocoaViewController
+            }
+            throw AudioHostError("This plugin does not provide a host-openable editor on its live processing instance.")
+        }
+
+        @MainActor
+        private static func requestNativeViewController(for effectUnit: AudioUnit) async throws -> NSViewController? {
+            try await withCheckedThrowingContinuation { continuation in
+                typealias RequestViewControllerBlock = @convention(block) (NSViewController?) -> Void
+
+                let callback: RequestViewControllerBlock = { viewController in
+                    continuation.resume(returning: viewController)
                 }
-                return PluginEditorSession(
-                    audioUnit: editorAudioUnit,
-                    viewController: viewController,
-                    parameterObserverToken: parameterObserverToken,
-                    stateSyncTimer: stateSyncTimer
+                var callbackObject: AnyObject = unsafeBitCast(callback, to: AnyObject.self)
+
+                let status = AudioUnitSetProperty(
+                    effectUnit,
+                    kAudioUnitProperty_RequestViewController,
+                    kAudioUnitScope_Global,
+                    0,
+                    &callbackObject,
+                    UInt32(MemoryLayout<AnyObject>.size)
                 )
+
+                if status != noErr {
+                    if status == kAudioUnitErr_InvalidProperty {
+                        continuation.resume(returning: nil)
+                    } else {
+                        continuation.resume(throwing: AudioHostError("Failed to request the plugin editor (\(describe(status: status)))."))
+                    }
+                }
             }
         }
 
         @MainActor
-        private static func requestNativeViewControllerOrThrow(for editorAudioUnit: AUAudioUnit) async throws -> NSViewController {
-            guard let viewController = await Self.requestNativeViewController(for: editorAudioUnit) else {
-                throw AudioHostError("This plugin does not provide a native AUv3 editor.")
-            }
-            return viewController
-        }
-
-        func syncEditorStateToEffect(_ editorAudioUnit: AUAudioUnit) {
-            guard let effectUnit else { return }
-            guard let state = editorAudioUnit.fullStateForDocument ?? editorAudioUnit.fullState else { return }
-            var propertyList = state as CFPropertyList
-            _ = AudioUnitSetProperty(
+        private static func makeCocoaPluginEditorViewController(for effectUnit: AudioUnit) throws -> NSViewController? {
+            var dataSize: UInt32 = 0
+            let infoStatus = AudioUnitGetPropertyInfo(
                 effectUnit,
-                kAudioUnitProperty_ClassInfo,
+                kAudioUnitProperty_CocoaUI,
                 kAudioUnitScope_Global,
                 0,
-                &propertyList,
-                UInt32(MemoryLayout<CFPropertyList>.size)
+                &dataSize,
+                nil
+            )
+
+            guard infoStatus == noErr,
+                  dataSize >= UInt32(MemoryLayout<UnsafeRawPointer?>.size + MemoryLayout<CFString?>.size) else {
+                return nil
+            }
+
+            let rawBuffer = UnsafeMutableRawPointer.allocate(
+                byteCount: Int(dataSize),
+                alignment: MemoryLayout<AudioUnitCocoaViewInfo>.alignment
+            )
+            defer { rawBuffer.deallocate() }
+
+            var propertySize = dataSize
+            try checkStatus(
+                AudioUnitGetProperty(
+                    effectUnit,
+                    kAudioUnitProperty_CocoaUI,
+                    kAudioUnitScope_Global,
+                    0,
+                    rawBuffer,
+                    &propertySize
+                ),
+                "Failed to load the plugin Cocoa editor"
+            )
+
+            let bundleURLPointer = rawBuffer.assumingMemoryBound(to: Optional<CFURL>.self)
+            guard let bundleURL = bundleURLPointer.pointee as URL?,
+                  let bundle = Bundle(url: bundleURL) else {
+                throw AudioHostError("The plugin Cocoa editor bundle could not be loaded.")
+            }
+
+            do {
+                try bundle.loadAndReturnError()
+            } catch {
+                throw AudioHostError("The plugin Cocoa editor bundle failed to load: \(error.localizedDescription)")
+            }
+
+            let classPointerOffset = MemoryLayout<UnsafeRawPointer?>.size
+            let classCount = max(0, (Int(propertySize) - classPointerOffset) / MemoryLayout<CFString?>.size)
+            let classNamesPointer = rawBuffer.advanced(by: classPointerOffset).assumingMemoryBound(to: Optional<CFString>.self)
+            var attemptedClassNames: [String] = []
+
+            for index in 0..<classCount {
+                guard let className = classNamesPointer.advanced(by: index).pointee as String? else {
+                    continue
+                }
+                attemptedClassNames.append(className)
+                if let viewController = makeCocoaPluginEditorViewController(
+                    bundle: bundle,
+                    className: className,
+                    effectUnit: effectUnit
+                ) {
+                    return viewController
+                }
+            }
+
+            if let principalClassName = bundle.principalClass.map(NSStringFromClass),
+               !attemptedClassNames.contains(principalClassName),
+               let viewController = makeCocoaPluginEditorViewController(
+                   bundle: bundle,
+                   className: principalClassName,
+                   effectUnit: effectUnit
+               ) {
+                return viewController
+            }
+
+            let attemptedDescription = attemptedClassNames.isEmpty ? "none" : attemptedClassNames.joined(separator: ", ")
+            let principalDescription = bundle.principalClass.map(NSStringFromClass) ?? "none"
+            throw AudioHostError(
+                "The plugin advertises a Cocoa editor bundle, but no view factory could be created. " +
+                "Classes tried: \(attemptedDescription). Principal class: \(principalDescription)."
             )
         }
 
-        func setEffectParameter(address: AUParameterAddress, value: AUValue) {
-            guard let effectUnit else { return }
-            AudioUnitSetParameter(effectUnit, AudioUnitParameterID(address), kAudioUnitScope_Global, 0, value, 0)
-        }
-
-        private func applyCurrentPluginState(to editorAudioUnit: AUAudioUnit) throws {
-            guard let data = serializedPluginState(),
-                  let propertyList = try PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any] else {
-                return
-            }
-            editorAudioUnit.fullStateForDocument = propertyList
-            editorAudioUnit.fullState = propertyList
-        }
-
         @MainActor
-        private static func instantiateEditorAudioUnit(plugin: AudioUnitPluginInfo) async throws -> AUAudioUnit {
-            try await withCheckedThrowingContinuation { continuation in
-                AUAudioUnit.instantiate(with: plugin.componentDescription, options: []) { audioUnit, error in
-                    if let error {
-                        continuation.resume(throwing: AudioHostError("Failed to open the plugin editor: \(error.localizedDescription)"))
-                        return
-                    }
-                    guard let audioUnit else {
-                        continuation.resume(throwing: AudioHostError("Failed to open the plugin editor."))
-                        return
-                    }
-                    continuation.resume(returning: audioUnit)
-                }
+        private static func makeCocoaPluginEditorViewController(
+            bundle: Bundle,
+            className: String,
+            effectUnit: AudioUnit
+        ) -> NSViewController? {
+            guard let factoryType = (bundle.classNamed(className) ?? NSClassFromString(className)) as? NSObject.Type,
+                  let factory = factoryType.init() as? AUCocoaUIViewFactory,
+                  let view = factory.uiViewForAudioUnit(effectUnit, withSize: NSSize(width: 720, height: 540)) else {
+                return nil
             }
-        }
 
-        @MainActor
-        private static func requestNativeViewController(for audioUnit: AUAudioUnit) async -> NSViewController? {
-            await withCheckedContinuation { continuation in
-                audioUnit.requestViewController { viewController in
-                    continuation.resume(returning: viewController)
-                }
-            }
+            view.translatesAutoresizingMaskIntoConstraints = true
+            view.autoresizingMask = NSView.AutoresizingMask(arrayLiteral: .width, .height)
+            let viewController = NSViewController()
+            viewController.view = view
+            return viewController
         }
 
         private func provideEffectInput(
@@ -1425,14 +1481,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             return
         }
 
-        let editorSession = try await runtime.makePluginEditorSession(
-            onParameterChange: { [weak runtime] address, value in
-                runtime?.setEffectParameter(address: address, value: value)
-            },
-            onPeriodicStateSync: { [weak runtime] editorAudioUnit in
-                runtime?.syncEditorStateToEffect(editorAudioUnit)
-            }
-        )
+        let editorSession = try await runtime.makePluginEditorSession()
         let windowController = PluginEditorWindowController(
             trackID: trackID,
             title: runtime.configuration.name,
@@ -1441,7 +1490,6 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         windowController.onClose = { [weak self] in
             Task { @MainActor in
                 editorSession.invalidate()
-                runtime.syncEditorStateToEffect(editorSession.audioUnit)
                 self?.pluginEditorSessions.removeValue(forKey: trackID)
                 self?.pluginEditorWindows.removeValue(forKey: trackID)
             }
@@ -2004,10 +2052,8 @@ private extension MultiTrackAudioHostController {
     @MainActor
     func closePluginEditorWindows() {
         for (trackID, windowController) in pluginEditorWindows {
-            if let session = pluginEditorSessions[trackID],
-               let runtime = trackRuntimes.first(where: { $0.configuration.id == trackID }) {
+            if let session = pluginEditorSessions[trackID] {
                 session.invalidate()
-                runtime.syncEditorStateToEffect(session.audioUnit)
             }
             windowController.close()
         }
