@@ -91,6 +91,7 @@ struct MultiTrackTrackConfiguration: Identifiable, Codable, Hashable {
     var outputStartChannel: Int
     var latencyClass: TrackLatencyClass
     var pluginID: String?
+    var pluginStateData: Data?
     var isEnabled: Bool
 
     init(
@@ -101,6 +102,7 @@ struct MultiTrackTrackConfiguration: Identifiable, Codable, Hashable {
         outputStartChannel: Int = 1,
         latencyClass: TrackLatencyClass = .realtime,
         pluginID: String? = nil,
+        pluginStateData: Data? = nil,
         isEnabled: Bool = true
     ) {
         self.id = id
@@ -110,6 +112,7 @@ struct MultiTrackTrackConfiguration: Identifiable, Codable, Hashable {
         self.outputStartChannel = outputStartChannel
         self.latencyClass = latencyClass
         self.pluginID = pluginID
+        self.pluginStateData = pluginStateData
         self.isEnabled = isEnabled
     }
 

@@ -179,6 +179,7 @@ final class MultiTrackViewModel: ObservableObject {
         guard let currentSessionURL else {
             throw AudioHostError("Choose Save As to create a session file first.")
         }
+        captureLivePluginStates()
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = try encoder.encode(makeSessionFile())
@@ -202,6 +203,21 @@ final class MultiTrackViewModel: ObservableObject {
             throw AudioHostError("Failed to read the multi-track session file.")
         }
         applySession(session, sourceURL: url)
+    }
+
+    func openPluginEditor(for trackID: UUID) {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                try await controller.openPluginEditor(for: trackID)
+            } catch {
+                statusMessage = error.localizedDescription
+            }
+        }
+    }
+
+    func canOpenPluginEditor(for track: MultiTrackTrackConfiguration) -> Bool {
+        isRunning && track.pluginID != nil
     }
 
     func addMonoTrack() {
@@ -291,6 +307,7 @@ final class MultiTrackViewModel: ObservableObject {
             audioDropoutCount = controller.audioDropoutCount()
             droppedFrameCount = controller.droppedFrameCount()
             updateTelemetry()
+            captureLivePluginStates()
             controller.stop()
             isRunning = false
             statusMessage = "Stopped."
@@ -595,7 +612,8 @@ final class MultiTrackViewModel: ObservableObject {
     }
 
     private func makeSessionFile() -> MultiTrackSessionFile {
-        MultiTrackSessionFile(
+        captureLivePluginStates()
+        return MultiTrackSessionFile(
             name: currentSessionURL.map(sessionDisplayName(for:)) ?? currentSessionName,
             inputDeviceID: selectedInputDeviceID,
             outputDeviceID: selectedOutputDeviceID,
@@ -603,6 +621,18 @@ final class MultiTrackViewModel: ObservableObject {
             latencyBufferSettings: latencyBufferSettings,
             tracks: tracks.map(sanitizedTrack)
         )
+    }
+
+    private func captureLivePluginStates() {
+        guard isRunning else { return }
+        let pluginStates = controller.pluginStateSnapshot()
+        guard !pluginStates.isEmpty else { return }
+        for index in tracks.indices {
+            let trackID = tracks[index].id
+            if let pluginState = pluginStates[trackID] {
+                tracks[index].pluginStateData = pluginState
+            }
+        }
     }
 
 

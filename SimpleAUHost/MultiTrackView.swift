@@ -4,6 +4,7 @@ struct MultiTrackView: View {
     @StateObject private var viewModel = MultiTrackViewModel()
     @State private var isImportingSession = false
     @State private var isExportingSession = false
+    @State private var showsDiagnostics = false
     @State private var sessionDocument = MultiTrackSessionDocument(
         session: MultiTrackSessionFile(
             name: "Untitled Session",
@@ -179,6 +180,11 @@ struct MultiTrackView: View {
                         }
                         .disabled(viewModel.isRunning)
 
+                        Button("Open plugin UI") {
+                            viewModel.openPluginEditor(for: track.id)
+                        }
+                        .disabled(!viewModel.canOpenPluginEditor(for: track))
+
                         Text(track.latencyClass.description)
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -200,96 +206,168 @@ struct MultiTrackView: View {
             .formStyle(.grouped)
             .disabled(viewModel.isBusy)
 
-            HStack(spacing: 12) {
-                if let onBackToModeSelection {
-                    Button("Change mode") {
-                        onBackToModeSelection()
+            GroupBox {
+                DisclosureGroup("Diagnostics", isExpanded: $showsDiagnostics) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        if !viewModel.sessionWarnings.isEmpty {
+                            VStack(alignment: .leading, spacing: 6) {
+                                ForEach(viewModel.sessionWarnings, id: \.self) { warning in
+                                    Label(warning, systemImage: "exclamationmark.triangle.fill")
+                                        .font(.caption)
+                                        .foregroundStyle(.orange)
+                                }
+                            }
+                        }
+
+                        if !viewModel.latencyBufferValidationMessages.isEmpty || !viewModel.invalidTrackMessages.isEmpty {
+                            VStack(alignment: .leading, spacing: 6) {
+                                ForEach(viewModel.latencyBufferValidationMessages, id: \.self) { message in
+                                    Text(message)
+                                        .font(.caption)
+                                        .foregroundStyle(.orange)
+                                }
+                                ForEach(viewModel.invalidTrackMessages, id: \.self) { message in
+                                    Text(message)
+                                        .font(.caption)
+                                        .foregroundStyle(.orange)
+                                }
+                            }
+                        }
+
+                        LazyVGrid(
+                            columns: [
+                                GridItem(.adaptive(minimum: 180), alignment: .leading),
+                                GridItem(.adaptive(minimum: 180), alignment: .leading)
+                            ],
+                            alignment: .leading,
+                            spacing: 10
+                        ) {
+                            diagnosticsMetric("Audio dropouts", value: "\(viewModel.audioDropoutCount)")
+                            diagnosticsMetric("Dropped frames", value: "\(viewModel.droppedFrameCount)")
+                            diagnosticsMetric("Callback frames", value: viewModel.telemetrySummary.replacingOccurrences(of: "Callbacks in/out: ", with: ""))
+                            diagnosticsMetric("Ring occupancy", value: viewModel.ringTelemetrySummary.replacingOccurrences(of: "Peak ring occupancy in/out: ", with: ""))
+                            diagnosticsMetric("Worker telemetry", value: viewModel.workerTelemetrySummary.replacingOccurrences(of: "Workers: ", with: ""))
+                            diagnosticsMetric("Engine status", value: viewModel.statusMessage)
+                        }
+                        .padding(.top, 2)
+                    }
+                    .padding(.top, 8)
+                }
+                .font(.subheadline.weight(.semibold))
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) {
+                        statusChip(
+                            viewModel.currentSessionName,
+                            systemImage: "doc.text",
+                            tint: .secondary
+                        )
+                        statusChip(
+                            viewModel.isRunning ? "Running" : "Stopped",
+                            systemImage: viewModel.isRunning ? "dot.radiowaves.left.and.right" : "stop.fill",
+                            tint: viewModel.isRunning ? .green : .secondary
+                        )
+                        if !viewModel.sessionWarnings.isEmpty {
+                            statusChip(
+                                "\(viewModel.sessionWarnings.count) warning\(viewModel.sessionWarnings.count == 1 ? "" : "s")",
+                                systemImage: "exclamationmark.triangle.fill",
+                                tint: .orange
+                            )
+                        }
+                        if viewModel.audioDropoutCount > 0 {
+                            statusChip(
+                                "\(viewModel.audioDropoutCount) dropouts",
+                                systemImage: "waveform.badge.exclamationmark",
+                                tint: .orange
+                            )
+                        }
+                        Text(viewModel.statusMessage)
+                            .font(.caption)
+                            .foregroundStyle(viewModel.statusMessage.lowercased().contains("error") ? .red : .secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+
+                    HStack(spacing: 8) {
+                        statusChip(
+                            viewModel.isRunning ? "Running" : "Stopped",
+                            systemImage: viewModel.isRunning ? "dot.radiowaves.left.and.right" : "stop.fill",
+                            tint: viewModel.isRunning ? .green : .secondary
+                        )
+                        if !viewModel.sessionWarnings.isEmpty {
+                            statusChip(
+                                "\(viewModel.sessionWarnings.count)",
+                                systemImage: "exclamationmark.triangle.fill",
+                                tint: .orange
+                            )
+                        }
+                        if viewModel.audioDropoutCount > 0 {
+                            statusChip(
+                                "\(viewModel.audioDropoutCount)",
+                                systemImage: "waveform.badge.exclamationmark",
+                                tint: .orange
+                            )
+                        }
+                        Text(viewModel.statusMessage)
+                            .font(.caption)
+                            .foregroundStyle(viewModel.statusMessage.lowercased().contains("error") ? .red : .secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+                }
+
+                HStack(spacing: 12) {
+                    if let onBackToModeSelection {
+                        Button("Change mode") {
+                            onBackToModeSelection()
+                        }
+                        .disabled(viewModel.isRunning)
+                    }
+
+                    Button("New") {
+                        viewModel.createNewSession()
                     }
                     .disabled(viewModel.isRunning)
-                }
 
-                Button("New") {
-                    viewModel.createNewSession()
-                }
-                .disabled(viewModel.isRunning)
+                    Button("Open") {
+                        isImportingSession = true
+                    }
+                    .disabled(viewModel.isRunning)
 
-                Button("Open") {
-                    isImportingSession = true
-                }
-                .disabled(viewModel.isRunning)
-
-                Button("Save") {
-                    do {
-                        if viewModel.hasStoredSessionFile {
-                            try viewModel.saveSession()
-                        } else {
-                            sessionDocument = viewModel.sessionDocumentForExport()
-                            isExportingSession = true
+                    Button("Save") {
+                        do {
+                            if viewModel.hasStoredSessionFile {
+                                try viewModel.saveSession()
+                            } else {
+                                sessionDocument = viewModel.sessionDocumentForExport()
+                                isExportingSession = true
+                            }
+                        } catch {
+                            viewModel.statusMessage = error.localizedDescription
                         }
-                    } catch {
-                        viewModel.statusMessage = error.localizedDescription
                     }
-                }
 
-                Button("Save As") {
-                    sessionDocument = viewModel.sessionDocumentForExport()
-                    isExportingSession = true
-                }
-
-                Button("Refresh") {
-                    viewModel.load()
-                }
-                .disabled(viewModel.isRunning)
-
-                Button(viewModel.isRunning ? "Stop" : "Start") {
-                    viewModel.toggleStartStop()
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(!viewModel.canStart && !viewModel.isRunning)
-
-                Button("Reset counters") {
-                    viewModel.resetDropoutCounters()
-                }
-
-                Spacer()
-
-                VStack(alignment: .trailing, spacing: 4) {
-                    Text(viewModel.currentSessionName)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    ForEach(viewModel.sessionWarnings, id: \.self) { warning in
-                        Text(warning)
-                            .font(.caption)
-                            .foregroundStyle(.orange)
+                    Button("Save As") {
+                        sessionDocument = viewModel.sessionDocumentForExport()
+                        isExportingSession = true
                     }
-                    ForEach(viewModel.latencyBufferValidationMessages, id: \.self) { message in
-                        Text(message)
-                            .font(.caption)
-                            .foregroundStyle(.orange)
-                    }
-                    ForEach(viewModel.invalidTrackMessages, id: \.self) { message in
-                        Text(message)
-                            .font(.caption)
-                            .foregroundStyle(.orange)
-                    }
-                    Text("Audio dropout count: \(viewModel.audioDropoutCount)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text("Dropped frames: \(viewModel.droppedFrameCount)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(viewModel.telemetrySummary)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(viewModel.ringTelemetrySummary)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(viewModel.workerTelemetrySummary)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
 
-                    Text(viewModel.statusMessage)
-                        .foregroundStyle(viewModel.statusMessage.lowercased().contains("error") ? .red : .secondary)
+                    Button("Refresh") {
+                        viewModel.load()
+                    }
+                    .disabled(viewModel.isRunning)
+
+                    Button(viewModel.isRunning ? "Stop" : "Start") {
+                        viewModel.toggleStartStop()
+                    }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!viewModel.canStart && !viewModel.isRunning)
+
+                    Button("Reset counters") {
+                        viewModel.resetDropoutCounters()
+                    }
                 }
             }
         }
@@ -327,5 +405,33 @@ struct MultiTrackView: View {
                 viewModel.statusMessage = error.localizedDescription
             }
         }
+    }
+
+    @ViewBuilder
+    private func diagnosticsMetric(_ title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.caption)
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    @ViewBuilder
+    private func statusChip(_ title: String, systemImage: String, tint: Color) -> some View {
+        Label(title, systemImage: systemImage)
+            .font(.caption.weight(.semibold))
+            .lineLimit(1)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(tint.opacity(0.12), in: Capsule())
+            .foregroundStyle(tint)
+            .fixedSize(horizontal: true, vertical: false)
     }
 }
