@@ -2,6 +2,18 @@ import SwiftUI
 
 struct MultiTrackView: View {
     @StateObject private var viewModel = MultiTrackViewModel()
+    @State private var isImportingSession = false
+    @State private var isExportingSession = false
+    @State private var sessionDocument = MultiTrackSessionDocument(
+        session: MultiTrackSessionFile(
+            name: "Untitled Session",
+            inputDeviceID: nil,
+            outputDeviceID: nil,
+            bufferSize: 128,
+            latencyBufferSettings: MultiTrackLatencyBufferSettings(hardwareBufferSize: 128),
+            tracks: [MultiTrackTrackConfiguration(name: "Track 1", layout: .mono)]
+        )
+    )
     let onBackToModeSelection: (() -> Void)?
 
     init(onBackToModeSelection: (() -> Void)? = nil) {
@@ -196,6 +208,34 @@ struct MultiTrackView: View {
                     .disabled(viewModel.isRunning)
                 }
 
+                Button("New") {
+                    viewModel.createNewSession()
+                }
+                .disabled(viewModel.isRunning)
+
+                Button("Open") {
+                    isImportingSession = true
+                }
+                .disabled(viewModel.isRunning)
+
+                Button("Save") {
+                    do {
+                        if viewModel.hasStoredSessionFile {
+                            try viewModel.saveSession()
+                        } else {
+                            sessionDocument = viewModel.sessionDocumentForExport()
+                            isExportingSession = true
+                        }
+                    } catch {
+                        viewModel.statusMessage = error.localizedDescription
+                    }
+                }
+
+                Button("Save As") {
+                    sessionDocument = viewModel.sessionDocumentForExport()
+                    isExportingSession = true
+                }
+
                 Button("Refresh") {
                     viewModel.load()
                 }
@@ -214,6 +254,14 @@ struct MultiTrackView: View {
                 Spacer()
 
                 VStack(alignment: .trailing, spacing: 4) {
+                    Text(viewModel.currentSessionName)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    ForEach(viewModel.sessionWarnings, id: \.self) { warning in
+                        Text(warning)
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
                     ForEach(viewModel.latencyBufferValidationMessages, id: \.self) { message in
                         Text(message)
                             .font(.caption)
@@ -248,6 +296,36 @@ struct MultiTrackView: View {
         .padding(20)
         .task {
             viewModel.load()
+        }
+        .fileImporter(
+            isPresented: $isImportingSession,
+            allowedContentTypes: [.simpleAUHostMultiTrackSession, .json]
+        ) { result in
+            do {
+                let url = try result.get()
+                let accessed = url.startAccessingSecurityScopedResource()
+                defer {
+                    if accessed {
+                        url.stopAccessingSecurityScopedResource()
+                    }
+                }
+                try viewModel.loadSession(from: url)
+            } catch {
+                viewModel.statusMessage = error.localizedDescription
+            }
+        }
+        .fileExporter(
+            isPresented: $isExportingSession,
+            document: sessionDocument,
+            contentType: .simpleAUHostMultiTrackSession,
+            defaultFilename: viewModel.suggestedSessionFilename()
+        ) { result in
+            switch result {
+            case .success(let url):
+                viewModel.rememberExportedSessionURL(url)
+            case .failure(let error):
+                viewModel.statusMessage = error.localizedDescription
+            }
         }
     }
 }

@@ -21,11 +21,14 @@ final class MultiTrackViewModel: ObservableObject {
     @Published private(set) var telemetrySummary = "Callbacks in/out: 0 / 0 frames"
     @Published private(set) var ringTelemetrySummary = "Peak ring occupancy in/out: 0 / 0 frames"
     @Published private(set) var workerTelemetrySummary = "Workers: 0 shards, track/shard render: 0 / 0 us, util: 0%, wakeups: 0/s"
+    @Published private(set) var currentSessionName = "Untitled Session"
+    @Published private(set) var sessionWarnings: [String] = []
 
     private let catalog = AudioHostController()
     private let controller = MultiTrackAudioHostController()
     private var latencyBufferSettings = MultiTrackLatencyBufferSettings(hardwareBufferSize: 128)
     private var audioDropoutMonitorTask: Task<Void, Never>?
+    private var currentSessionURL: URL?
 
     deinit {
         audioDropoutMonitorTask?.cancel()
@@ -40,6 +43,10 @@ final class MultiTrackViewModel: ObservableObject {
     var selectedOutputDevice: AudioDeviceInfo? {
         guard let selectedOutputDeviceID else { return nil }
         return outputDevices.first { $0.id == selectedOutputDeviceID }
+    }
+
+    var hasStoredSessionFile: Bool {
+        currentSessionURL != nil
     }
 
     var commonBufferSizeRange: ClosedRange<Int>? {
@@ -111,13 +118,12 @@ final class MultiTrackViewModel: ObservableObject {
             outputDevices = allDevices.filter { $0.outputChannelCount > 0 }
             plugins = try catalog.availablePlugins()
 
-            let defaultInputID = try catalog.defaultInputDeviceID()
-            let defaultOutputID = try catalog.defaultOutputDeviceID()
-
-            if selectedInputDeviceID == nil || !inputDevices.contains(where: { $0.id == selectedInputDeviceID }) {
+            if selectedInputDeviceID == nil {
+                let defaultInputID = try catalog.defaultInputDeviceID()
                 selectedInputDeviceID = inputDevices.first(where: { $0.id == defaultInputID })?.id ?? inputDevices.first?.id
             }
-            if selectedOutputDeviceID == nil || !outputDevices.contains(where: { $0.id == selectedOutputDeviceID }) {
+            if selectedOutputDeviceID == nil {
+                let defaultOutputID = try catalog.defaultOutputDeviceID()
                 selectedOutputDeviceID = outputDevices.first(where: { $0.id == defaultOutputID })?.id ?? outputDevices.first?.id
             }
 
@@ -125,15 +131,10 @@ final class MultiTrackViewModel: ObservableObject {
                 addTrack(layout: .mono)
             }
 
-            for index in tracks.indices {
-                if let pluginID = tracks[index].pluginID,
-                   !plugins.contains(where: { $0.id == pluginID }) {
-                    tracks[index].pluginID = nil
-                }
-            }
-
             sanitizeTracks()
             sanitizeLatencyBufferSettings()
+            updateSessionWarnings()
+            updateSessionNameIfNeeded()
             if !isRunning {
                 audioDropoutCount = 0
                 droppedFrameCount = 0
@@ -146,6 +147,61 @@ final class MultiTrackViewModel: ObservableObject {
 
     func handleDeviceSelectionChange() {
         sanitizeTracks()
+        updateSessionWarnings()
+    }
+
+    func createNewSession() {
+        guard !isRunning else { return }
+        selectedInputDeviceID = inputDevices.first?.id
+        selectedOutputDeviceID = outputDevices.first?.id
+        selectedBufferSize = availableBufferSizes.first ?? 128
+        customBufferSizeText = String(selectedBufferSize)
+        latencyBufferSettings = MultiTrackLatencyBufferSettings(hardwareBufferSize: selectedBufferSize)
+        bufferedInternalBufferText = String(latencyBufferSettings.bufferedFrames)
+        broadcastInternalBufferText = String(latencyBufferSettings.broadcastFrames)
+        tracks = []
+        addTrack(layout: .mono)
+        currentSessionURL = nil
+        currentSessionName = "Untitled Session"
+        sessionWarnings = []
+        statusMessage = "Ready."
+    }
+
+    func sessionDocumentForExport() -> MultiTrackSessionDocument {
+        MultiTrackSessionDocument(session: makeSessionFile())
+    }
+
+    func suggestedSessionFilename() -> String {
+        sanitizedSessionFilename(from: currentSessionName)
+    }
+
+    func saveSession() throws {
+        guard let currentSessionURL else {
+            throw AudioHostError("Choose Save As to create a session file first.")
+        }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(makeSessionFile())
+        try data.write(to: currentSessionURL, options: .atomic)
+        currentSessionName = sessionDisplayName(for: currentSessionURL)
+        statusMessage = "Saved \(currentSessionName)."
+    }
+
+    func rememberExportedSessionURL(_ url: URL) {
+        currentSessionURL = url
+        currentSessionName = sessionDisplayName(for: url)
+        statusMessage = "Saved \(currentSessionName)."
+    }
+
+    func loadSession(from url: URL) throws {
+        let data = try Data(contentsOf: url)
+        let session: MultiTrackSessionFile
+        do {
+            session = try JSONDecoder().decode(MultiTrackSessionFile.self, from: data)
+        } catch {
+            throw AudioHostError("Failed to read the multi-track session file.")
+        }
+        applySession(session, sourceURL: url)
     }
 
     func addMonoTrack() {
@@ -166,6 +222,7 @@ final class MultiTrackViewModel: ObservableObject {
     func sanitizeTrack(id: UUID) {
         guard let index = tracks.firstIndex(where: { $0.id == id }) else { return }
         tracks[index] = sanitizedTrack(tracks[index])
+        updateSessionWarnings()
     }
 
     func availableInputStartChannels(for track: MultiTrackTrackConfiguration) -> [Int] {
@@ -292,14 +349,40 @@ final class MultiTrackViewModel: ObservableObject {
         sanitizeTracks()
     }
 
+    private func applySession(_ session: MultiTrackSessionFile, sourceURL: URL?) {
+        selectedInputDeviceID = session.inputDeviceID
+        selectedOutputDeviceID = session.outputDeviceID
+        selectedBufferSize = session.bufferSize
+        customBufferSizeText = String(session.bufferSize)
+        latencyBufferSettings = session.latencyBufferSettings
+        bufferedInternalBufferText = String(session.latencyBufferSettings.bufferedFrames)
+        broadcastInternalBufferText = String(session.latencyBufferSettings.broadcastFrames)
+        tracks = session.tracks.isEmpty
+            ? [MultiTrackTrackConfiguration(name: "Track 1", layout: .mono)]
+            : session.tracks
+
+        currentSessionURL = sourceURL
+        currentSessionName = sourceURL.map(sessionDisplayName(for:)) ?? session.name
+
+        sanitizeTracks()
+        sanitizeLatencyBufferSettings()
+        updateSessionWarnings()
+
+        statusMessage = "Loaded \(currentSessionName)."
+    }
+
     private func sanitizeTracks() {
         for index in tracks.indices {
             tracks[index] = sanitizedTrack(tracks[index])
+        }
+        if tracks.isEmpty {
+            tracks = [MultiTrackTrackConfiguration(name: "Track 1", layout: .mono)]
         }
         if let firstBuffer = availableBufferSizes.first, !isSelectedBufferSizeValid {
             selectedBufferSize = firstBuffer
         }
         customBufferSizeText = String(selectedBufferSize)
+        updateSessionWarnings()
     }
 
     private func sanitizeLatencyBufferSettings() {
@@ -307,6 +390,27 @@ final class MultiTrackViewModel: ObservableObject {
         latencyBufferSettings.broadcastFrames = normalizedInternalBufferSize(latencyBufferSettings.broadcastFrames)
         bufferedInternalBufferText = String(latencyBufferSettings.bufferedFrames)
         broadcastInternalBufferText = String(latencyBufferSettings.broadcastFrames)
+    }
+
+    private func updateSessionWarnings() {
+        var warnings: [String] = []
+
+        if let selectedInputDeviceID, !inputDevices.contains(where: { $0.id == selectedInputDeviceID }) {
+            warnings.append("Saved input device is not currently available. Reconnect it or choose another input before starting.")
+        }
+
+        if let selectedOutputDeviceID, !outputDevices.contains(where: { $0.id == selectedOutputDeviceID }) {
+            warnings.append("Saved output device is not currently available. Reconnect it or choose another output before starting.")
+        }
+
+        let availablePluginIDs = Set(plugins.map(\.id))
+        for track in tracks where track.isEnabled {
+            if let pluginID = track.pluginID, !availablePluginIDs.contains(pluginID) {
+                warnings.append("\(track.name) references a plugin that is not currently installed: \(pluginID)")
+            }
+        }
+
+        sessionWarnings = warnings
     }
 
     private func normalizedInternalBufferSize(_ value: Int) -> Int {
@@ -414,6 +518,10 @@ final class MultiTrackViewModel: ObservableObject {
             return "\(track.name) exceeds the selected output interface channel count."
         }
 
+        if let pluginID = track.pluginID, !plugins.contains(where: { $0.id == pluginID }) {
+            return "\(track.name) references a plugin that is not currently installed. Install it or choose Bypass."
+        }
+
         return nil
     }
 
@@ -486,6 +594,17 @@ final class MultiTrackViewModel: ObservableObject {
         )
     }
 
+    private func makeSessionFile() -> MultiTrackSessionFile {
+        MultiTrackSessionFile(
+            name: currentSessionURL.map(sessionDisplayName(for:)) ?? currentSessionName,
+            inputDeviceID: selectedInputDeviceID,
+            outputDeviceID: selectedOutputDeviceID,
+            bufferSize: selectedBufferSize,
+            latencyBufferSettings: latencyBufferSettings,
+            tracks: tracks.map(sanitizedTrack)
+        )
+    }
+
 
     func resetDropoutCounters() {
         controller.resetDropoutCounters()
@@ -544,5 +663,23 @@ final class MultiTrackViewModel: ObservableObject {
         }
         let percent = Double(frames) / Double(capacity) * 100
         return "\(frames) frames (\(Int(percent.rounded()))%)"
+    }
+
+    private func updateSessionNameIfNeeded() {
+        if let currentSessionURL {
+            currentSessionName = sessionDisplayName(for: currentSessionURL)
+        }
+    }
+
+    private func sessionDisplayName(for url: URL) -> String {
+        url.deletingPathExtension().lastPathComponent
+    }
+
+    private func sanitizedSessionFilename(from name: String) -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let baseName = trimmed.isEmpty ? "MultiTrack Session" : trimmed
+        let invalidCharacters = CharacterSet(charactersIn: "/:\\?%*|\"<>")
+        let cleaned = String(baseName.unicodeScalars.map { invalidCharacters.contains($0) ? "-" : Character($0) })
+        return cleaned.hasSuffix(".sahsession") ? cleaned : "\(cleaned).sahsession"
     }
 }

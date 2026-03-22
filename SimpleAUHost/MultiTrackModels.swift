@@ -1,4 +1,6 @@
 import Foundation
+import SwiftUI
+import UniformTypeIdentifiers
 
 enum TrackChannelLayout: String, CaseIterable, Codable, Identifiable {
     case mono
@@ -122,4 +124,52 @@ struct MultiTrackHostConfiguration {
     let bufferSize: Int
     let latencyBufferSettings: MultiTrackLatencyBufferSettings
     let tracks: [MultiTrackTrackConfiguration]
+}
+
+struct MultiTrackSessionFile: Codable {
+    var formatVersion: Int = 1
+    var name: String
+    var inputDeviceID: AudioDeviceID?
+    var outputDeviceID: AudioDeviceID?
+    var bufferSize: Int
+    var latencyBufferSettings: MultiTrackLatencyBufferSettings
+    var tracks: [MultiTrackTrackConfiguration]
+}
+
+extension UTType {
+    static let simpleAUHostMultiTrackSession = UTType(exportedAs: "dev.staubichsauger.simple-au-host.multi-track-session")
+}
+
+struct MultiTrackSessionDocument: FileDocument {
+    static var readableContentTypes: [UTType] {
+        [.simpleAUHostMultiTrackSession, .json]
+    }
+
+    static var writableContentTypes: [UTType] {
+        [.simpleAUHostMultiTrackSession]
+    }
+
+    var session: MultiTrackSessionFile
+
+    init(session: MultiTrackSessionFile) {
+        self.session = session
+    }
+
+    init(configuration: ReadConfiguration) throws {
+        guard let data = configuration.file.regularFileContents else {
+            throw AudioHostError("The selected session file is empty.")
+        }
+        do {
+            session = try JSONDecoder().decode(MultiTrackSessionFile.self, from: data)
+        } catch {
+            throw AudioHostError("Failed to read the multi-track session file.")
+        }
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(session)
+        return .init(regularFileWithContents: data)
+    }
 }
