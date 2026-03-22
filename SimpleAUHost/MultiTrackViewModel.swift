@@ -88,7 +88,11 @@ final class MultiTrackViewModel: ObservableObject {
     }
 
     var invalidTrackMessages: [String] {
-        tracks.compactMap { validateTrack($0) }
+        let trackMessages = tracks.compactMap { validateTrack($0) }
+        if let overlapMessage = validateExclusiveOutputRouting(for: tracks.filter(\.isEnabled)) {
+            return trackMessages + [overlapMessage]
+        }
+        return trackMessages
     }
 
     var latencyBufferValidationMessages: [String] {
@@ -172,7 +176,12 @@ final class MultiTrackViewModel: ObservableObject {
     func availableOutputStartChannels(for track: MultiTrackTrackConfiguration) -> [Int] {
         guard let selectedOutputDevice else { return [] }
         let maxStart = max(1, selectedOutputDevice.outputChannelCount - track.channelCount + 1)
-        return Array(1...maxStart)
+        return Array(1...maxStart).filter { candidate in
+            outputChannelsAreAvailable(
+                for: sanitizedTrack(track),
+                proposedStartChannel: candidate
+            )
+        }
     }
 
     func internalBufferDescription(for track: MultiTrackTrackConfiguration) -> String {
@@ -407,6 +416,40 @@ final class MultiTrackViewModel: ObservableObject {
         return nil
     }
 
+    private func validateExclusiveOutputRouting(
+        for tracks: [MultiTrackTrackConfiguration]
+    ) -> String? {
+        var channelOwners: [Int: String] = [:]
+
+        for track in tracks where track.isEnabled {
+            let outputChannels = track.outputStartChannel..<(track.outputStartChannel + track.channelCount)
+            for channel in outputChannels {
+                if let existingOwner = channelOwners[channel] {
+                    return "\(track.name) conflicts with \(existingOwner) on output channel \(channel). Outputs are exclusive."
+                }
+                channelOwners[channel] = track.name
+            }
+        }
+
+        return nil
+    }
+
+    private func outputChannelsAreAvailable(
+        for track: MultiTrackTrackConfiguration,
+        proposedStartChannel: Int
+    ) -> Bool {
+        let proposedRange = proposedStartChannel..<(proposedStartChannel + track.channelCount)
+
+        for otherTrack in tracks where otherTrack.id != track.id && otherTrack.isEnabled {
+            let otherRange = otherTrack.outputStartChannel..<(otherTrack.outputStartChannel + otherTrack.channelCount)
+            if proposedRange.overlaps(otherRange) {
+                return false
+            }
+        }
+
+        return true
+    }
+
     private func makeConfiguration() throws -> MultiTrackHostConfiguration {
         guard
             let inputDevice = selectedInputDevice,
@@ -428,6 +471,9 @@ final class MultiTrackViewModel: ObservableObject {
 
         if let firstError = sanitizedTracks.compactMap(validateTrack).first {
             throw AudioHostError(firstError)
+        }
+        if let overlapError = validateExclusiveOutputRouting(for: sanitizedTracks) {
+            throw AudioHostError(overlapError)
         }
 
         return MultiTrackHostConfiguration(
