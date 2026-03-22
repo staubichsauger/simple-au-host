@@ -140,7 +140,10 @@ struct MultiTrackSessionFile: Codable {
 }
 
 extension UTType {
-    static let simpleAUHostMultiTrackSession = UTType(exportedAs: "dev.staubichsauger.simple-au-host.multi-track-session")
+    static let simpleAUHostMultiTrackSession = UTType(
+        exportedAs: "dev.staubichsauger.simple-au-host.multi-track-session",
+        conformingTo: .json
+    )
 }
 
 struct MultiTrackSessionDocument: FileDocument {
