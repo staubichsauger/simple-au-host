@@ -172,18 +172,70 @@ struct MultiTrackView: View {
                         }
                         .disabled(viewModel.isRunning || viewModel.availableOutputStartChannels(for: track).isEmpty)
 
-                        Picker("Plugin", selection: $track.pluginID) {
-                            Text("Bypass").tag(String?.none)
-                            ForEach(viewModel.plugins) { plugin in
-                                Text(plugin.name).tag(Optional(plugin.id))
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack {
+                                Text("Plugin chain")
+                                    .font(.subheadline.weight(.semibold))
+                                Spacer()
+                                Button("Add plugin") {
+                                    viewModel.addPluginInsert(to: track.id)
+                                }
+                                .disabled(viewModel.isRunning)
+                            }
+
+                            if track.plugins.isEmpty {
+                                Text("No inserts on this track.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                ForEach(Array($track.plugins.enumerated()), id: \.element.id) { index, $plugin in
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        HStack {
+                                            Text(viewModel.pluginInsertLabel(for: plugin, index: index))
+                                                .font(.caption.weight(.semibold))
+                                                .foregroundStyle(.secondary)
+                                            Spacer()
+                                            Button {
+                                                viewModel.movePluginInsert(trackID: track.id, pluginID: plugin.id, direction: -1)
+                                            } label: {
+                                                Image(systemName: "arrow.up")
+                                            }
+                                            .buttonStyle(.borderless)
+                                            .disabled(viewModel.isRunning || index == 0)
+
+                                            Button {
+                                                viewModel.movePluginInsert(trackID: track.id, pluginID: plugin.id, direction: 1)
+                                            } label: {
+                                                Image(systemName: "arrow.down")
+                                            }
+                                            .buttonStyle(.borderless)
+                                            .disabled(viewModel.isRunning || index == track.plugins.count - 1)
+
+                                            Button("Remove", role: .destructive) {
+                                                viewModel.removePluginInsert(trackID: track.id, pluginID: plugin.id)
+                                            }
+                                            .buttonStyle(.borderless)
+                                            .disabled(viewModel.isRunning)
+                                        }
+
+                                        Picker("Insert \(index + 1)", selection: $plugin.pluginID) {
+                                            Text("Bypass").tag(String?.none)
+                                            ForEach(viewModel.plugins) { availablePlugin in
+                                                Text(availablePlugin.name).tag(Optional(availablePlugin.id))
+                                            }
+                                        }
+                                        .labelsHidden()
+                                        .disabled(viewModel.isRunning)
+
+                                        Button("Open plugin UI") {
+                                            viewModel.openPluginEditor(for: track.id, pluginID: plugin.id)
+                                        }
+                                        .disabled(!viewModel.canOpenPluginEditor(for: plugin))
+                                    }
+                                    .padding(.vertical, 4)
+                                }
                             }
                         }
-                        .disabled(viewModel.isRunning)
-
-                        Button("Open plugin UI") {
-                            viewModel.openPluginEditor(for: track.id)
-                        }
-                        .disabled(!viewModel.canOpenPluginEditor(for: track))
 
                         Text(track.latencyClass.description)
                             .font(.caption)

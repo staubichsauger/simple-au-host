@@ -70,12 +70,17 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
     }
 
     private final class TrackRuntime: @unchecked Sendable {
+        private struct PluginRuntime {
+            let insert: MultiTrackTrackConfiguration.PluginInsert
+            let plugin: AudioUnitPluginInfo
+            let unit: AudioUnit
+        }
+
         let configuration: MultiTrackTrackConfiguration
         let processingFrames: Int
         let sampleRate: Double
 
-        private let plugin: AudioUnitPluginInfo?
-        private var effectUnit: AudioUnit?
+        private var plugins: [PluginRuntime] = []
         private var wetBufferList: UnsafeMutableAudioBufferListPointer?
         private var realtimeInputRing1 = SAHFloatRingBuffer()
         private var realtimeInputRing2 = SAHFloatRingBuffer()
@@ -85,6 +90,8 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         private var inputScratch2: UnsafeMutablePointer<Float>?
         private var outputScratch1: UnsafeMutablePointer<Float>?
         private var outputScratch2: UnsafeMutablePointer<Float>?
+        private var intermediateScratch1: UnsafeMutablePointer<Float>?
+        private var intermediateScratch2: UnsafeMutablePointer<Float>?
         private var currentInputSource1: UnsafeMutablePointer<Float>?
         private var currentInputSource2: UnsafeMutablePointer<Float>?
         private var bufferedOutputPrimed = false
@@ -99,13 +106,12 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
 
         init(
             configuration: MultiTrackTrackConfiguration,
-            plugin: AudioUnitPluginInfo?,
+            plugins: [(MultiTrackTrackConfiguration.PluginInsert, AudioUnitPluginInfo)],
             sampleRate: Double,
             hardwareBufferSize: Int,
             internalBufferFrames: Int
         ) throws {
             self.configuration = configuration
-            self.plugin = plugin
             self.sampleRate = sampleRate
             self.processingFrames = configuration.latencyClass == .realtime
                 ? hardwareBufferSize
@@ -120,28 +126,42 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
 
             try prepareBuffers(hardwareBufferSize: hardwareBufferSize)
 
-            if let plugin {
-                effectUnit = try Self.createEffectUnit(
+            var createdPlugins: [PluginRuntime] = []
+            for (insert, plugin) in plugins {
+                let unit = try Self.createEffectUnit(
                     plugin: plugin,
                     sampleRate: sampleRate,
                     channelCount: configuration.channelCount,
                     maximumFrames: processingFrames,
                     owner: self
                 )
-                try applySerializedPluginState(configuration.pluginStateData)
+                createdPlugins.append(PluginRuntime(insert: insert, plugin: plugin, unit: unit))
+            }
+            self.plugins = createdPlugins
+
+            do {
+                try applySerializedPluginStates()
+            } catch {
+                for pluginRuntime in createdPlugins {
+                    AudioUnitUninitialize(pluginRuntime.unit)
+                    AudioComponentInstanceDispose(pluginRuntime.unit)
+                }
+                throw error
             }
         }
 
         deinit {
-            if let effectUnit {
-                AudioUnitUninitialize(effectUnit)
-                AudioComponentInstanceDispose(effectUnit)
+            for plugin in plugins {
+                AudioUnitUninitialize(plugin.unit)
+                AudioComponentInstanceDispose(plugin.unit)
             }
             wetBufferList?.unsafeMutablePointer.deallocate()
             inputScratch1?.deallocate()
             inputScratch2?.deallocate()
             outputScratch1?.deallocate()
             outputScratch2?.deallocate()
+            intermediateScratch1?.deallocate()
+            intermediateScratch2?.deallocate()
             SAHFloatRingBufferDeinit(&realtimeInputRing1)
             SAHFloatRingBufferDeinit(&realtimeInputRing2)
             SAHFloatRingBufferDeinit(&bufferedOutputRing1)
@@ -209,11 +229,11 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         }
 
         var hasEffect: Bool {
-            effectUnit != nil
+            !plugins.isEmpty
         }
 
         var hasOpenablePluginEditor: Bool {
-            plugin != nil
+            !plugins.isEmpty
         }
 
         var inputStartChannelOffset: Int {
@@ -238,7 +258,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
 
         func estimatedLoadWeight() -> Int {
             let channelWeight = configuration.channelCount
-            let pluginWeight = hasEffect ? 4 : 1
+            let pluginWeight = max(1, plugins.count * 4)
             let latencyWeight = configuration.latencyClass == .broadcast ? 2 : 1
             return channelWeight * pluginWeight * latencyWeight
         }
@@ -354,10 +374,12 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
 
             inputScratch1 = UnsafeMutablePointer<Float>.allocate(capacity: processingFrames)
             outputScratch1 = UnsafeMutablePointer<Float>.allocate(capacity: processingFrames)
+            intermediateScratch1 = UnsafeMutablePointer<Float>.allocate(capacity: processingFrames)
 
             if configuration.channelCount == 2 {
                 inputScratch2 = UnsafeMutablePointer<Float>.allocate(capacity: processingFrames)
                 outputScratch2 = UnsafeMutablePointer<Float>.allocate(capacity: processingFrames)
+                intermediateScratch2 = UnsafeMutablePointer<Float>.allocate(capacity: processingFrames)
             }
 
             wetBufferList = AudioBufferList.allocate(maximumBuffers: configuration.channelCount)
@@ -459,7 +481,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         ) -> Bool {
             guard let outputScratch1 else { return false }
 
-            if effectUnit == nil {
+            if plugins.isEmpty {
                 outputScratch1.update(from: input1, count: frameCount)
                 if configuration.channelCount == 2, let input2, let outputScratch2 {
                     outputScratch2.update(from: input2, count: frameCount)
@@ -468,43 +490,68 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
                 return true
             }
 
-            currentInputSource1 = input1
-            currentInputSource2 = input2
-
+            let originalInput2 = configuration.channelCount == 2 ? input2 : nil
+            var source1 = input1
+            var source2 = originalInput2
+            var destination1 = outputScratch1
+            var destination2 = configuration.channelCount == 2 ? outputScratch2 : nil
             let bytes = UInt32(frameCount * MemoryLayout<Float>.size)
-            if let wetBufferList {
-                for index in 0..<wetBufferList.count {
-                    wetBufferList[index].mDataByteSize = bytes
+
+            for (index, plugin) in plugins.enumerated() {
+                currentInputSource1 = source1
+                currentInputSource2 = source2
+
+                if let wetBufferList {
+                    wetBufferList[0].mData = UnsafeMutableRawPointer(destination1)
+                    wetBufferList[0].mDataByteSize = bytes
+                    if configuration.channelCount == 2 {
+                        wetBufferList[1].mData = UnsafeMutableRawPointer(destination2)
+                        wetBufferList[1].mDataByteSize = bytes
+                    }
+                }
+
+                var renderFlags: AudioUnitRenderActionFlags = []
+                var timeStamp = AudioTimeStamp()
+                timeStamp.mSampleTime = renderSampleTime
+                timeStamp.mFlags = AudioTimeStampFlags(rawValue: 1 << 0)
+
+                let status = AudioUnitRender(
+                    plugin.unit,
+                    &renderFlags,
+                    &timeStamp,
+                    0,
+                    UInt32(frameCount),
+                    wetBufferList!.unsafeMutablePointer
+                )
+
+                if status != noErr {
+                    currentInputSource1 = nil
+                    currentInputSource2 = nil
+                    renderSampleTime += Double(frameCount)
+                    recordDroppedFrames(UInt32(frameCount))
+                    outputScratch1.update(from: input1, count: frameCount)
+                    if configuration.channelCount == 2, let originalInput2, let outputScratch2 {
+                        outputScratch2.update(from: originalInput2, count: frameCount)
+                    }
+                    return false
+                }
+
+                if index < plugins.count - 1 {
+                    source1 = destination1
+                    source2 = destination2
+                    if source1 == outputScratch1 {
+                        destination1 = intermediateScratch1 ?? outputScratch1
+                        destination2 = intermediateScratch2 ?? outputScratch2
+                    } else {
+                        destination1 = outputScratch1
+                        destination2 = outputScratch2
+                    }
                 }
             }
-
-            var renderFlags: AudioUnitRenderActionFlags = []
-            var timeStamp = AudioTimeStamp()
-            timeStamp.mSampleTime = renderSampleTime
-            timeStamp.mFlags = AudioTimeStampFlags(rawValue: 1 << 0)
-
-            let status = AudioUnitRender(
-                effectUnit!,
-                &renderFlags,
-                &timeStamp,
-                0,
-                UInt32(frameCount),
-                wetBufferList!.unsafeMutablePointer
-            )
 
             currentInputSource1 = nil
             currentInputSource2 = nil
             renderSampleTime += Double(frameCount)
-
-            if status != noErr {
-                recordDroppedFrames(UInt32(frameCount))
-                outputScratch1.update(from: input1, count: frameCount)
-                if configuration.channelCount == 2, let input2, let outputScratch2 {
-                    outputScratch2.update(from: input2, count: frameCount)
-                }
-                return false
-            }
-
             return true
         }
 
@@ -520,13 +567,30 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             SAHAtomicCounterIncrement(&renderPassCount)
         }
 
-        func serializedPluginState() -> Data? {
-            guard let effectUnit else { return pluginStatePlaceholderDataIfNeeded(nil) }
+        func serializedPluginStates() -> [UUID: Data] {
+            var states: [UUID: Data] = [:]
+            for insert in configuration.plugins {
+                if let plugin = plugins.first(where: { $0.insert.id == insert.id }),
+                   let data = serializedPluginState(for: plugin.unit) {
+                    states[insert.id] = data
+                } else if let data = insert.pluginStateData {
+                    states[insert.id] = data
+                }
+            }
+            return states
+        }
 
+        func applySerializedPluginStates() throws {
+            for plugin in plugins {
+                try applySerializedPluginState(plugin.insert.pluginStateData, to: plugin.unit)
+            }
+        }
+
+        private func serializedPluginState(for unit: AudioUnit) -> Data? {
             var classInfo: CFPropertyList?
             var propertySize = UInt32(MemoryLayout<CFPropertyList?>.size)
             let status = AudioUnitGetProperty(
-                effectUnit,
+                unit,
                 kAudioUnitProperty_ClassInfo,
                 kAudioUnitScope_Global,
                 0,
@@ -535,24 +599,23 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             )
 
             guard status == noErr, let classInfo else {
-                return pluginStatePlaceholderDataIfNeeded(nil)
+                return nil
             }
 
-            let data = try? PropertyListSerialization.data(
+            return try? PropertyListSerialization.data(
                 fromPropertyList: classInfo,
                 format: .binary,
                 options: 0
             )
-            return pluginStatePlaceholderDataIfNeeded(data)
         }
 
-        func applySerializedPluginState(_ data: Data?) throws {
-            guard let effectUnit, let data else { return }
+        private func applySerializedPluginState(_ data: Data?, to unit: AudioUnit) throws {
+            guard let data else { return }
             let propertyList = try PropertyListSerialization.propertyList(from: data, options: [], format: nil)
             var cfPropertyList = propertyList as CFPropertyList
             try checkStatus(
                 AudioUnitSetProperty(
-                    effectUnit,
+                    unit,
                     kAudioUnitProperty_ClassInfo,
                     kAudioUnitScope_Global,
                     0,
@@ -563,19 +626,20 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             )
         }
 
-        private func pluginStatePlaceholderDataIfNeeded(_ data: Data?) -> Data? {
-            if effectUnit == nil {
-                return configuration.pluginStateData
-            }
-            return data
-        }
-
         @MainActor
-        func makePluginEditorSession() async throws -> PluginEditorSession {
-            guard let effectUnit else {
+        func makePluginEditorSession(pluginID: UUID?) async throws -> PluginEditorSession {
+            let pluginRuntime: PluginRuntime
+            if let pluginID {
+                guard let resolvedPlugin = plugins.first(where: { $0.insert.id == pluginID }) else {
+                    throw AudioHostError("This plugin insert is not loaded on the running track.")
+                }
+                pluginRuntime = resolvedPlugin
+            } else if let firstPlugin = plugins.first {
+                pluginRuntime = firstPlugin
+            } else {
                 throw AudioHostError("This track does not have a plugin loaded.")
             }
-            let viewController = try await Self.requestPluginEditorViewController(for: effectUnit)
+            let viewController = try await Self.requestPluginEditorViewController(for: pluginRuntime.unit)
             return PluginEditorSession(viewController: viewController)
         }
 
@@ -1239,8 +1303,8 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
     private var inputRingCapacityFrames = 0
     private var peakTrackOutputRingCapacityFrames = 0
     private var stagedOutputRingCapacityFrames = 0
-    @MainActor private var pluginEditorSessions: [UUID: PluginEditorSession] = [:]
-    @MainActor private var pluginEditorWindows: [UUID: PluginEditorWindowController] = [:]
+    @MainActor private var pluginEditorSessions: [String: PluginEditorSession] = [:]
+    @MainActor private var pluginEditorWindows: [String: PluginEditorWindowController] = [:]
 
     deinit {
         stop()
@@ -1282,12 +1346,14 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             let availablePlugins = try AudioHostController().availablePlugins()
 
             trackRuntimes = try configuration.tracks.map { track in
-                let plugin = track.pluginID.flatMap { id in
-                    availablePlugins.first { $0.id == id }
+                let resolvedPlugins = track.plugins.compactMap { insert in
+                    insert.pluginID.flatMap { id in
+                        availablePlugins.first { $0.id == id }.map { (insert, $0) }
+                    }
                 }
                 return try TrackRuntime(
                     configuration: track,
-                    plugin: plugin,
+                    plugins: resolvedPlugins,
                     sampleRate: configuration.inputDevice.nominalSampleRate,
                     hardwareBufferSize: configuration.bufferSize,
                     internalBufferFrames: configuration.latencyBufferSettings.internalFrames(
@@ -1404,9 +1470,10 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         )
     }
 
-    func pluginStateSnapshot() -> [UUID: Data] {
+    func pluginStateSnapshot() -> [UUID: [UUID: Data]] {
         Dictionary(uniqueKeysWithValues: trackRuntimes.compactMap { runtime in
-            runtime.serializedPluginState().map { (runtime.configuration.id, $0) }
+            let states = runtime.serializedPluginStates()
+            return states.isEmpty ? nil : (runtime.configuration.id, states)
         })
     }
 
@@ -1466,7 +1533,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
     }
 
     @MainActor
-    func openPluginEditor(for trackID: UUID) async throws {
+    func openPluginEditor(for trackID: UUID, pluginID: UUID? = nil) async throws {
         guard let runtime = trackRuntimes.first(where: { $0.configuration.id == trackID }) else {
             throw AudioHostError("Start the engine before opening a plugin editor.")
         }
@@ -1474,14 +1541,16 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             throw AudioHostError("This track does not have a plugin loaded.")
         }
 
-        if let existingWindow = pluginEditorWindows[trackID] {
+        let editorKey = pluginEditorKey(trackID: trackID, pluginID: pluginID)
+
+        if let existingWindow = pluginEditorWindows[editorKey] {
             existingWindow.showWindow(nil)
             existingWindow.window?.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
         }
 
-        let editorSession = try await runtime.makePluginEditorSession()
+        let editorSession = try await runtime.makePluginEditorSession(pluginID: pluginID)
         let windowController = PluginEditorWindowController(
             trackID: trackID,
             title: runtime.configuration.name,
@@ -1490,15 +1559,22 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         windowController.onClose = { [weak self] in
             Task { @MainActor in
                 editorSession.invalidate()
-                self?.pluginEditorSessions.removeValue(forKey: trackID)
-                self?.pluginEditorWindows.removeValue(forKey: trackID)
+                self?.pluginEditorSessions.removeValue(forKey: editorKey)
+                self?.pluginEditorWindows.removeValue(forKey: editorKey)
             }
         }
-        pluginEditorSessions[trackID] = editorSession
-        pluginEditorWindows[trackID] = windowController
+        pluginEditorSessions[editorKey] = editorSession
+        pluginEditorWindows[editorKey] = windowController
         windowController.showWindow(nil)
         windowController.window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func pluginEditorKey(trackID: UUID, pluginID: UUID?) -> String {
+        if let pluginID {
+            return "\(trackID.uuidString)::\(pluginID.uuidString)"
+        }
+        return "\(trackID.uuidString)::first"
     }
 
     private func prepareCaptureBuffers(inputChannelCount: Int, ringCapacityFrames: Int) throws {

@@ -84,14 +84,33 @@ enum TrackLatencyClass: String, CaseIterable, Codable, Identifiable {
 }
 
 struct MultiTrackTrackConfiguration: Identifiable, Codable, Hashable {
+    struct PluginInsert: Identifiable, Codable, Hashable {
+        let id: UUID
+        var pluginID: String?
+        var pluginStateData: Data?
+
+        init(
+            id: UUID = UUID(),
+            pluginID: String? = nil,
+            pluginStateData: Data? = nil
+        ) {
+            self.id = id
+            self.pluginID = pluginID
+            self.pluginStateData = pluginStateData
+        }
+
+        var hasPlugin: Bool {
+            pluginID != nil
+        }
+    }
+
     let id: UUID
     var name: String
     var layout: TrackChannelLayout
     var inputStartChannel: Int
     var outputStartChannel: Int
     var latencyClass: TrackLatencyClass
-    var pluginID: String?
-    var pluginStateData: Data?
+    var plugins: [PluginInsert]
     var isEnabled: Bool
 
     init(
@@ -101,8 +120,7 @@ struct MultiTrackTrackConfiguration: Identifiable, Codable, Hashable {
         inputStartChannel: Int = 1,
         outputStartChannel: Int = 1,
         latencyClass: TrackLatencyClass = .realtime,
-        pluginID: String? = nil,
-        pluginStateData: Data? = nil,
+        plugins: [PluginInsert] = [],
         isEnabled: Bool = true
     ) {
         self.id = id
@@ -111,13 +129,20 @@ struct MultiTrackTrackConfiguration: Identifiable, Codable, Hashable {
         self.inputStartChannel = inputStartChannel
         self.outputStartChannel = outputStartChannel
         self.latencyClass = latencyClass
-        self.pluginID = pluginID
-        self.pluginStateData = pluginStateData
+        self.plugins = plugins
         self.isEnabled = isEnabled
     }
 
     var channelCount: Int {
         layout.channelCount
+    }
+
+    var hasPlugins: Bool {
+        plugins.contains(where: \.hasPlugin)
+    }
+
+    var pluginCount: Int {
+        plugins.count
     }
 }
 

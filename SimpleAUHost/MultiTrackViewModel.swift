@@ -206,10 +206,14 @@ final class MultiTrackViewModel: ObservableObject {
     }
 
     func openPluginEditor(for trackID: UUID) {
+        openPluginEditor(for: trackID, pluginID: nil)
+    }
+
+    func openPluginEditor(for trackID: UUID, pluginID: UUID?) {
         Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                try await controller.openPluginEditor(for: trackID)
+                try await controller.openPluginEditor(for: trackID, pluginID: pluginID)
             } catch {
                 statusMessage = error.localizedDescription
             }
@@ -217,7 +221,40 @@ final class MultiTrackViewModel: ObservableObject {
     }
 
     func canOpenPluginEditor(for track: MultiTrackTrackConfiguration) -> Bool {
-        isRunning && track.pluginID != nil
+        isRunning && track.hasPlugins
+    }
+
+    func canOpenPluginEditor(for plugin: MultiTrackTrackConfiguration.PluginInsert) -> Bool {
+        isRunning && plugin.pluginID != nil
+    }
+
+    func addPluginInsert(to trackID: UUID) {
+        guard let trackIndex = tracks.firstIndex(where: { $0.id == trackID }) else { return }
+        tracks[trackIndex].plugins.append(.init())
+        updateSessionWarnings()
+    }
+
+    func removePluginInsert(trackID: UUID, pluginID: UUID) {
+        guard let trackIndex = tracks.firstIndex(where: { $0.id == trackID }) else { return }
+        tracks[trackIndex].plugins.removeAll { $0.id == pluginID }
+        updateSessionWarnings()
+    }
+
+    func movePluginInsert(trackID: UUID, pluginID: UUID, direction: Int) {
+        guard let trackIndex = tracks.firstIndex(where: { $0.id == trackID }) else { return }
+        guard let pluginIndex = tracks[trackIndex].plugins.firstIndex(where: { $0.id == pluginID }) else { return }
+        let targetIndex = pluginIndex + direction
+        guard tracks[trackIndex].plugins.indices.contains(targetIndex) else { return }
+        let plugin = tracks[trackIndex].plugins.remove(at: pluginIndex)
+        tracks[trackIndex].plugins.insert(plugin, at: targetIndex)
+    }
+
+    func pluginInsertLabel(for plugin: MultiTrackTrackConfiguration.PluginInsert, index: Int) -> String {
+        if let pluginID = plugin.pluginID,
+           let pluginInfo = plugins.first(where: { $0.id == pluginID }) {
+            return "\(index + 1). \(pluginInfo.name)"
+        }
+        return "\(index + 1). Empty insert"
     }
 
     func addMonoTrack() {
@@ -422,8 +459,10 @@ final class MultiTrackViewModel: ObservableObject {
 
         let availablePluginIDs = Set(plugins.map(\.id))
         for track in tracks where track.isEnabled {
-            if let pluginID = track.pluginID, !availablePluginIDs.contains(pluginID) {
-                warnings.append("\(track.name) references a plugin that is not currently installed: \(pluginID)")
+            for insert in track.plugins {
+                if let pluginID = insert.pluginID, !availablePluginIDs.contains(pluginID) {
+                    warnings.append("\(track.name) references a plugin that is not currently installed: \(pluginID)")
+                }
             }
         }
 
@@ -535,8 +574,10 @@ final class MultiTrackViewModel: ObservableObject {
             return "\(track.name) exceeds the selected output interface channel count."
         }
 
-        if let pluginID = track.pluginID, !plugins.contains(where: { $0.id == pluginID }) {
-            return "\(track.name) references a plugin that is not currently installed. Install it or choose Bypass."
+        for insert in track.plugins {
+            if let pluginID = insert.pluginID, !plugins.contains(where: { $0.id == pluginID }) {
+                return "\(track.name) references a plugin that is not currently installed. Install it or choose Bypass."
+            }
         }
 
         return nil
@@ -629,8 +670,12 @@ final class MultiTrackViewModel: ObservableObject {
         guard !pluginStates.isEmpty else { return }
         for index in tracks.indices {
             let trackID = tracks[index].id
-            if let pluginState = pluginStates[trackID] {
-                tracks[index].pluginStateData = pluginState
+            guard let pluginStateMap = pluginStates[trackID] else { continue }
+            for pluginIndex in tracks[index].plugins.indices {
+                let pluginID = tracks[index].plugins[pluginIndex].id
+                if let pluginState = pluginStateMap[pluginID] {
+                    tracks[index].plugins[pluginIndex].pluginStateData = pluginState
+                }
             }
         }
     }
