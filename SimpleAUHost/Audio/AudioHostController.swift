@@ -63,6 +63,13 @@ struct AudioEngineTelemetrySnapshot {
     let peakOutputRingOccupancyFrames: UInt64
     let inputRingCapacityFrames: Int
     let outputRingCapacityFrames: Int
+    let peakTrackRenderDurationMicros: UInt64
+    let averageTrackRenderDurationMicros: UInt64
+    let peakShardRenderDurationMicros: UInt64
+    let averageShardRenderDurationMicros: UInt64
+    let peakShardUtilizationPercent: UInt64
+    let peakWorkerWakeupsPerSecond: UInt64
+    let workerShardCount: Int
 
     static let zero = AudioEngineTelemetrySnapshot(
         peakInputCallbackFrames: 0,
@@ -71,7 +78,14 @@ struct AudioEngineTelemetrySnapshot {
         peakInputRingOccupancyFrames: 0,
         peakOutputRingOccupancyFrames: 0,
         inputRingCapacityFrames: 0,
-        outputRingCapacityFrames: 0
+        outputRingCapacityFrames: 0,
+        peakTrackRenderDurationMicros: 0,
+        averageTrackRenderDurationMicros: 0,
+        peakShardRenderDurationMicros: 0,
+        averageShardRenderDurationMicros: 0,
+        peakShardUtilizationPercent: 0,
+        peakWorkerWakeupsPerSecond: 0,
+        workerShardCount: 0
     )
 }
 
@@ -360,7 +374,14 @@ final class AudioHostController: @unchecked Sendable {
             peakInputRingOccupancyFrames: SAHAtomicCounterLoad(&peakInputRingOccupancyFrames),
             peakOutputRingOccupancyFrames: SAHAtomicCounterLoad(&peakOutputRingOccupancyFrames),
             inputRingCapacityFrames: inputRingCapacityFrames,
-            outputRingCapacityFrames: outputRingCapacityFrames
+            outputRingCapacityFrames: outputRingCapacityFrames,
+            peakTrackRenderDurationMicros: 0,
+            averageTrackRenderDurationMicros: 0,
+            peakShardRenderDurationMicros: 0,
+            averageShardRenderDurationMicros: 0,
+            peakShardUtilizationPercent: 0,
+            peakWorkerWakeupsPerSecond: 0,
+            workerShardCount: 0
         )
     }
 

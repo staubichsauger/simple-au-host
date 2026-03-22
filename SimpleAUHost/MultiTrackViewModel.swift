@@ -20,6 +20,7 @@ final class MultiTrackViewModel: ObservableObject {
     @Published private(set) var droppedFrameCount: UInt64 = 0
     @Published private(set) var telemetrySummary = "Callbacks in/out: 0 / 0 frames"
     @Published private(set) var ringTelemetrySummary = "Peak ring occupancy in/out: 0 / 0 frames"
+    @Published private(set) var workerTelemetrySummary = "Workers: 0 shards, track/shard render: 0 / 0 us, util: 0%, wakeups: 0/s"
 
     private let catalog = AudioHostController()
     private let controller = MultiTrackAudioHostController()
@@ -534,6 +535,7 @@ final class MultiTrackViewModel: ObservableObject {
         let telemetry = controller.telemetrySnapshot()
         telemetrySummary = "Callbacks in/out: \(telemetry.peakInputCallbackFrames) / \(telemetry.peakOutputCallbackFrames) frames"
         ringTelemetrySummary = "Peak ring occupancy in/out: \(telemetryOccupancyString(telemetry.peakInputRingOccupancyFrames, capacity: telemetry.inputRingCapacityFrames)) / \(telemetryOccupancyString(telemetry.peakOutputRingOccupancyFrames, capacity: telemetry.outputRingCapacityFrames))"
+        workerTelemetrySummary = "Workers: \(telemetry.workerShardCount) shards, track/shard render avg \(telemetry.averageTrackRenderDurationMicros) / \(telemetry.averageShardRenderDurationMicros) us, peak \(telemetry.peakTrackRenderDurationMicros) / \(telemetry.peakShardRenderDurationMicros) us, util \(telemetry.peakShardUtilizationPercent)%, wakeups \(telemetry.peakWorkerWakeupsPerSecond)/s"
     }
 
     private func telemetryOccupancyString(_ frames: UInt64, capacity: Int) -> String {
