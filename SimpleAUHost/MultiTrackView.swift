@@ -34,29 +34,11 @@ struct MultiTrackView: View {
 
     var body: some View {
         StudioShell(
-            eyebrow: "Multi Track Rack",
-            title: viewModel.currentSessionName,
-            subtitle: "A simplified SuperRack-style workspace built around track strips, inserts, session control, and hardware setup."
+            eyebrow: "",
+            title: "",
+            subtitle: ""
         ) {
-            HStack(spacing: 8) {
-                StudioBadge(
-                    title: viewModel.isRunning ? "Running" : "Stopped",
-                    systemImage: viewModel.isRunning ? "dot.radiowaves.left.and.right" : "stop.fill",
-                    tint: viewModel.isRunning ? .green : .white.opacity(0.78)
-                )
-                StudioBadge(
-                    title: "\(viewModel.tracks.count) Tracks",
-                    systemImage: "slider.horizontal.3",
-                    tint: Color(red: 0.42, green: 0.84, blue: 0.97)
-                )
-                if !viewModel.sessionWarnings.isEmpty {
-                    StudioBadge(
-                        title: "\(viewModel.sessionWarnings.count) Warnings",
-                        systemImage: "exclamationmark.triangle.fill",
-                        tint: StudioTheme.warning
-                    )
-                }
-            }
+            EmptyView()
         } content: {
             VStack(alignment: .leading, spacing: 18) {
                 workspaceTabs
@@ -104,23 +86,13 @@ struct MultiTrackView: View {
     }
 
     private var workspaceTabs: some View {
-        HStack(spacing: 0) {
-            ForEach(MultiTrackWorkspaceTab.allCases) { tab in
-                Button {
-                    selectedTab = tab
-                } label: {
-                    Text(tab.rawValue.uppercased())
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
-                        .tracking(1.8)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .fill(selectedTab == tab ? Color.white.opacity(0.08) : Color.clear)
-                        )
-                        .foregroundStyle(selectedTab == tab ? StudioTheme.accent : StudioTheme.mutedText)
-                }
-                .buttonStyle(.plain)
+        HStack(spacing: 12) {
+            sessionTitleView
+            workspaceTabButtons
+
+            if selectedTab == .rack {
+                Spacer()
+                rackTabActions
             }
         }
         .padding(6)
@@ -132,6 +104,91 @@ struct MultiTrackView: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(Color.white.opacity(0.07), lineWidth: 1)
         )
+    }
+
+    private var sessionTitleView: some View {
+        Text(viewModel.currentSessionName)
+            .font(.system(size: 20, weight: .black, design: .rounded))
+            .foregroundStyle(StudioTheme.strongText)
+            .lineLimit(1)
+    }
+
+    private var workspaceTabButtons: some View {
+        HStack(spacing: 0) {
+            ForEach(MultiTrackWorkspaceTab.allCases) { tab in
+                workspaceTabButton(for: tab)
+            }
+        }
+    }
+
+    private func workspaceTabButton(for tab: MultiTrackWorkspaceTab) -> some View {
+        Button {
+            selectedTab = tab
+        } label: {
+            Text(tab.rawValue.uppercased())
+                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .tracking(1.8)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(tabBackground(for: tab))
+                .foregroundStyle(tabForeground(for: tab))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func tabBackground(for tab: MultiTrackWorkspaceTab) -> some ShapeStyle {
+        selectedTab == tab ? Color.white.opacity(0.08) : Color.clear
+    }
+
+    private func tabForeground(for tab: MultiTrackWorkspaceTab) -> Color {
+        selectedTab == tab ? StudioTheme.accent : StudioTheme.mutedText
+    }
+
+    private var rackTabActions: some View {
+        HStack(spacing: 12) {
+            startStopButton
+            addMonoTrackButton
+            addStereoTrackButton
+        }
+    }
+
+    private var startStopButton: some View {
+        Group {
+            if viewModel.isRunning {
+                Button {
+                    viewModel.toggleStartStop()
+                } label: {
+                    Label("Running", systemImage: "stop.fill")
+                }
+                .buttonStyle(StudioDestructiveButtonStyle())
+            } else {
+                Button {
+                    viewModel.toggleStartStop()
+                } label: {
+                    Label("Stopped", systemImage: "play.fill")
+                }
+                .buttonStyle(StudioSecondaryButtonStyle())
+                .disabled(!viewModel.canStart)
+            }
+        }
+    }
+
+    private var addMonoTrackButton: some View {
+        Button("Add Mono Track") {
+            viewModel.addMonoTrack()
+            syncRackSelection()
+        }
+        .buttonStyle(StudioSecondaryButtonStyle())
+        .disabled(viewModel.isRunning)
+    }
+
+    private var addStereoTrackButton: some View {
+        Button("Add Stereo Track") {
+            viewModel.addStereoTrack()
+            syncRackSelection()
+        }
+        .buttonStyle(StudioPrimaryButtonStyle())
+        .disabled(viewModel.isRunning)
     }
 
     @ViewBuilder
@@ -147,22 +204,11 @@ struct MultiTrackView: View {
     }
 
     private var rackWorkspace: some View {
-        GeometryReader { proxy in
-            if proxy.size.width >= 1280 {
-                HStack(alignment: .top, spacing: 18) {
-                    rackStripBoard
-                    rackFocusPanel
-                        .frame(width: 410)
-                }
-            } else {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        rackStripBoard
-                        rackFocusPanel
-                    }
-                    .padding(.bottom, 8)
-                }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                rackStripBoard
             }
+            .padding(.bottom, 8)
         }
     }
 
@@ -190,35 +236,41 @@ struct MultiTrackView: View {
     }
 
     private var rackStripBoard: some View {
-        StudioPanel("Rack", subtitle: "Track strips hold routing, latency mode, and vertical insert slots. Select an insert to inspect it on the right.") {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(spacing: 12) {
-                    Button("Add Mono Track") {
-                        viewModel.addMonoTrack()
-                        syncRackSelection()
+        StudioPanel("") {
+            ScrollView(.horizontal, showsIndicators: true) {
+                HStack(alignment: .top, spacing: 14) {
+                    ForEach($viewModel.tracks) { $track in
+                        rackStrip($track)
+                            .frame(width: 218)
                     }
-                    .buttonStyle(StudioSecondaryButtonStyle())
-                    .disabled(viewModel.isRunning)
-
-                    Button("Add Stereo Track") {
-                        viewModel.addStereoTrack()
-                        syncRackSelection()
-                    }
-                    .buttonStyle(StudioPrimaryButtonStyle())
-                    .disabled(viewModel.isRunning)
                 }
-
-                ScrollView(.horizontal, showsIndicators: true) {
-                    HStack(alignment: .top, spacing: 14) {
-                        ForEach($viewModel.tracks) { $track in
-                            rackStrip($track)
-                                .frame(width: 218)
-                        }
-                    }
-                    .padding(.vertical, 4)
-                }
+                .padding(.vertical, 4)
             }
         }
+    }
+
+    private var selectedTrackCount: Int {
+        viewModel.tracks.filter(\.isEnabled).count
+    }
+
+    private var selectedPluginInfoForRack: AudioUnitPluginInfo? {
+        guard let pluginID = selectedPlugin?.pluginID else { return nil }
+        return viewModel.plugins.first(where: { $0.id == pluginID })
+    }
+
+    private func openSelectedPluginEditor() {
+        guard let track = selectedTrack else { return }
+        if let plugin = selectedPlugin {
+            viewModel.openPluginEditor(for: track.id, pluginID: plugin.id)
+        } else {
+            viewModel.openPluginEditor(for: track.id)
+        }
+    }
+
+    private func removeSelectedInsert() {
+        guard let track = selectedTrack, let plugin = selectedPlugin else { return }
+        viewModel.removePluginInsert(trackID: track.id, pluginID: plugin.id)
+        syncRackSelection()
     }
 
     private func rackStrip(_ track: Binding<MultiTrackTrackConfiguration>) -> some View {
@@ -303,7 +355,6 @@ struct MultiTrackView: View {
         plugin: Binding<MultiTrackTrackConfiguration.PluginInsert>,
         index: Int
     ) -> some View {
-        let info = viewModel.plugins.first(where: { $0.id == plugin.wrappedValue.pluginID })
         let isSelected = selectedRackTrackID == trackID && selectedRackPluginID == plugin.wrappedValue.id
 
         return VStack(alignment: .leading, spacing: 8) {
@@ -318,42 +369,32 @@ struct MultiTrackView: View {
                     .frame(width: 8, height: 8)
             }
 
-            Picker("Insert \(index + 1)", selection: plugin.pluginID) {
-                Text("Empty").tag(String?.none)
-                ForEach(viewModel.plugins) { availablePlugin in
-                    Text(availablePlugin.name).tag(Optional(availablePlugin.id))
-                }
-            }
-            .labelsHidden()
-            .pickerStyle(.menu)
-            .disabled(viewModel.isRunning)
-
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color.black.opacity(0.4))
-                .frame(height: 42)
-                .overlay {
-                    if let info {
-                        Text(info.name)
-                            .font(.system(size: 11, weight: .bold, design: .rounded))
-                            .lineLimit(2)
-                            .multilineTextAlignment(.center)
-                            .foregroundStyle(StudioTheme.strongText)
-                            .padding(.horizontal, 8)
-                    } else {
-                        Text("EMPTY")
-                            .font(.system(size: 11, weight: .bold, design: .rounded))
-                            .tracking(1.6)
-                            .foregroundStyle(StudioTheme.mutedText)
+            HStack(spacing: 8) {
+                Picker("Insert \(index + 1)", selection: plugin.pluginID) {
+                    Text("Empty").tag(String?.none)
+                    ForEach(viewModel.plugins) { availablePlugin in
+                        Text(availablePlugin.name).tag(Optional(availablePlugin.id))
                     }
                 }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .disabled(viewModel.isRunning)
 
-            Text(info?.id ?? "Select a plugin")
-                .font(.system(size: 10, weight: .medium, design: .rounded))
-                .foregroundStyle(StudioTheme.mutedText)
-                .lineLimit(2)
+                if plugin.wrappedValue.pluginID != nil {
+                    Button {
+                        viewModel.openPluginEditor(for: trackID, pluginID: plugin.wrappedValue.id)
+                    } label: {
+                        Image(systemName: "arrow.up.right.square")
+                            .font(.system(size: 13, weight: .bold))
+                            .frame(width: 30, height: 30)
+                    }
+                    .buttonStyle(StudioSecondaryButtonStyle())
+                    .disabled(!viewModel.canOpenPluginEditor(for: plugin.wrappedValue))
+                }
+            }
         }
         .padding(10)
-        .frame(maxWidth: .infinity, minHeight: 132, alignment: .topLeading)
+        .frame(maxWidth: .infinity, minHeight: plugin.wrappedValue.pluginID == nil ? 96 : 132, alignment: .topLeading)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(isSelected ? Color(red: 0.06, green: 0.18, blue: 0.24) : Color.white.opacity(0.035))
@@ -463,96 +504,6 @@ struct MultiTrackView: View {
             }
             .buttonStyle(StudioDestructiveButtonStyle())
             .disabled(viewModel.isRunning)
-
-            Button("Open Track UI") {
-                viewModel.openPluginEditor(for: value.id, pluginID: selectedPlugin(for: value)?.id)
-            }
-            .buttonStyle(StudioSecondaryButtonStyle())
-            .disabled(!viewModel.canOpenPluginEditor(for: value))
-        }
-    }
-
-    private var rackFocusPanel: some View {
-        StudioPanel("Plugin Rack", subtitle: "A simplified focus area for the selected insert. Use the native editor button to open the real Audio Unit UI.") {
-            VStack(alignment: .leading, spacing: 16) {
-                if let track = selectedTrack {
-                    Text(track.name)
-                        .font(.system(size: 24, weight: .black, design: .rounded))
-                        .foregroundStyle(StudioTheme.strongText)
-
-                    HStack(spacing: 8) {
-                        StudioBadge(title: track.layout.title, systemImage: "square.split.2x1.fill", tint: Color(red: 0.42, green: 0.84, blue: 0.97))
-                        StudioBadge(title: track.latencyClass.title, systemImage: "speedometer", tint: track.latencyClass == .realtime ? StudioTheme.accent : .white.opacity(0.78))
-                        StudioBadge(title: "Out \(track.outputStartChannel)", systemImage: "arrow.right.circle.fill", tint: .white.opacity(0.75))
-                    }
-
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 22, style: .continuous)
-                            .fill(Color.black.opacity(0.56))
-                            .frame(minHeight: 420)
-
-                        VStack(spacing: 18) {
-                            Image(systemName: "dial.max.fill")
-                                .font(.system(size: 54, weight: .bold))
-                                .foregroundStyle(StudioTheme.accent)
-
-                            Text(selectedPluginInfo?.name ?? "No Plugin Selected")
-                                .font(.system(size: 28, weight: .black, design: .rounded))
-                                .foregroundStyle(StudioTheme.strongText)
-                                .multilineTextAlignment(.center)
-
-                            Text(selectedPluginInfo?.id ?? "Choose an insert slot in the rack and assign a plugin.")
-                                .font(.system(size: 13, weight: .medium, design: .rounded))
-                                .foregroundStyle(StudioTheme.mutedText)
-                                .multilineTextAlignment(.center)
-                                .frame(maxWidth: 280)
-
-                            if let plugin = selectedPlugin {
-                                Picker("Selected plugin", selection: Binding(
-                                    get: { plugin.pluginID },
-                                    set: { newValue in
-                                        updateSelectedPluginID(newValue)
-                                    }
-                                )) {
-                                    Text("Bypass").tag(String?.none)
-                                    ForEach(viewModel.plugins) { availablePlugin in
-                                        Text(availablePlugin.name).tag(Optional(availablePlugin.id))
-                                    }
-                                }
-                                .pickerStyle(.menu)
-                                .frame(maxWidth: 280)
-                            }
-                        }
-                        .padding(28)
-                    }
-
-                    HStack(spacing: 12) {
-                        Button("Open Native Plugin UI") {
-                            if let plugin = selectedPlugin {
-                                viewModel.openPluginEditor(for: track.id, pluginID: plugin.id)
-                            } else {
-                                viewModel.openPluginEditor(for: track.id)
-                            }
-                        }
-                        .buttonStyle(StudioPrimaryButtonStyle())
-                        .disabled(!canOpenSelectedPluginUI)
-
-                        Button("Remove Insert") {
-                            if let plugin = selectedPlugin {
-                                viewModel.removePluginInsert(trackID: track.id, pluginID: plugin.id)
-                                syncRackSelection()
-                            }
-                        }
-                        .buttonStyle(StudioDestructiveButtonStyle())
-                        .disabled(selectedPlugin == nil || viewModel.isRunning)
-                    }
-
-                    selectedTrackRoutingSummary(track)
-                } else {
-                    Text("No track available.")
-                        .foregroundStyle(StudioTheme.mutedText)
-                }
-            }
         }
     }
 

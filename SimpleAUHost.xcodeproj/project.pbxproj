@@ -18,6 +18,7 @@
 		845EF77A005A49F188AE31DE /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2B2D3D79507244C560BDD5E7 /* AVFoundation.framework */; };
 		A87382D5FB9A0BFD14CB62E9 /* MultiTrackView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6D62822C556D03150F26589 /* MultiTrackView.swift */; };
 		ADFEE25038031CFF542E2323 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1AEDFBA668B5A410BB12D49 /* ContentView.swift */; };
+		C4B4F755BA528A86B1C96C41 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D176FA9E19AB56C0F630983B /* Assets.xcassets */; };
 		DA88A40C2B49C756F57749EF /* FloatRingBuffer.c in Sources */ = {isa = PBXBuildFile; fileRef = 2B76015B39F45AB414C53372 /* FloatRingBuffer.c */; };
 		F01185DB34C3F70F201D81D7 /* SimpleAUHostApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0D8ECFE98AFE6D0D136AED4 /* SimpleAUHostApp.swift */; };
 /* End PBXBuildFile section */
@@ -32,10 +33,12 @@
 		5FABE4A3EC0C46930DFA1CFA /* CoreAudio.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreAudio.framework; path = System/Library/Frameworks/CoreAudio.framework; sourceTree = SDKROOT; };
 		68D2CC2F5749BB865FE1DE0F /* MultiTrackModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiTrackModels.swift; sourceTree = "<group>"; };
 		7AF36C3F7011608827EF703F /* HostModeRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostModeRootView.swift; sourceTree = "<group>"; };
+		857E1CD656C39B36861AD772 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		907616E833D51D8D6FE5502E /* MultiTrackAudioHostController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiTrackAudioHostController.swift; sourceTree = "<group>"; };
 		BBFBDFDA26FBF58E6FB8AEB4 /* FloatRingBuffer.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = FloatRingBuffer.h; sourceTree = "<group>"; };
 		C6D62822C556D03150F26589 /* MultiTrackView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiTrackView.swift; sourceTree = "<group>"; };
 		CE3A1C4E2349E802C98811DE /* AudioHostController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioHostController.swift; sourceTree = "<group>"; };
+		D176FA9E19AB56C0F630983B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		D1AEDFBA668B5A410BB12D49 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		E0D8ECFE98AFE6D0D136AED4 /* SimpleAUHostApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimpleAUHostApp.swift; sourceTree = "<group>"; };
 		E92E12B34A5D890A1D40102E /* SimpleAUHost.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SimpleAUHost.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -67,9 +70,11 @@
 		497ED8E634003558795000E1 /* SimpleAUHost */ = {
 			isa = PBXGroup;
 			children = (
+				D176FA9E19AB56C0F630983B /* Assets.xcassets */,
 				D1AEDFBA668B5A410BB12D49 /* ContentView.swift */,
 				7AF36C3F7011608827EF703F /* HostModeRootView.swift */,
 				574FB1DF0AF073B8D3A2B1EE /* HostViewModel.swift */,
+				857E1CD656C39B36861AD772 /* Info.plist */,
 				68D2CC2F5749BB865FE1DE0F /* MultiTrackModels.swift */,
 				C6D62822C556D03150F26589 /* MultiTrackView.swift */,
 				51F587125760077EB7BA3750 /* MultiTrackViewModel.swift */,
@@ -125,6 +130,7 @@
 			buildConfigurationList = 3C4B09B83565590643E61018 /* Build configuration list for PBXNativeTarget "SimpleAUHost" */;
 			buildPhases = (
 				407764C8B22E3A6176E6DE43 /* Sources */,
+				235876AF7857197A8422EF71 /* Resources */,
 				325CAB6070420139FD230C34 /* Frameworks */,
 			);
 			buildRules = (
@@ -170,6 +176,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		235876AF7857197A8422EF71 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C4B4F755BA528A86B1C96C41 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		407764C8B22E3A6176E6DE43 /* Sources */ = {
@@ -324,6 +341,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = SimpleAUHost/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -340,6 +358,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = SimpleAUHost/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",

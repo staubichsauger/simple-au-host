@@ -15,6 +15,8 @@ targets:
     platform: macOS
     sources:
       - path: SimpleAUHost
+      - path: SimpleAUHost/Assets.xcassets
+        buildPhase: resources
     settings:
       base:
         PRODUCT_NAME: SimpleAUHost
