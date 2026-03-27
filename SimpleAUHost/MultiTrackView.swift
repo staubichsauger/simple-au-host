@@ -464,11 +464,12 @@ struct MultiTrackView: View {
     }
 
     private func rackInputControl(_ track: Binding<MultiTrackTrackConfiguration>) -> some View {
-        let channels = viewModel.availableInputStartChannels(for: track.wrappedValue)
+        let value = track.wrappedValue
+        let channels = viewModel.availableInputStartChannels(for: value)
         return rackControlRow(title: "Input") {
             Picker("Input", selection: track.inputStartChannel) {
                 ForEach(channels, id: \.self) { channel in
-                    Text("Ch \(channel)").tag(channel)
+                    Text(channelLabel(startChannel: channel, layout: value.layout)).tag(channel)
                 }
             }
             .labelsHidden()
@@ -478,11 +479,12 @@ struct MultiTrackView: View {
     }
 
     private func rackOutputControl(_ track: Binding<MultiTrackTrackConfiguration>) -> some View {
-        let channels = viewModel.availableOutputStartChannels(for: track.wrappedValue)
+        let value = track.wrappedValue
+        let channels = viewModel.availableOutputStartChannels(for: value)
         return rackControlRow(title: "Output") {
             Picker("Output", selection: track.outputStartChannel) {
                 ForEach(channels, id: \.self) { channel in
-                    Text("Ch \(channel)").tag(channel)
+                    Text(channelLabel(startChannel: channel, layout: value.layout)).tag(channel)
                 }
             }
             .labelsHidden()
@@ -501,6 +503,15 @@ struct MultiTrackView: View {
             .labelsHidden()
             .pickerStyle(.menu)
             .disabled(viewModel.isRunning)
+        }
+    }
+
+    private func channelLabel(startChannel: Int, layout: TrackChannelLayout) -> String {
+        switch layout {
+        case .mono:
+            return "Ch \(startChannel)"
+        case .stereo:
+            return "\(startChannel)/\(startChannel + 1)"
         }
     }
 
