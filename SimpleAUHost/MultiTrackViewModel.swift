@@ -16,6 +16,9 @@ final class MultiTrackViewModel: ObservableObject {
     @Published var isRunning = false
     @Published var isBusy = false
     @Published var statusMessage = "Ready."
+    @Published private(set) var embeddedPluginEditorSession: MultiTrackAudioHostController.HostedPluginEditorSession?
+    @Published private(set) var embeddedPluginEditorTrackID: UUID?
+    @Published private(set) var embeddedPluginEditorPluginID: UUID?
     @Published private(set) var audioDropoutCount: UInt64 = 0
     @Published private(set) var droppedFrameCount: UInt64 = 0
     @Published private(set) var telemetrySummary = "Callbacks in/out: 0 / 0 frames"
@@ -220,6 +223,58 @@ final class MultiTrackViewModel: ObservableObject {
         }
     }
 
+    func showEmbeddedPluginEditor(for trackID: UUID, pluginID: UUID?) {
+        guard isRunning else {
+            clearEmbeddedPluginEditor()
+            return
+        }
+        guard embeddedPluginEditorTrackID != trackID || embeddedPluginEditorPluginID != pluginID || embeddedPluginEditorSession == nil else {
+            return
+        }
+
+        let previousSession = embeddedPluginEditorSession
+        embeddedPluginEditorSession = nil
+        embeddedPluginEditorTrackID = trackID
+        embeddedPluginEditorPluginID = pluginID
+        previousSession?.invalidate()
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let session = try await controller.makeHostedPluginEditorSession(for: trackID, pluginID: pluginID)
+                guard self.embeddedPluginEditorTrackID == trackID,
+                      self.embeddedPluginEditorPluginID == pluginID else {
+                    session.invalidate()
+                    return
+                }
+                self.embeddedPluginEditorSession = session
+            } catch {
+                guard self.embeddedPluginEditorTrackID == trackID,
+                      self.embeddedPluginEditorPluginID == pluginID else {
+                    return
+                }
+                self.embeddedPluginEditorTrackID = nil
+                self.embeddedPluginEditorPluginID = nil
+                self.embeddedPluginEditorSession = nil
+                self.statusMessage = error.localizedDescription
+            }
+        }
+    }
+
+    func clearEmbeddedPluginEditor() {
+        embeddedPluginEditorSession?.invalidate()
+        embeddedPluginEditorSession = nil
+        embeddedPluginEditorTrackID = nil
+        embeddedPluginEditorPluginID = nil
+    }
+
+    func popOutEmbeddedPluginEditor() {
+        guard let trackID = embeddedPluginEditorTrackID else { return }
+        let pluginID = embeddedPluginEditorPluginID
+        clearEmbeddedPluginEditor()
+        openPluginEditor(for: trackID, pluginID: pluginID)
+    }
+
     func canOpenPluginEditor(for track: MultiTrackTrackConfiguration) -> Bool {
         isRunning && track.hasPlugins
     }
@@ -339,6 +394,7 @@ final class MultiTrackViewModel: ObservableObject {
 
     func toggleStartStop() {
         if isRunning {
+            clearEmbeddedPluginEditor()
             audioDropoutMonitorTask?.cancel()
             audioDropoutMonitorTask = nil
             audioDropoutCount = controller.audioDropoutCount()
@@ -383,6 +439,7 @@ final class MultiTrackViewModel: ObservableObject {
                 self.audioDropoutCount = self.controller.audioDropoutCount()
                 self.droppedFrameCount = self.controller.droppedFrameCount()
                 self.updateTelemetry()
+                self.clearEmbeddedPluginEditor()
                 self.controller.stop()
                 self.isRunning = false
                 self.statusMessage = error.localizedDescription

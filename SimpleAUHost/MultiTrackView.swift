@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 private enum MultiTrackWorkspaceTab: String, CaseIterable, Identifiable {
@@ -14,6 +15,7 @@ struct MultiTrackView: View {
     @State private var isExportingSession = false
     @State private var selectedTab: MultiTrackWorkspaceTab = .rack
     @State private var showsDiagnostics = true
+    @State private var showsEmbeddedPluginPane = true
     @State private var selectedRackTrackID: UUID?
     @State private var selectedRackPluginID: UUID?
     @State private var sessionDocument = MultiTrackSessionDocument(
@@ -51,6 +53,25 @@ struct MultiTrackView: View {
         }
         .onChange(of: viewModel.tracks) { _, _ in
             syncRackSelection()
+            refreshEmbeddedPluginPane()
+        }
+        .onChange(of: selectedRackTrackID) { _, _ in
+            refreshEmbeddedPluginPane()
+        }
+        .onChange(of: selectedRackPluginID) { _, _ in
+            refreshEmbeddedPluginPane()
+        }
+        .onChange(of: selectedTab) { _, _ in
+            refreshEmbeddedPluginPane()
+        }
+        .onChange(of: showsEmbeddedPluginPane) { _, _ in
+            refreshEmbeddedPluginPane()
+        }
+        .onChange(of: viewModel.isRunning) { _, _ in
+            refreshEmbeddedPluginPane()
+        }
+        .onDisappear {
+            viewModel.clearEmbeddedPluginEditor()
         }
         .fileImporter(
             isPresented: $isImportingSession,
@@ -146,6 +167,13 @@ struct MultiTrackView: View {
 
     private var rackTabActions: some View {
         HStack(spacing: 12) {
+            Button {
+                showsEmbeddedPluginPane.toggle()
+            } label: {
+                Label(showsEmbeddedPluginPane ? "Hide Editor" : "Show Editor", systemImage: showsEmbeddedPluginPane ? "sidebar.right" : "rectangle.split.2x1")
+            }
+            .buttonStyle(StudioSecondaryButtonStyle())
+
             startStopButton
             addMonoTrackButton
             addStereoTrackButton
@@ -204,8 +232,15 @@ struct MultiTrackView: View {
     }
 
     private var rackWorkspace: some View {
-        rackStripBoard
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        HSplitView {
+            rackStripBoard
+                .frame(minWidth: 260, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
+            if showsEmbeddedPluginPane {
+                embeddedPluginPane
+                    .frame(minWidth: 520, idealWidth: 860, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
+        }
     }
 
     private var showWorkspace: some View {
@@ -261,6 +296,115 @@ struct MultiTrackView: View {
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(Color.white.opacity(0.07), lineWidth: 1)
+        )
+    }
+
+    private var embeddedPluginPane: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(selectedTrack?.name ?? "Plugin View")
+                        .font(.system(size: 18, weight: .black, design: .rounded))
+                        .foregroundStyle(StudioTheme.strongText)
+
+                    Text(selectedPluginInfo?.name ?? "Select an insert to inspect its editor.")
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .foregroundStyle(StudioTheme.mutedText)
+                        .lineLimit(2)
+                }
+
+                Spacer(minLength: 0)
+
+                Button {
+                    viewModel.popOutEmbeddedPluginEditor()
+                } label: {
+                    Image(systemName: "arrow.up.right.square")
+                        .frame(width: 16, height: 16)
+                }
+                .buttonStyle(StudioSecondaryButtonStyle())
+                .disabled(viewModel.embeddedPluginEditorSession == nil)
+
+                Button {
+                    showsEmbeddedPluginPane = false
+                } label: {
+                    Image(systemName: "sidebar.right")
+                        .frame(width: 16, height: 16)
+                }
+                .buttonStyle(StudioSecondaryButtonStyle())
+            }
+
+            embeddedPluginBody
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [StudioTheme.panelSecondaryFill, StudioTheme.panelFill],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(StudioTheme.panelStroke, lineWidth: 1)
+        )
+    }
+
+    @ViewBuilder
+    private var embeddedPluginBody: some View {
+        if !viewModel.isRunning {
+            embeddedPluginPlaceholder(
+                title: "Engine Stopped",
+                detail: "Start the engine to embed the selected plugin UI."
+            )
+        } else if selectedPlugin?.pluginID == nil {
+            embeddedPluginPlaceholder(
+                title: "No Plugin Loaded",
+                detail: "Load a plugin into the selected insert to display its editor here."
+            )
+        } else if let session = viewModel.embeddedPluginEditorSession {
+            EmbeddedPluginEditorContainer(viewController: session.viewController)
+                .background(Color.black.opacity(0.4))
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                )
+        } else {
+            embeddedPluginPlaceholder(
+                title: "Loading Editor",
+                detail: "Requesting the plugin UI from the live Audio Unit instance."
+            )
+        }
+    }
+
+    private func embeddedPluginPlaceholder(title: String, detail: String) -> some View {
+        VStack(spacing: 14) {
+            Image(systemName: "dial.medium")
+                .font(.system(size: 30, weight: .regular))
+                .foregroundStyle(StudioTheme.accent)
+
+            Text(title)
+                .font(.system(size: 20, weight: .black, design: .rounded))
+                .foregroundStyle(StudioTheme.strongText)
+
+            Text(detail)
+                .font(.system(size: 13, weight: .medium, design: .rounded))
+                .foregroundStyle(StudioTheme.mutedText)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 280)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color.black.opacity(0.22))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color.white.opacity(0.06), lineWidth: 1)
         )
     }
 
@@ -394,6 +538,11 @@ struct MultiTrackView: View {
                 .labelsHidden()
                 .pickerStyle(.menu)
                 .disabled(viewModel.isRunning)
+                .onChange(of: plugin.wrappedValue.pluginID) { _, _ in
+                    selectedRackTrackID = trackID
+                    selectedRackPluginID = plugin.wrappedValue.id
+                    refreshEmbeddedPluginPane()
+                }
 
                 if plugin.wrappedValue.pluginID != nil {
                     Button {
@@ -1148,7 +1297,99 @@ struct MultiTrackView: View {
         selectedRackPluginID = viewModel.tracks[trackIndex].plugins[pluginIndex].id
     }
 
+    private func refreshEmbeddedPluginPane() {
+        guard selectedTab == .rack, showsEmbeddedPluginPane else {
+            viewModel.clearEmbeddedPluginEditor()
+            return
+        }
+        guard let track = selectedTrack, let plugin = selectedPlugin, plugin.pluginID != nil else {
+            viewModel.clearEmbeddedPluginEditor()
+            return
+        }
+
+        viewModel.showEmbeddedPluginEditor(for: track.id, pluginID: plugin.id)
+    }
+
     private func trimmedTelemetry(_ value: String, prefix: String) -> String {
         value.replacingOccurrences(of: prefix, with: "")
     }
+}
+
+private struct EmbeddedPluginEditorContainer: NSViewControllerRepresentable {
+    let viewController: NSViewController
+
+    func makeNSViewController(context: Context) -> NSViewController {
+        HostingEditorViewController(contentViewController: viewController)
+    }
+
+    func updateNSViewController(_ nsViewController: NSViewController, context: Context) {
+        guard let hostingController = nsViewController as? HostingEditorViewController else { return }
+        hostingController.setContentViewController(viewController)
+    }
+}
+
+private final class HostingEditorViewController: NSViewController {
+    private var hostedViewController: NSViewController?
+    private let canvasView = FlippedCanvasView()
+
+    init(contentViewController: NSViewController) {
+        super.init(nibName: nil, bundle: nil)
+        setContentViewController(contentViewController)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override func loadView() {
+        canvasView.translatesAutoresizingMaskIntoConstraints = false
+        canvasView.clipsToBounds = true
+        view = canvasView
+    }
+
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        hostedViewController?.view.layoutSubtreeIfNeeded()
+    }
+
+    func setContentViewController(_ viewController: NSViewController) {
+        guard hostedViewController !== viewController else { return }
+
+        hostedViewController?.view.removeFromSuperview()
+        hostedViewController?.removeFromParent()
+
+        hostedViewController = viewController
+        loadViewIfNeeded()
+        addChild(viewController)
+
+        let hostedView = viewController.view
+        hostedViewController?.view.layoutSubtreeIfNeeded()
+        hostedView.layoutSubtreeIfNeeded()
+
+        let fittingSize = hostedView.fittingSize
+        let preferredSize = viewController.preferredContentSize
+        let frameSize = hostedView.frame.size
+        let boundsSize = hostedView.bounds.size
+        let width = max(520, fittingSize.width, preferredSize.width, frameSize.width, boundsSize.width)
+        let height = max(360, fittingSize.height, preferredSize.height, frameSize.height, boundsSize.height)
+
+        hostedView.frame = NSRect(x: 0, y: 0, width: width, height: height)
+        hostedView.bounds = NSRect(x: 0, y: 0, width: width, height: height)
+        hostedView.translatesAutoresizingMaskIntoConstraints = false
+        canvasView.subviews.forEach { $0.removeFromSuperview() }
+        canvasView.addSubview(hostedView)
+        canvasView.needsLayout = true
+
+        NSLayoutConstraint.activate([
+            hostedView.leadingAnchor.constraint(equalTo: canvasView.leadingAnchor),
+            hostedView.topAnchor.constraint(equalTo: canvasView.topAnchor),
+            hostedView.widthAnchor.constraint(equalToConstant: width),
+            hostedView.heightAnchor.constraint(equalToConstant: height)
+        ])
+    }
+}
+
+private final class FlippedCanvasView: NSView {
+    override var isFlipped: Bool { true }
 }

@@ -16,16 +16,21 @@ private protocol AUCocoaUIViewFactory: NSObjectProtocol {
 
 final class MultiTrackAudioHostController: @unchecked Sendable {
     @MainActor
-    private final class PluginEditorSession {
+    final class HostedPluginEditorSession {
         let viewController: NSViewController
+        private let onInvalidate: () -> Void
 
         init(
-            viewController: NSViewController
+            viewController: NSViewController,
+            onInvalidate: @escaping () -> Void = {}
         ) {
             self.viewController = viewController
+            self.onInvalidate = onInvalidate
         }
 
-        func invalidate() {}
+        func invalidate() {
+            onInvalidate()
+        }
     }
 
     @MainActor
@@ -627,7 +632,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         }
 
         @MainActor
-        func makePluginEditorSession(pluginID: UUID?) async throws -> PluginEditorSession {
+        func makePluginEditorSession(pluginID: UUID?) async throws -> HostedPluginEditorSession {
             let pluginRuntime: PluginRuntime
             if let pluginID {
                 guard let resolvedPlugin = plugins.first(where: { $0.insert.id == pluginID }) else {
@@ -640,7 +645,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
                 throw AudioHostError("This track does not have a plugin loaded.")
             }
             let viewController = try await Self.requestPluginEditorViewController(for: pluginRuntime.unit)
-            return PluginEditorSession(viewController: viewController)
+            return HostedPluginEditorSession(viewController: viewController)
         }
 
         @MainActor
@@ -1303,7 +1308,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
     private var inputRingCapacityFrames = 0
     private var peakTrackOutputRingCapacityFrames = 0
     private var stagedOutputRingCapacityFrames = 0
-    @MainActor private var pluginEditorSessions: [String: PluginEditorSession] = [:]
+    @MainActor private var pluginEditorSessions: [String: HostedPluginEditorSession] = [:]
     @MainActor private var pluginEditorWindows: [String: PluginEditorWindowController] = [:]
 
     deinit {
@@ -1568,6 +1573,18 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         windowController.showWindow(nil)
         windowController.window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @MainActor
+    func makeHostedPluginEditorSession(for trackID: UUID, pluginID: UUID? = nil) async throws -> HostedPluginEditorSession {
+        guard let runtime = trackRuntimes.first(where: { $0.configuration.id == trackID }) else {
+            throw AudioHostError("Start the engine before opening a plugin editor.")
+        }
+        guard runtime.hasOpenablePluginEditor else {
+            throw AudioHostError("This track does not have a plugin loaded.")
+        }
+
+        return try await runtime.makePluginEditorSession(pluginID: pluginID)
     }
 
     private func pluginEditorKey(trackID: UUID, pluginID: UUID?) -> String {
@@ -2127,8 +2144,8 @@ private extension MultiTrackAudioHostController {
 
     @MainActor
     func closePluginEditorWindows() {
-        for (trackID, windowController) in pluginEditorWindows {
-            if let session = pluginEditorSessions[trackID] {
+        for (editorKey, windowController) in pluginEditorWindows {
+            if let session = pluginEditorSessions[editorKey] {
                 session.invalidate()
             }
             windowController.close()
