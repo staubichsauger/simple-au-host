@@ -50,6 +50,7 @@ struct MultiTrackView: View {
         .task {
             viewModel.load()
             syncRackSelection()
+            updateTelemetryPublishing()
         }
         .onChange(of: viewModel.tracks) { _, _ in
             syncRackSelection()
@@ -62,15 +63,21 @@ struct MultiTrackView: View {
             refreshEmbeddedPluginPane()
         }
         .onChange(of: selectedTab) { _, _ in
+            updateTelemetryPublishing()
             refreshEmbeddedPluginPane()
+        }
+        .onChange(of: showsDiagnostics) { _, _ in
+            updateTelemetryPublishing()
         }
         .onChange(of: showsEmbeddedPluginPane) { _, _ in
             refreshEmbeddedPluginPane()
         }
         .onChange(of: viewModel.isRunning) { _, _ in
+            updateTelemetryPublishing()
             refreshEmbeddedPluginPane()
         }
         .onDisappear {
+            viewModel.setTelemetryPublishingEnabled(false)
             viewModel.clearEmbeddedPluginEditor()
         }
         .fileImporter(
@@ -1308,6 +1315,11 @@ struct MultiTrackView: View {
         }
 
         viewModel.showEmbeddedPluginEditor(for: track.id, pluginID: plugin.id)
+    }
+
+    private func updateTelemetryPublishing() {
+        let shouldPublishTelemetry = viewModel.isRunning && selectedTab == .show && showsDiagnostics
+        viewModel.setTelemetryPublishingEnabled(shouldPublishTelemetry)
     }
 
     private func trimmedTelemetry(_ value: String, prefix: String) -> String {

@@ -32,6 +32,7 @@ final class MultiTrackViewModel: ObservableObject {
     private var latencyBufferSettings = MultiTrackLatencyBufferSettings(hardwareBufferSize: 128)
     private var audioDropoutMonitorTask: Task<Void, Never>?
     private var currentSessionURL: URL?
+    private var telemetryPublishingEnabled = false
 
     deinit {
         audioDropoutMonitorTask?.cancel()
@@ -397,9 +398,7 @@ final class MultiTrackViewModel: ObservableObject {
             clearEmbeddedPluginEditor()
             audioDropoutMonitorTask?.cancel()
             audioDropoutMonitorTask = nil
-            audioDropoutCount = controller.audioDropoutCount()
-            droppedFrameCount = controller.droppedFrameCount()
-            updateTelemetry()
+            refreshPublishedTelemetry()
             captureLivePluginStates()
             controller.stop()
             isRunning = false
@@ -429,16 +428,13 @@ final class MultiTrackViewModel: ObservableObject {
                 let configuration = try self.makeConfiguration()
                 try self.controller.start(configuration: configuration)
                 self.isRunning = true
-                self.audioDropoutCount = self.controller.audioDropoutCount()
-                self.droppedFrameCount = self.controller.droppedFrameCount()
+                self.refreshPublishedTelemetry()
                 self.startAudioDropoutMonitoring()
                 self.statusMessage = "Running."
             } catch {
                 self.audioDropoutMonitorTask?.cancel()
                 self.audioDropoutMonitorTask = nil
-                self.audioDropoutCount = self.controller.audioDropoutCount()
-                self.droppedFrameCount = self.controller.droppedFrameCount()
-                self.updateTelemetry()
+                self.refreshPublishedTelemetry()
                 self.clearEmbeddedPluginEditor()
                 self.controller.stop()
                 self.isRunning = false
@@ -740,10 +736,15 @@ final class MultiTrackViewModel: ObservableObject {
 
     func resetDropoutCounters() {
         controller.resetDropoutCounters()
-        audioDropoutCount = controller.audioDropoutCount()
-        droppedFrameCount = controller.droppedFrameCount()
-        updateTelemetry()
+        refreshPublishedTelemetry()
     }
+
+    func setTelemetryPublishingEnabled(_ enabled: Bool) {
+        telemetryPublishingEnabled = enabled
+        guard enabled else { return }
+        refreshPublishedTelemetry()
+    }
+
     private func requestMicrophoneAccessIfNeeded() async -> Bool {
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
         case .authorized:
@@ -762,28 +763,59 @@ final class MultiTrackViewModel: ObservableObject {
     private func startAudioDropoutMonitoring() {
         audioDropoutMonitorTask?.cancel()
         audioDropoutMonitorTask = nil
-        audioDropoutMonitorTask = Task { [weak self] in
+        let controller = self.controller
+        audioDropoutMonitorTask = Task.detached(priority: .utility) { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
-                if let runtimeStatus = self.controller.runtimeStatusMessage() {
-                    self.audioDropoutCount = self.controller.audioDropoutCount()
-                    self.droppedFrameCount = self.controller.droppedFrameCount()
-                    self.updateTelemetry()
-                    self.controller.stop()
-                    self.isRunning = false
-                    self.statusMessage = runtimeStatus
+
+                let runtimeStatus = controller.runtimeStatusMessage()
+                let dropoutCount = controller.audioDropoutCount()
+                let droppedFrameCount = controller.droppedFrameCount()
+                let telemetry = controller.telemetrySnapshot()
+
+                if let runtimeStatus {
+                    await MainActor.run {
+                        self.applyTelemetrySnapshot(
+                            dropoutCount: dropoutCount,
+                            droppedFrameCount: droppedFrameCount,
+                            telemetry: telemetry
+                        )
+                        controller.stop()
+                        self.isRunning = false
+                        self.statusMessage = runtimeStatus
+                    }
                     return
                 }
-                self.audioDropoutCount = self.controller.audioDropoutCount()
-                self.droppedFrameCount = self.controller.droppedFrameCount()
-                self.updateTelemetry()
+
+                await MainActor.run {
+                    guard self.telemetryPublishingEnabled else { return }
+                    self.applyTelemetrySnapshot(
+                        dropoutCount: dropoutCount,
+                        droppedFrameCount: droppedFrameCount,
+                        telemetry: telemetry
+                    )
+                }
+
                 try? await Task.sleep(for: .milliseconds(250))
             }
         }
     }
 
-    private func updateTelemetry() {
-        let telemetry = controller.telemetrySnapshot()
+    private func refreshPublishedTelemetry() {
+        applyTelemetrySnapshot(
+            dropoutCount: controller.audioDropoutCount(),
+            droppedFrameCount: controller.droppedFrameCount(),
+            telemetry: controller.telemetrySnapshot()
+        )
+    }
+
+    private func applyTelemetrySnapshot(
+        dropoutCount: UInt64,
+        droppedFrameCount: UInt64,
+        telemetry: AudioEngineTelemetrySnapshot
+    ) {
+        audioDropoutCount = dropoutCount
+        self.droppedFrameCount = droppedFrameCount
         telemetrySummary = "Callbacks in/out: \(telemetry.peakInputCallbackFrames) / \(telemetry.peakOutputCallbackFrames) frames"
         ringTelemetrySummary = "Peak ring occupancy in/out: \(telemetryOccupancyString(telemetry.peakInputRingOccupancyFrames, capacity: telemetry.inputRingCapacityFrames)) / \(telemetryOccupancyString(telemetry.peakOutputRingOccupancyFrames, capacity: telemetry.outputRingCapacityFrames))"
         workerTelemetrySummary = "Workers: \(telemetry.workerShardCount) shards, track/shard render avg \(telemetry.averageTrackRenderDurationMicros) / \(telemetry.averageShardRenderDurationMicros) us, peak \(telemetry.peakTrackRenderDurationMicros) / \(telemetry.peakShardRenderDurationMicros) us, util \(telemetry.peakShardUtilizationPercent)%, wakeups \(telemetry.peakWorkerWakeupsPerSecond)/s"
