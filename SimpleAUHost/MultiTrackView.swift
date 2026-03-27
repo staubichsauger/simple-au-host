@@ -224,8 +224,6 @@ struct MultiTrackView: View {
             VStack(alignment: .leading, spacing: 18) {
                 sessionOverviewPanel
                 bufferingPanel
-                trackToolbarPanel
-                setupTrackGrid
             }
             .padding(.bottom, 8)
         }
