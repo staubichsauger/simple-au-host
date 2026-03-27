@@ -95,7 +95,7 @@ struct MultiTrackView: View {
                 rackTabActions
             }
         }
-        .padding(6)
+        .padding(4)
         .background(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(Color.black.opacity(0.28))
@@ -204,12 +204,8 @@ struct MultiTrackView: View {
     }
 
     private var rackWorkspace: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                rackStripBoard
-            }
-            .padding(.bottom, 8)
-        }
+        rackStripBoard
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private var showWorkspace: some View {
@@ -236,17 +232,38 @@ struct MultiTrackView: View {
     }
 
     private var rackStripBoard: some View {
-        StudioPanel("") {
-            ScrollView(.horizontal, showsIndicators: true) {
-                HStack(alignment: .top, spacing: 14) {
-                    ForEach($viewModel.tracks) { $track in
-                        rackStrip($track)
-                            .frame(width: 218)
-                    }
+        ScrollView(.horizontal, showsIndicators: true) {
+            HStack(alignment: .top, spacing: 12) {
+                ForEach($viewModel.tracks) { $track in
+                    rackStrip($track)
+                        .frame(width: 218)
                 }
-                .padding(.vertical, 4)
+
+                rackAddTrackStrip
+                    .frame(width: 218)
             }
+            .frame(maxHeight: .infinity, alignment: .topLeading)
+            .padding(.horizontal, 2)
+            .padding(.vertical, 2)
         }
+    }
+
+    private var rackAddTrackStrip: some View {
+        VStack(spacing: 12) {
+            addMonoTrackButton
+            addStereoTrackButton
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color.black.opacity(0.16))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color.white.opacity(0.07), lineWidth: 1)
+        )
     }
 
     private var selectedTrackCount: Int {
@@ -386,7 +403,7 @@ struct MultiTrackView: View {
                     } label: {
                         Image(systemName: "arrow.up.right.square")
                             .font(.system(size: 13, weight: .bold))
-                            .frame(width: 30, height: 30)
+                            .frame(width: 18, height: 18)
                     }
                     .buttonStyle(StudioSecondaryButtonStyle())
                     .disabled(!viewModel.canOpenPluginEditor(for: plugin.wrappedValue))
@@ -394,7 +411,7 @@ struct MultiTrackView: View {
             }
         }
         .padding(10)
-        .frame(maxWidth: .infinity, minHeight: plugin.wrappedValue.pluginID == nil ? 96 : 132, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(isSelected ? Color(red: 0.06, green: 0.18, blue: 0.24) : Color.white.opacity(0.035))

@@ -80,26 +80,28 @@ struct StudioShell<Content: View, Toolbar: View>: View {
         ZStack {
             StudioBackdrop()
 
-            VStack(alignment: .leading, spacing: 24) {
-                HStack(alignment: .top, spacing: 20) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(eyebrow.uppercased())
-                            .font(.system(size: 11, weight: .bold, design: .rounded))
-                            .tracking(2)
-                            .foregroundStyle(StudioTheme.accent)
+            VStack(alignment: .leading, spacing: hasHeader ? 24 : 14) {
+                if hasHeader {
+                    HStack(alignment: .top, spacing: 20) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(eyebrow.uppercased())
+                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .tracking(2)
+                                .foregroundStyle(StudioTheme.accent)
 
-                        Text(title)
-                            .font(.system(size: 34, weight: .black, design: .rounded))
-                            .foregroundStyle(StudioTheme.strongText)
+                            Text(title)
+                                .font(.system(size: 34, weight: .black, design: .rounded))
+                                .foregroundStyle(StudioTheme.strongText)
 
-                        Text(subtitle)
-                            .font(.system(size: 14, weight: .medium, design: .rounded))
-                            .foregroundStyle(StudioTheme.mutedText)
-                            .fixedSize(horizontal: false, vertical: true)
+                            Text(subtitle)
+                                .font(.system(size: 14, weight: .medium, design: .rounded))
+                                .foregroundStyle(StudioTheme.mutedText)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+
+                        Spacer(minLength: 0)
+                        toolbar
                     }
-
-                    Spacer(minLength: 0)
-                    toolbar
                 }
 
                 content
@@ -107,6 +109,10 @@ struct StudioShell<Content: View, Toolbar: View>: View {
             .padding(28)
         }
         .preferredColorScheme(.dark)
+    }
+
+    private var hasHeader: Bool {
+        !eyebrow.isEmpty || !title.isEmpty || !subtitle.isEmpty
     }
 }
 

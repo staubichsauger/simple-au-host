@@ -11,6 +11,7 @@ APP_BUNDLE := $(APP_NAME).app
 BUILT_APP := $(DERIVED_DATA)/Build/Products/$(CONFIGURATION)/$(APP_BUNDLE)
 STAGED_APP := $(DIST_DIR)/$(APP_BUNDLE)
 PACKAGE := $(DIST_DIR)/$(APP_NAME)-$(CONFIGURATION).zip
+LSREGISTER := /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
 
 .PHONY: help build bundle package run clean
 
@@ -43,6 +44,8 @@ package: bundle
 
 run: build
 	@pkill -x "$(APP_NAME)" >/dev/null 2>&1 || true
+	@touch "$(BUILT_APP)" "$(BUILT_APP)/Contents/Info.plist"
+	@"$(LSREGISTER)" -f "$(BUILT_APP)" >/dev/null 2>&1 || true
 	open -n "$(BUILT_APP)"
 
 clean:
