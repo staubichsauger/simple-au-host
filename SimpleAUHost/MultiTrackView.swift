@@ -9,6 +9,13 @@ private enum MultiTrackWorkspaceTab: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+private enum RackInspectorMode: String, CaseIterable, Identifiable {
+    case plugin = "Plugin"
+    case tuning = "Tuning"
+
+    var id: String { rawValue }
+}
+
 private struct PendingSessionLoadRequest {
     let url: URL
     let sessionName: String
@@ -19,6 +26,7 @@ struct MultiTrackView: View {
     @State private var selectedTab: MultiTrackWorkspaceTab = .rack
     @State private var showsDiagnostics = true
     @State private var showsEmbeddedPluginPane = true
+    @State private var rackInspectorMode: RackInspectorMode = .plugin
     @State private var selectedRackTrackID: UUID?
     @State private var selectedRackPluginID: UUID?
     @State private var pendingSessionLoadRequest: PendingSessionLoadRequest?
@@ -58,6 +66,9 @@ struct MultiTrackView: View {
         }
         .onChange(of: selectedTab) { _, _ in
             updateTelemetryPublishing()
+            refreshEmbeddedPluginPane()
+        }
+        .onChange(of: rackInspectorMode) { _, _ in
             refreshEmbeddedPluginPane()
         }
         .onChange(of: showsDiagnostics) { _, _ in
@@ -161,7 +172,7 @@ struct MultiTrackView: View {
             Button {
                 showsEmbeddedPluginPane.toggle()
             } label: {
-                Label(showsEmbeddedPluginPane ? "Hide Editor" : "Show Editor", systemImage: showsEmbeddedPluginPane ? "sidebar.right" : "rectangle.split.2x1")
+                Label(showsEmbeddedPluginPane ? "Hide Panel" : "Show Panel", systemImage: showsEmbeddedPluginPane ? "sidebar.right" : "rectangle.split.2x1")
             }
             .buttonStyle(StudioSecondaryButtonStyle())
 
@@ -228,8 +239,8 @@ struct MultiTrackView: View {
                 .frame(minWidth: 260, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
             if showsEmbeddedPluginPane {
-                embeddedPluginPane
-                    .frame(minWidth: 520, idealWidth: 860, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                rackInspectorPane
+                    .frame(minWidth: 460, idealWidth: 640, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
         }
     }
@@ -291,15 +302,15 @@ struct MultiTrackView: View {
         )
     }
 
-    private var embeddedPluginPane: some View {
+    private var rackInspectorPane: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(selectedTrack?.name ?? "Plugin View")
+                    Text(rackInspectorTitle)
                         .font(.system(size: 18, weight: .black, design: .rounded))
                         .foregroundStyle(StudioTheme.strongText)
 
-                    Text(selectedPluginInfo?.name ?? "Select an insert to inspect its editor.")
+                    Text(rackInspectorSubtitle)
                         .font(.system(size: 12, weight: .medium, design: .rounded))
                         .foregroundStyle(StudioTheme.mutedText)
                         .lineLimit(2)
@@ -307,14 +318,36 @@ struct MultiTrackView: View {
 
                 Spacer(minLength: 0)
 
-                Button {
-                    viewModel.popOutEmbeddedPluginEditor()
-                } label: {
-                    Image(systemName: "arrow.up.right.square")
-                        .frame(width: 16, height: 16)
+                HStack(spacing: 6) {
+                    ForEach(RackInspectorMode.allCases) { mode in
+                        Button {
+                            rackInspectorMode = mode
+                        } label: {
+                            Text(mode.rawValue)
+                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .tracking(1.2)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(
+                                    Capsule()
+                                        .fill(rackInspectorMode == mode ? Color.white.opacity(0.10) : Color.white.opacity(0.04))
+                                )
+                                .foregroundStyle(rackInspectorMode == mode ? StudioTheme.accent : StudioTheme.mutedText)
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
-                .buttonStyle(StudioSecondaryButtonStyle())
-                .disabled(viewModel.embeddedPluginEditorSession == nil)
+
+                if rackInspectorMode == .plugin {
+                    Button {
+                        viewModel.popOutEmbeddedPluginEditor()
+                    } label: {
+                        Image(systemName: "arrow.up.right.square")
+                            .frame(width: 16, height: 16)
+                    }
+                    .buttonStyle(StudioSecondaryButtonStyle())
+                    .disabled(viewModel.embeddedPluginEditorSession == nil)
+                }
 
                 Button {
                     showsEmbeddedPluginPane = false
@@ -325,7 +358,7 @@ struct MultiTrackView: View {
                 .buttonStyle(StudioSecondaryButtonStyle())
             }
 
-            embeddedPluginBody
+            rackInspectorBody
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
         .padding(16)
@@ -343,6 +376,133 @@ struct MultiTrackView: View {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .stroke(StudioTheme.panelStroke, lineWidth: 1)
         )
+    }
+
+    private var rackInspectorTitle: String {
+        switch rackInspectorMode {
+        case .plugin:
+            selectedTrack?.name ?? "Plugin View"
+        case .tuning:
+            "Waves Tune Control"
+        }
+    }
+
+    private var rackInspectorSubtitle: String {
+        switch rackInspectorMode {
+        case .plugin:
+            selectedPluginInfo?.name ?? "Select an insert to inspect its editor."
+        case .tuning:
+            "Switch here for compact global key staging and bypass control."
+        }
+    }
+
+    @ViewBuilder
+    private var rackInspectorBody: some View {
+        switch rackInspectorMode {
+        case .plugin:
+            embeddedPluginBody
+        case .tuning:
+            tuningInspectorBody
+        }
+    }
+
+    private var tuningInspectorBody: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 10) {
+                    compactMetricCard(
+                        title: "Instances",
+                        value: "\(viewModel.configuredWavesTuneRealtimeInsertCount)",
+                        tint: viewModel.configuredWavesTuneRealtimeInsertCount > 0 ? StudioTheme.accent : StudioTheme.mutedText
+                    )
+                    compactMetricCard(title: "Applied", value: viewModel.appliedWavesTuneKeyTitle)
+                    compactMetricCard(
+                        title: "State",
+                        value: viewModel.wavesTuneState.isEnabled ? "Active" : "Bypassed",
+                        tint: viewModel.wavesTuneState.isEnabled ? StudioTheme.accent : StudioTheme.warning
+                    )
+                }
+
+                Toggle("Tune Active", isOn: Binding(
+                    get: { viewModel.wavesTuneState.isEnabled },
+                    set: { viewModel.setWavesTuneEnabled($0) }
+                ))
+                .toggleStyle(.switch)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    StudioFieldLabel("Scale")
+                    Picker("Scale", selection: Binding(
+                        get: { viewModel.wavesTuneState.stagedKey.scaleMode },
+                        set: { viewModel.setWavesTuneScaleMode($0) }
+                    )) {
+                        ForEach(WavesTuneScaleMode.allCases) { scaleMode in
+                            Text(scaleMode.title).tag(scaleMode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    StudioFieldLabel("Root")
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
+                        ForEach(WavesTuneNoteLetter.allCases) { noteLetter in
+                            tuningChoiceButton(
+                                title: noteLetter.title,
+                                isSelected: viewModel.wavesTuneState.stagedKey.noteLetter == noteLetter
+                            ) {
+                                viewModel.setWavesTuneNoteLetter(noteLetter)
+                            }
+                        }
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    StudioFieldLabel("Accidental")
+                    HStack(spacing: 8) {
+                        ForEach(WavesTuneAccidental.allCases) { accidental in
+                            let isAllowed = WavesTuneKeySelection.supports(
+                                accidental: accidental,
+                                for: viewModel.wavesTuneState.stagedKey.noteLetter
+                            )
+                            tuningChoiceButton(
+                                title: accidental.title,
+                                isSelected: viewModel.wavesTuneState.stagedKey.accidental == accidental,
+                                isEnabled: isAllowed
+                            ) {
+                                viewModel.setWavesTuneAccidental(accidental)
+                            }
+                        }
+                    }
+                }
+
+                if viewModel.configuredWavesTuneRealtimeInsertCount == 0 {
+                    Text("Add a Waves Tune Real-Time mono or stereo insert to any enabled track to use these controls.")
+                        .font(.caption)
+                        .foregroundStyle(StudioTheme.mutedText)
+                }
+
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Staged")
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .tracking(1.6)
+                            .foregroundStyle(StudioTheme.mutedText)
+                        Text(viewModel.stagedWavesTuneKeyTitle)
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                            .foregroundStyle(StudioTheme.strongText)
+                    }
+
+                    Spacer()
+
+                    Button("Apply") {
+                        viewModel.applyStagedWavesTuneKey()
+                    }
+                    .buttonStyle(StudioPrimaryButtonStyle())
+                    .disabled(!viewModel.canApplyStagedWavesTuneKey)
+                }
+            }
+            .padding(.bottom, 4)
+        }
     }
 
     @ViewBuilder
@@ -1341,6 +1501,59 @@ struct MultiTrackView: View {
         }
     }
 
+    private func tuningChoiceButton(
+        title: String,
+        isSelected: Bool,
+        isEnabled: Bool = true,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(isSelected ? StudioTheme.accent.opacity(0.22) : Color.white.opacity(0.05))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(isSelected ? StudioTheme.accent.opacity(0.75) : Color.white.opacity(0.08), lineWidth: 1)
+                )
+                .foregroundStyle(isSelected ? StudioTheme.accent : StudioTheme.strongText)
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1 : 0.35)
+    }
+
+    private func compactMetricCard(
+        title: String,
+        value: String,
+        tint: Color = StudioTheme.strongText
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title.uppercased())
+                .font(.system(size: 9, weight: .bold, design: .rounded))
+                .tracking(1.4)
+                .foregroundStyle(StudioTheme.mutedText)
+            Text(value)
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .foregroundStyle(tint)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white.opacity(0.04))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.white.opacity(0.05), lineWidth: 1)
+        )
+    }
+
     private func selectedTrackRoutingSummary(_ track: MultiTrackTrackConfiguration) -> some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
             StudioMetricTile("Input", value: "Channel \(track.inputStartChannel)")
@@ -1419,7 +1632,7 @@ struct MultiTrackView: View {
     }
 
     private func refreshEmbeddedPluginPane() {
-        guard selectedTab == .rack, showsEmbeddedPluginPane else {
+        guard selectedTab == .rack, showsEmbeddedPluginPane, rackInspectorMode == .plugin else {
             viewModel.clearEmbeddedPluginEditor()
             return
         }

@@ -34,6 +34,7 @@ final class MultiTrackViewModel: ObservableObject {
     @Published private(set) var sessionWarnings: [String] = []
     @Published private(set) var managedSessions: [ManagedSessionFile] = []
     @Published private(set) var hasUnsavedChanges = false
+    @Published var wavesTuneState = MultiTrackWavesTuneState()
 
     private let catalog = AudioHostController()
     private let controller = MultiTrackAudioHostController()
@@ -134,6 +135,33 @@ final class MultiTrackViewModel: ObservableObject {
         .compactMap { $0 }
     }
 
+    var configuredWavesTuneRealtimeInsertCount: Int {
+        tracks
+            .filter(\.isEnabled)
+            .reduce(into: 0) { count, track in
+                for insert in track.plugins {
+                    guard let pluginID = insert.pluginID,
+                          let plugin = plugins.first(where: { $0.id == pluginID }),
+                          isWavesTuneRealtimePlugin(plugin) else {
+                        continue
+                    }
+                    count += 1
+                }
+            }
+    }
+
+    var stagedWavesTuneKeyTitle: String {
+        wavesTuneState.stagedKey.title
+    }
+
+    var appliedWavesTuneKeyTitle: String {
+        wavesTuneState.appliedKey.title
+    }
+
+    var canApplyStagedWavesTuneKey: Bool {
+        wavesTuneState.stagedKey.normalized != wavesTuneState.appliedKey.normalized
+    }
+
     func load() {
         do {
             let existingHasUnsavedChanges = hasUnsavedChanges
@@ -159,6 +187,7 @@ final class MultiTrackViewModel: ObservableObject {
 
             sanitizeTracks()
             sanitizeLatencyBufferSettings()
+            wavesTuneState.normalize()
             updateSessionWarnings()
             try refreshManagedSessions()
             updateSessionNameIfNeeded()
@@ -192,6 +221,7 @@ final class MultiTrackViewModel: ObservableObject {
         broadcastInternalBufferText = String(latencyBufferSettings.broadcastFrames)
         tracks = []
         addTrack(layout: .mono)
+        wavesTuneState = MultiTrackWavesTuneState()
         currentSessionURL = nil
         currentSessionName = "Untitled Session"
         sessionWarnings = []
@@ -613,6 +643,63 @@ final class MultiTrackViewModel: ObservableObject {
         return "\(track.latencyClass.title): \(internalFrames) internal frames"
     }
 
+    func setWavesTuneEnabled(_ isEnabled: Bool) {
+        wavesTuneState.isEnabled = isEnabled
+
+        guard isRunning else {
+            statusMessage = configuredWavesTuneRealtimeInsertCount > 0
+                ? "Waves Tune will start \(isEnabled ? "enabled" : "bypassed")."
+                : "No Waves Tune Real-Time inserts are configured."
+            return
+        }
+
+        do {
+            let affectedInstances = try controller.setWavesTuneRealtimeBypassed(!isEnabled)
+            statusMessage = affectedInstances > 0
+                ? "Set Waves Tune \(isEnabled ? "active" : "bypassed") on \(affectedInstances) instance(s)."
+                : "No running Waves Tune Real-Time instances were found."
+        } catch {
+            statusMessage = error.localizedDescription
+        }
+    }
+
+    func setWavesTuneScaleMode(_ scaleMode: WavesTuneScaleMode) {
+        wavesTuneState.stagedKey.scaleMode = scaleMode
+    }
+
+    func setWavesTuneNoteLetter(_ noteLetter: WavesTuneNoteLetter) {
+        wavesTuneState.stagedKey.noteLetter = noteLetter
+        wavesTuneState.stagedKey.normalize()
+    }
+
+    func setWavesTuneAccidental(_ accidental: WavesTuneAccidental) {
+        guard WavesTuneKeySelection.supports(accidental: accidental, for: wavesTuneState.stagedKey.noteLetter) else {
+            return
+        }
+        wavesTuneState.stagedKey.accidental = accidental
+    }
+
+    func applyStagedWavesTuneKey() {
+        wavesTuneState.stagedKey = wavesTuneState.stagedKey.normalized
+        wavesTuneState.appliedKey = wavesTuneState.stagedKey
+
+        guard isRunning else {
+            statusMessage = configuredWavesTuneRealtimeInsertCount > 0
+                ? "Saved Waves Tune key \(wavesTuneState.appliedKey.title). Start the engine to apply it."
+                : "No Waves Tune Real-Time inserts are configured."
+            return
+        }
+
+        do {
+            let affectedInstances = try controller.applyWavesTuneRealtimeKeySelection(wavesTuneState.appliedKey)
+            statusMessage = affectedInstances > 0
+                ? "Applied Waves Tune key \(wavesTuneState.appliedKey.title) to \(affectedInstances) instance(s)."
+                : "No running Waves Tune Real-Time instances were found."
+        } catch {
+            statusMessage = error.localizedDescription
+        }
+    }
+
     func applyCustomBufferSize() {
         let trimmed = customBufferSizeText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let value = Int(trimmed) else {
@@ -681,6 +768,8 @@ final class MultiTrackViewModel: ObservableObject {
             do {
                 let configuration = try self.makeConfiguration()
                 try self.controller.start(configuration: configuration)
+                _ = try self.controller.setWavesTuneRealtimeBypassed(!self.wavesTuneState.isEnabled)
+                _ = try self.controller.applyWavesTuneRealtimeKeySelection(self.wavesTuneState.appliedKey.normalized)
                 self.isRunning = true
                 self.refreshPublishedTelemetry()
                 self.startAudioDropoutMonitoring()
@@ -725,6 +814,8 @@ final class MultiTrackViewModel: ObservableObject {
 
         currentSessionURL = sourceURL
         currentSessionName = sourceURL.map(sessionDisplayName(for:)) ?? session.name
+        wavesTuneState = session.wavesTuneState ?? MultiTrackWavesTuneState()
+        wavesTuneState.normalize()
 
         sanitizeTracks()
         sanitizeLatencyBufferSettings()
@@ -970,7 +1061,8 @@ final class MultiTrackViewModel: ObservableObject {
             outputDeviceID: selectedOutputDeviceID,
             bufferSize: selectedBufferSize,
             latencyBufferSettings: latencyBufferSettings,
-            tracks: tracks.map(sanitizedTrack)
+            tracks: tracks.map(sanitizedTrack),
+            wavesTuneState: wavesTuneState.normalized
         )
     }
 
@@ -1134,6 +1226,13 @@ final class MultiTrackViewModel: ObservableObject {
                 self?.markSessionAsEdited()
             }
             .store(in: &persistenceCancellables)
+
+        $wavesTuneState
+            .dropFirst()
+            .sink { [weak self] _ in
+                self?.markSessionAsEdited()
+            }
+            .store(in: &persistenceCancellables)
     }
 
     private func markSessionAsEdited() {
@@ -1163,5 +1262,9 @@ final class MultiTrackViewModel: ObservableObject {
             return url
         }
         return url.appendingPathExtension(pathExtension)
+    }
+
+    private func isWavesTuneRealtimePlugin(_ plugin: AudioUnitPluginInfo) -> Bool {
+        plugin.name.localizedCaseInsensitiveContains("Waves Tune Real-Time")
     }
 }

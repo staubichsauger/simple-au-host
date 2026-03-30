@@ -116,6 +116,158 @@ enum TrackLatencyClass: String, CaseIterable, Codable, Identifiable {
     }
 }
 
+enum WavesTuneScaleMode: String, CaseIterable, Codable, Identifiable {
+    case chromatic
+    case major
+    case minor
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .chromatic: "Chromatic"
+        case .major: "Major"
+        case .minor: "Minor"
+        }
+    }
+
+    var pluginValue: Int {
+        switch self {
+        case .chromatic: 1
+        case .major: 2
+        case .minor: 3
+        }
+    }
+}
+
+enum WavesTuneNoteLetter: String, CaseIterable, Codable, Identifiable {
+    case c
+    case d
+    case e
+    case f
+    case g
+    case a
+    case b
+
+    var id: String { rawValue }
+
+    var title: String { rawValue.uppercased() }
+}
+
+enum WavesTuneAccidental: String, CaseIterable, Codable, Identifiable {
+    case flat
+    case natural
+    case sharp
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .flat: "b"
+        case .natural: "Natural"
+        case .sharp: "#"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .flat: "b"
+        case .natural: ""
+        case .sharp: "#"
+        }
+    }
+}
+
+struct WavesTuneKeySelection: Codable, Hashable {
+    var scaleMode: WavesTuneScaleMode = .chromatic
+    var noteLetter: WavesTuneNoteLetter = .c
+    var accidental: WavesTuneAccidental = .natural
+
+    var title: String {
+        if scaleMode == .chromatic {
+            return scaleMode.title
+        }
+        return "\(rootTitle) \(scaleMode.title)"
+    }
+
+    var rootTitle: String {
+        noteLetter.title + accidental.symbol
+    }
+
+    var pluginScaleTypeValue: Int {
+        scaleMode.pluginValue
+    }
+
+    var pluginScaleRootValue: Int {
+        return switch (noteLetter, accidental) {
+        case (.c, .natural): 0
+        case (.c, .sharp): 1
+        case (.d, .flat): 2
+        case (.d, .natural): 3
+        case (.d, .sharp): 4
+        case (.e, .flat): 5
+        case (.e, .natural): 6
+        case (.f, .natural): 7
+        case (.f, .sharp): 8
+        case (.g, .flat): 9
+        case (.g, .natural): 10
+        case (.g, .sharp): 11
+        case (.a, .flat): 12
+        case (.a, .natural): 13
+        case (.a, .sharp): 14
+        case (.b, .flat): 15
+        case (.b, .natural): 16
+        case (.c, .flat), (.e, .sharp), (.f, .flat), (.b, .sharp):
+            normalized.pluginScaleRootValue
+        }
+    }
+
+    var normalized: WavesTuneKeySelection {
+        var selection = self
+        selection.normalize()
+        return selection
+    }
+
+    mutating func normalize() {
+        if !Self.supports(accidental: accidental, for: noteLetter) {
+            accidental = .natural
+        }
+    }
+
+    static func supports(
+        accidental: WavesTuneAccidental,
+        for noteLetter: WavesTuneNoteLetter
+    ) -> Bool {
+        switch (noteLetter, accidental) {
+        case (_, .natural):
+            true
+        case (.c, .sharp), (.d, .sharp), (.f, .sharp), (.g, .sharp), (.a, .sharp):
+            true
+        case (.d, .flat), (.e, .flat), (.g, .flat), (.a, .flat), (.b, .flat):
+            true
+        default:
+            false
+        }
+    }
+}
+
+struct MultiTrackWavesTuneState: Codable, Hashable {
+    var isEnabled = true
+    var stagedKey = WavesTuneKeySelection()
+    var appliedKey = WavesTuneKeySelection()
+
+    var normalized: MultiTrackWavesTuneState {
+        var state = self
+        state.normalize()
+        return state
+    }
+
+    mutating func normalize() {
+        stagedKey = stagedKey.normalized
+        appliedKey = appliedKey.normalized
+    }
+}
+
 struct MultiTrackTrackConfiguration: Identifiable, Codable, Hashable {
     struct PluginInsert: Identifiable, Codable, Hashable {
         let id: UUID
@@ -195,6 +347,7 @@ struct MultiTrackSessionFile: Codable {
     var bufferSize: Int
     var latencyBufferSettings: MultiTrackLatencyBufferSettings
     var tracks: [MultiTrackTrackConfiguration]
+    var wavesTuneState: MultiTrackWavesTuneState?
 }
 
 struct MultiTrackChainPresetFile: Codable {

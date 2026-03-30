@@ -14,6 +14,15 @@ private protocol AUCocoaUIViewFactory: NSObjectProtocol {
     func uiViewForAudioUnit(_ audioUnit: AudioUnit, withSize size: NSSize) -> NSView?
 }
 
+private enum WavesTuneRealtimeParameterMap {
+    static let scaleTypeParameterID: AudioUnitParameterID = 10
+    static let scaleRootParameterID: AudioUnitParameterID = 11
+
+    static func matches(_ plugin: AudioUnitPluginInfo) -> Bool {
+        plugin.name.localizedCaseInsensitiveContains("Waves Tune Real-Time")
+    }
+}
+
 final class MultiTrackAudioHostController: @unchecked Sendable {
     @MainActor
     final class HostedPluginEditorSession {
@@ -611,6 +620,51 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             return failures
         }
 
+        func setWavesTuneRealtimeBypassed(_ isBypassed: Bool) throws -> Int {
+            try applyToWavesTuneRealtimeUnits { plugin in
+                var bypassedValue: UInt32 = isBypassed ? 1 : 0
+                try checkStatus(
+                    AudioUnitSetProperty(
+                        plugin.unit,
+                        kAudioUnitProperty_BypassEffect,
+                        kAudioUnitScope_Global,
+                        0,
+                        &bypassedValue,
+                        UInt32(MemoryLayout<UInt32>.size)
+                    ),
+                    "Failed to update Waves Tune bypass"
+                )
+            }
+        }
+
+        func applyWavesTuneRealtimeKeySelection(_ selection: WavesTuneKeySelection) throws -> Int {
+            let normalizedSelection = selection.normalized
+            return try applyToWavesTuneRealtimeUnits { plugin in
+                try checkStatus(
+                    AudioUnitSetParameter(
+                        plugin.unit,
+                        WavesTuneRealtimeParameterMap.scaleTypeParameterID,
+                        kAudioUnitScope_Global,
+                        0,
+                        AudioUnitParameterValue(normalizedSelection.pluginScaleTypeValue),
+                        0
+                    ),
+                    "Failed to update the Waves Tune scale type"
+                )
+                try checkStatus(
+                    AudioUnitSetParameter(
+                        plugin.unit,
+                        WavesTuneRealtimeParameterMap.scaleRootParameterID,
+                        kAudioUnitScope_Global,
+                        0,
+                        AudioUnitParameterValue(normalizedSelection.pluginScaleRootValue),
+                        0
+                    ),
+                    "Failed to update the Waves Tune scale root"
+                )
+            }
+        }
+
         private func serializedPluginState(for unit: AudioUnit) -> Data? {
             var classInfo: CFPropertyList?
             var propertySize = UInt32(MemoryLayout<CFPropertyList?>.size)
@@ -649,6 +703,19 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
                 ),
                 "Failed to restore saved Audio Unit state"
             )
+        }
+
+        private func applyToWavesTuneRealtimeUnits(
+            _ body: (PluginRuntime) throws -> Void
+        ) throws -> Int {
+            var affectedUnits = 0
+
+            for plugin in plugins where WavesTuneRealtimeParameterMap.matches(plugin.plugin) {
+                try body(plugin)
+                affectedUnits += 1
+            }
+
+            return affectedUnits
         }
 
         @MainActor
@@ -1510,6 +1577,27 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             throw AudioHostError("This track is not loaded on the running engine.")
         }
         return runtime.applySerializedPluginStates(statesByInsertID)
+    }
+
+    func setWavesTuneRealtimeBypassed(_ isBypassed: Bool) throws -> Int {
+        guard configuration != nil else {
+            throw AudioHostError("Start the engine before changing Waves Tune bypass.")
+        }
+
+        return try trackRuntimes.reduce(into: 0) { count, runtime in
+            count += try runtime.setWavesTuneRealtimeBypassed(isBypassed)
+        }
+    }
+
+    func applyWavesTuneRealtimeKeySelection(_ selection: WavesTuneKeySelection) throws -> Int {
+        guard configuration != nil else {
+            throw AudioHostError("Start the engine before applying Waves Tune settings.")
+        }
+
+        let normalizedSelection = selection.normalized
+        return try trackRuntimes.reduce(into: 0) { count, runtime in
+            count += try runtime.applyWavesTuneRealtimeKeySelection(normalizedSelection)
+        }
     }
 
     func stop() {
