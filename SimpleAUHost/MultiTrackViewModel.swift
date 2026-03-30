@@ -4,6 +4,11 @@ import SwiftUI
 
 @MainActor
 final class MultiTrackViewModel: ObservableObject {
+    private struct CopiedTrackProcessing {
+        let sourceTrackName: String
+        let inserts: [MultiTrackTrackConfiguration.PluginInsert]
+    }
+
     @Published private(set) var inputDevices: [AudioDeviceInfo] = []
     @Published private(set) var outputDevices: [AudioDeviceInfo] = []
     @Published private(set) var plugins: [AudioUnitPluginInfo] = []
@@ -36,6 +41,7 @@ final class MultiTrackViewModel: ObservableObject {
     private var audioDropoutMonitorTask: Task<Void, Never>?
     private var currentSessionURL: URL?
     private var telemetryPublishingEnabled = false
+    private var copiedTrackProcessing: CopiedTrackProcessing?
     private var persistenceCancellables = Set<AnyCancellable>()
     private var isApplyingSessionState = false
 
@@ -371,6 +377,48 @@ final class MultiTrackViewModel: ObservableObject {
         guard let index = tracks.firstIndex(where: { $0.id == id }) else { return }
         tracks[index] = sanitizedTrack(tracks[index])
         updateSessionWarnings()
+    }
+
+    func canPasteTrackProcessing(to trackID: UUID) -> Bool {
+        copiedTrackProcessing != nil && !isRunning && tracks.contains(where: { $0.id == trackID })
+    }
+
+    func copyTrackProcessing(from trackID: UUID) {
+        guard tracks.contains(where: { $0.id == trackID }) else { return }
+
+        if isRunning {
+            captureLivePluginStates()
+        }
+
+        guard let refreshedTrack = tracks.first(where: { $0.id == trackID }) else { return }
+        copiedTrackProcessing = CopiedTrackProcessing(
+            sourceTrackName: refreshedTrack.name,
+            inserts: refreshedTrack.plugins
+        )
+        statusMessage = refreshedTrack.plugins.isEmpty
+            ? "Copied empty processing from \(refreshedTrack.name)."
+            : "Copied processing from \(refreshedTrack.name)."
+    }
+
+    func pasteTrackProcessing(to trackID: UUID) {
+        guard !isRunning else {
+            statusMessage = "Stop the engine before pasting track processing."
+            return
+        }
+        guard let copiedTrackProcessing else {
+            statusMessage = "Copy a track’s processing first."
+            return
+        }
+        guard let trackIndex = tracks.firstIndex(where: { $0.id == trackID }) else { return }
+
+        tracks[trackIndex].plugins = copiedTrackProcessing.inserts.map { insert in
+            MultiTrackTrackConfiguration.PluginInsert(
+                pluginID: insert.pluginID,
+                pluginStateData: insert.pluginStateData
+            )
+        }
+        updateSessionWarnings()
+        statusMessage = "Pasted processing from \(copiedTrackProcessing.sourceTrackName) to \(tracks[trackIndex].name)."
     }
 
     func availableInputStartChannels(for track: MultiTrackTrackConfiguration) -> [Int] {

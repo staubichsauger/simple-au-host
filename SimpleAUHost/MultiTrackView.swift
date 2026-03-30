@@ -665,6 +665,22 @@ struct MultiTrackView: View {
                 .toggleStyle(.switch)
                 .disabled(viewModel.isRunning)
 
+            HStack(spacing: 8) {
+                Button("Copy FX") {
+                    viewModel.copyTrackProcessing(from: value.id)
+                }
+                .buttonStyle(StudioSecondaryButtonStyle())
+
+                Button("Paste FX") {
+                    viewModel.pasteTrackProcessing(to: value.id)
+                    if selectedRackTrackID == value.id {
+                        selectedRackPluginID = viewModel.tracks.first(where: { $0.id == value.id })?.plugins.first?.id
+                    }
+                }
+                .buttonStyle(StudioSecondaryButtonStyle())
+                .disabled(!viewModel.canPasteTrackProcessing(to: value.id))
+            }
+
             Button("Remove Track") {
                 viewModel.removeTrack(id: value.id)
                 syncRackSelection()
@@ -1152,8 +1168,18 @@ struct MultiTrackView: View {
     private var diagnosticsPanel: some View {
         StudioPanel("Diagnostics", subtitle: "Warnings and live engine telemetry for the current show.") {
             VStack(alignment: .leading, spacing: 14) {
-                Toggle("Show Diagnostics", isOn: $showsDiagnostics)
-                    .toggleStyle(.switch)
+                HStack {
+                    Toggle("Show Diagnostics", isOn: $showsDiagnostics)
+                        .toggleStyle(.switch)
+
+                    Spacer()
+
+                    Button("Reset Dropout Stats") {
+                        viewModel.resetDropoutCounters()
+                    }
+                    .buttonStyle(StudioSecondaryButtonStyle())
+                    .disabled(!viewModel.isRunning && viewModel.audioDropoutCount == 0 && viewModel.droppedFrameCount == 0)
+                }
 
                 if showsDiagnostics {
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
