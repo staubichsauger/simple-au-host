@@ -681,6 +681,39 @@ struct MultiTrackView: View {
                 .disabled(!viewModel.canPasteTrackProcessing(to: value.id))
             }
 
+            HStack(spacing: 8) {
+                Button("Save Chain") {
+                    saveChainPreset(for: value.id)
+                }
+                .buttonStyle(StudioSecondaryButtonStyle())
+
+                Button("Load Chain") {
+                    loadChainPreset(for: value.id)
+                    if selectedRackTrackID == value.id {
+                        selectedRackPluginID = viewModel.tracks.first(where: { $0.id == value.id })?.plugins.first?.id
+                    }
+                }
+                .buttonStyle(StudioSecondaryButtonStyle())
+                .disabled(viewModel.isRunning)
+            }
+
+            HStack(spacing: 8) {
+                Button("Save Params") {
+                    saveParameterPreset(for: value.id)
+                }
+                .buttonStyle(StudioSecondaryButtonStyle())
+                .disabled(!value.hasPlugins)
+
+                Button("Load Params") {
+                    loadParameterPreset(for: value.id)
+                    if selectedRackTrackID == value.id {
+                        selectedRackPluginID = viewModel.tracks.first(where: { $0.id == value.id })?.plugins.first?.id
+                    }
+                }
+                .buttonStyle(StudioSecondaryButtonStyle())
+                .disabled(!value.hasPlugins)
+            }
+
             Button("Remove Track") {
                 viewModel.removeTrack(id: value.id)
                 syncRackSelection()
