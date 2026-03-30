@@ -23,11 +23,11 @@ final class HostViewModel: ObservableObject {
     @Published var selectedOutputDeviceID: AudioDeviceID?
     @Published var selectedInputChannel: Int = 1
     @Published var selectedOutputChannel: Int = 1
-    @Published var selectedBufferSize: Int = 128
-    @Published var customBufferSizeText = "128"
+    @Published var selectedBufferSize: Int = DefaultBufferSizes.hardwareFrames
+    @Published var customBufferSizeText = String(DefaultBufferSizes.hardwareFrames)
     @Published var selectedPluginID: String?
     @Published var threadedProcessingEnabled = false
-    @Published var threadedProcessingBufferSizeText = "512"
+    @Published var threadedProcessingBufferSizeText = String(DefaultBufferSizes.bufferedFrames)
 
     @Published var isRunning = false
     @Published var isBusy = false
@@ -234,9 +234,9 @@ final class HostViewModel: ObservableObject {
             selectedOutputChannel = 1
         }
 
-        if let firstBuffer = availableBufferSizes.first {
+        if let preferredBufferSize = DefaultBufferSizes.preferredHardwareBufferSize(from: availableBufferSizes) {
             if !isSelectedBufferSizeValid {
-                selectedBufferSize = firstBuffer
+                selectedBufferSize = preferredBufferSize
             }
         }
 

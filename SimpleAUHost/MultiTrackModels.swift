@@ -2,6 +2,33 @@ import Foundation
 import SwiftUI
 import UniformTypeIdentifiers
 
+enum DefaultBufferSizes {
+    static let hardwareFrames = 32
+    static let bufferedFrames = 128
+    static let broadcastFrames = 512
+
+    static func preferredHardwareBufferSize(from candidates: [Int]) -> Int? {
+        let sortedCandidates = candidates.sorted()
+        if sortedCandidates.contains(hardwareFrames) {
+            return hardwareFrames
+        }
+        if let nextHigherCandidate = sortedCandidates.first(where: { $0 > hardwareFrames }) {
+            return nextHigherCandidate
+        }
+        return sortedCandidates.last
+    }
+
+    static func preferredInternalBufferSize(defaultFrames: Int, hardwareBufferSize: Int) -> Int {
+        let normalizedHardwareBufferSize = max(1, hardwareBufferSize)
+        let minimumFrames = max(defaultFrames, normalizedHardwareBufferSize)
+        let remainder = minimumFrames % normalizedHardwareBufferSize
+        if remainder == 0 {
+            return minimumFrames
+        }
+        return minimumFrames + (normalizedHardwareBufferSize - remainder)
+    }
+}
+
 enum TrackChannelLayout: String, CaseIterable, Codable, Identifiable {
     case mono
     case stereo
@@ -36,8 +63,14 @@ struct MultiTrackLatencyBufferSettings: Codable, Hashable {
     }
 
     init(hardwareBufferSize: Int) {
-        self.bufferedFrames = hardwareBufferSize * 4
-        self.broadcastFrames = hardwareBufferSize * 8
+        self.bufferedFrames = DefaultBufferSizes.preferredInternalBufferSize(
+            defaultFrames: DefaultBufferSizes.bufferedFrames,
+            hardwareBufferSize: hardwareBufferSize
+        )
+        self.broadcastFrames = DefaultBufferSizes.preferredInternalBufferSize(
+            defaultFrames: DefaultBufferSizes.broadcastFrames,
+            hardwareBufferSize: hardwareBufferSize
+        )
     }
 
     func internalFrames(

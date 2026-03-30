@@ -14,10 +14,10 @@ final class MultiTrackViewModel: ObservableObject {
     @Published private(set) var plugins: [AudioUnitPluginInfo] = []
     @Published var selectedInputDeviceID: AudioDeviceID?
     @Published var selectedOutputDeviceID: AudioDeviceID?
-    @Published var selectedBufferSize: Int = 128
-    @Published var customBufferSizeText = "128"
-    @Published var bufferedInternalBufferText = "512"
-    @Published var broadcastInternalBufferText = "1024"
+    @Published var selectedBufferSize: Int = DefaultBufferSizes.hardwareFrames
+    @Published var customBufferSizeText = String(DefaultBufferSizes.hardwareFrames)
+    @Published var bufferedInternalBufferText = String(DefaultBufferSizes.bufferedFrames)
+    @Published var broadcastInternalBufferText = String(DefaultBufferSizes.broadcastFrames)
     @Published var tracks: [MultiTrackTrackConfiguration] = []
     @Published var isRunning = false
     @Published var isBusy = false
@@ -37,7 +37,7 @@ final class MultiTrackViewModel: ObservableObject {
 
     private let catalog = AudioHostController()
     private let controller = MultiTrackAudioHostController()
-    private var latencyBufferSettings = MultiTrackLatencyBufferSettings(hardwareBufferSize: 128)
+    private var latencyBufferSettings = MultiTrackLatencyBufferSettings(hardwareBufferSize: DefaultBufferSizes.hardwareFrames)
     private var audioDropoutMonitorTask: Task<Void, Never>?
     private var currentSessionURL: URL?
     private var telemetryPublishingEnabled = false
@@ -185,7 +185,7 @@ final class MultiTrackViewModel: ObservableObject {
         isApplyingSessionState = true
         selectedInputDeviceID = inputDevices.first?.id
         selectedOutputDeviceID = outputDevices.first?.id
-        selectedBufferSize = availableBufferSizes.first ?? 128
+        selectedBufferSize = DefaultBufferSizes.preferredHardwareBufferSize(from: availableBufferSizes) ?? DefaultBufferSizes.hardwareFrames
         customBufferSizeText = String(selectedBufferSize)
         latencyBufferSettings = MultiTrackLatencyBufferSettings(hardwareBufferSize: selectedBufferSize)
         bufferedInternalBufferText = String(latencyBufferSettings.bufferedFrames)
@@ -742,8 +742,8 @@ final class MultiTrackViewModel: ObservableObject {
         if tracks.isEmpty {
             tracks = [MultiTrackTrackConfiguration(name: "Track 1", layout: .mono)]
         }
-        if let firstBuffer = availableBufferSizes.first, !isSelectedBufferSizeValid {
-            selectedBufferSize = firstBuffer
+        if let preferredBufferSize = DefaultBufferSizes.preferredHardwareBufferSize(from: availableBufferSizes), !isSelectedBufferSizeValid {
+            selectedBufferSize = preferredBufferSize
         }
         customBufferSizeText = String(selectedBufferSize)
         updateSessionWarnings()
