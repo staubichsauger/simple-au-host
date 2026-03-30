@@ -171,6 +171,17 @@ struct MultiTrackChainPresetFile: Codable {
     var plugins: [MultiTrackTrackConfiguration.PluginInsert]
 }
 
+struct MultiTrackParameterPresetPluginState: Codable {
+    var pluginID: String
+    var pluginStateData: Data?
+}
+
+struct MultiTrackParameterPresetFile: Codable {
+    var formatVersion: Int = 1
+    var name: String
+    var plugins: [MultiTrackParameterPresetPluginState]
+}
+
 extension UTType {
     static let simpleAUHostMultiTrackSession = UTType(
         exportedAs: "dev.staubichsauger.simple-au-host.multi-track-session",

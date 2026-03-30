@@ -984,6 +984,21 @@ struct MultiTrackView: View {
                 .buttonStyle(StudioSecondaryButtonStyle())
                 .disabled(viewModel.isRunning)
 
+                Button("Save Parameters") {
+                    saveParameterPreset(for: value.id)
+                }
+                .buttonStyle(StudioSecondaryButtonStyle())
+                .disabled(!value.hasPlugins)
+
+                Button("Load Parameters") {
+                    loadParameterPreset(for: value.id)
+                    if selectedRackTrackID == value.id {
+                        selectedRackPluginID = viewModel.tracks.first(where: { $0.id == value.id })?.plugins.first?.id
+                    }
+                }
+                .buttonStyle(StudioSecondaryButtonStyle())
+                .disabled(!value.hasPlugins)
+
                 Button("Focus In Rack") {
                     selectedTab = .rack
                     selectedRackTrackID = value.id
@@ -1451,6 +1466,41 @@ struct MultiTrackView: View {
 
         do {
             try viewModel.loadChainPreset(for: trackID, from: url)
+        } catch {
+            viewModel.statusMessage = error.localizedDescription
+        }
+    }
+
+    private func saveParameterPreset(for trackID: UUID) {
+        let panel = NSSavePanel()
+        panel.canCreateDirectories = true
+        panel.directoryURL = try? viewModel.parameterPresetsDirectoryURL()
+        panel.nameFieldStringValue = viewModel.suggestedParameterPresetFilename(for: trackID)
+
+        guard panel.runModal() == .OK, let url = panel.url else {
+            return
+        }
+
+        do {
+            try viewModel.saveParameterPreset(for: trackID, to: url)
+        } catch {
+            viewModel.statusMessage = error.localizedDescription
+        }
+    }
+
+    private func loadParameterPreset(for trackID: UUID) {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.directoryURL = try? viewModel.parameterPresetsDirectoryURL()
+
+        guard panel.runModal() == .OK, let url = panel.url else {
+            return
+        }
+
+        do {
+            try viewModel.loadParameterPreset(for: trackID, from: url)
         } catch {
             viewModel.statusMessage = error.localizedDescription
         }

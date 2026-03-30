@@ -258,11 +258,22 @@ final class MultiTrackViewModel: ObservableObject {
         try SAHManagedSessionStore.chainPresetsDirectoryURL()
     }
 
+    func parameterPresetsDirectoryURL() throws -> URL {
+        try SAHManagedSessionStore.parameterPresetsDirectoryURL()
+    }
+
     func suggestedChainPresetFilename(for trackID: UUID) -> String {
         guard let track = tracks.first(where: { $0.id == trackID }) else {
             return sanitizedFilename(from: "Chain Preset", pathExtension: "sahchain")
         }
         return sanitizedFilename(from: "\(track.name) Chain", pathExtension: "sahchain")
+    }
+
+    func suggestedParameterPresetFilename(for trackID: UUID) -> String {
+        guard let track = tracks.first(where: { $0.id == trackID }) else {
+            return sanitizedFilename(from: "Parameter Preset", pathExtension: "sahparams")
+        }
+        return sanitizedFilename(from: "\(track.name) Parameters", pathExtension: "sahparams")
     }
 
     func saveChainPreset(for trackID: UUID, to url: URL) throws {
@@ -315,6 +326,99 @@ final class MultiTrackViewModel: ObservableObject {
         }
         updateSessionWarnings()
         statusMessage = "Loaded chain preset \(url.deletingPathExtension().lastPathComponent) into \(tracks[trackIndex].name)."
+    }
+
+    func saveParameterPreset(for trackID: UUID, to url: URL) throws {
+        if isRunning {
+            captureLivePluginStates()
+        }
+        guard let track = tracks.first(where: { $0.id == trackID }) else {
+            throw AudioHostError("The selected track could not be found.")
+        }
+
+        let pluginStates = track.plugins.compactMap { insert in
+            insert.pluginID.map { pluginID in
+                MultiTrackParameterPresetPluginState(
+                    pluginID: pluginID,
+                    pluginStateData: insert.pluginStateData
+                )
+            }
+        }
+
+        guard !pluginStates.isEmpty else {
+            throw AudioHostError("Add at least one plugin before saving a parameter preset.")
+        }
+
+        let preset = MultiTrackParameterPresetFile(
+            name: track.name,
+            plugins: pluginStates
+        )
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(preset)
+        let resolvedURL = normalizedURL(url, pathExtension: "sahparams")
+        try data.write(to: resolvedURL, options: .atomic)
+        statusMessage = "Saved parameter preset \(resolvedURL.deletingPathExtension().lastPathComponent)."
+    }
+
+    func loadParameterPreset(for trackID: UUID, from url: URL) throws {
+        let data = try Data(contentsOf: url)
+        let preset: MultiTrackParameterPresetFile
+        do {
+            preset = try JSONDecoder().decode(MultiTrackParameterPresetFile.self, from: data)
+        } catch {
+            throw AudioHostError("Failed to read the parameter preset file.")
+        }
+
+        guard let trackIndex = tracks.firstIndex(where: { $0.id == trackID }) else {
+            throw AudioHostError("The selected track could not be found.")
+        }
+
+        let pluginIndices = tracks[trackIndex].plugins.indices.filter { index in
+            tracks[trackIndex].plugins[index].pluginID != nil
+        }
+        let currentPluginIDs = pluginIndices.compactMap { index in
+            tracks[trackIndex].plugins[index].pluginID
+        }
+        let presetPluginIDs = preset.plugins.map(\.pluginID)
+
+        guard currentPluginIDs == presetPluginIDs else {
+            throw AudioHostError("Parameter presets require the exact same plugin chain in the same order.")
+        }
+
+        var failedPluginNames: [String] = []
+        if isRunning {
+            let stateMap = Dictionary(uniqueKeysWithValues: zip(pluginIndices, preset.plugins).compactMap { index, pluginState in
+                pluginState.pluginStateData.map { data in
+                    (tracks[trackIndex].plugins[index].id, data)
+                }
+            })
+            let failures = try controller.applyPluginStates(
+                for: tracks[trackIndex].id,
+                statesByInsertID: stateMap
+            )
+
+            for (position, pluginIndex) in pluginIndices.enumerated() {
+                let insertID = tracks[trackIndex].plugins[pluginIndex].id
+                if let failedName = failures[insertID] {
+                    failedPluginNames.append(failedName)
+                    continue
+                }
+                tracks[trackIndex].plugins[pluginIndex].pluginStateData = preset.plugins[position].pluginStateData
+            }
+        } else {
+            for (position, pluginIndex) in pluginIndices.enumerated() {
+                tracks[trackIndex].plugins[pluginIndex].pluginStateData = preset.plugins[position].pluginStateData
+            }
+        }
+
+        let presetName = url.deletingPathExtension().lastPathComponent
+        if failedPluginNames.isEmpty {
+            statusMessage = "Loaded parameter preset \(presetName) into \(tracks[trackIndex].name)."
+        } else {
+            statusMessage = "Loaded parameter preset \(presetName) with failures: \(failedPluginNames.joined(separator: ", "))."
+        }
     }
 
     func openPluginEditor(for trackID: UUID) {

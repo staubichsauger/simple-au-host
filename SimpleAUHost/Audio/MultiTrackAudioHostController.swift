@@ -591,6 +591,26 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             }
         }
 
+        func applySerializedPluginStates(
+            _ statesByInsertID: [UUID: Data]
+        ) -> [UUID: String] {
+            var failures: [UUID: String] = [:]
+
+            for plugin in plugins {
+                guard let stateData = statesByInsertID[plugin.insert.id] else {
+                    continue
+                }
+
+                do {
+                    try applySerializedPluginState(stateData, to: plugin.unit)
+                } catch {
+                    failures[plugin.insert.id] = plugin.plugin.name
+                }
+            }
+
+            return failures
+        }
+
         private func serializedPluginState(for unit: AudioUnit) -> Data? {
             var classInfo: CFPropertyList?
             var propertySize = UInt32(MemoryLayout<CFPropertyList?>.size)
@@ -1480,6 +1500,16 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             let states = runtime.serializedPluginStates()
             return states.isEmpty ? nil : (runtime.configuration.id, states)
         })
+    }
+
+    func applyPluginStates(
+        for trackID: UUID,
+        statesByInsertID: [UUID: Data]
+    ) throws -> [UUID: String] {
+        guard let runtime = trackRuntimes.first(where: { $0.configuration.id == trackID }) else {
+            throw AudioHostError("This track is not loaded on the running engine.")
+        }
+        return runtime.applySerializedPluginStates(statesByInsertID)
     }
 
     func stop() {
