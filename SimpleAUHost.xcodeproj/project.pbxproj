@@ -12,6 +12,7 @@
 		3978E929F9DE78777CAD7D70 /* CoreAudio.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5FABE4A3EC0C46930DFA1CFA /* CoreAudio.framework */; };
 		4B5F4C1E2F0EB5D5EE2CF762 /* MultiTrackViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51F587125760077EB7BA3750 /* MultiTrackViewModel.swift */; };
 		51D670A8169091E09AFDF4A9 /* MultiTrackModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68D2CC2F5749BB865FE1DE0F /* MultiTrackModels.swift */; };
+		5427799ABCA002A01D430C4B /* ManagedSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF1AF7EF2ABF9840F38873DA /* ManagedSessionStore.swift */; };
 		58E70733817514AA56B4B415 /* AudioHostController.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE3A1C4E2349E802C98811DE /* AudioHostController.swift */; };
 		5F2ADE8800DC08F044F64C09 /* HostViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 574FB1DF0AF073B8D3A2B1EE /* HostViewModel.swift */; };
 		7E6DEB0CCD73CEBC7F987823 /* HostModeRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AF36C3F7011608827EF703F /* HostModeRootView.swift */; };
@@ -36,6 +37,7 @@
 		857E1CD656C39B36861AD772 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		907616E833D51D8D6FE5502E /* MultiTrackAudioHostController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiTrackAudioHostController.swift; sourceTree = "<group>"; };
 		BBFBDFDA26FBF58E6FB8AEB4 /* FloatRingBuffer.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = FloatRingBuffer.h; sourceTree = "<group>"; };
+		BF1AF7EF2ABF9840F38873DA /* ManagedSessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagedSessionStore.swift; sourceTree = "<group>"; };
 		C6D62822C556D03150F26589 /* MultiTrackView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiTrackView.swift; sourceTree = "<group>"; };
 		CE3A1C4E2349E802C98811DE /* AudioHostController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioHostController.swift; sourceTree = "<group>"; };
 		D176FA9E19AB56C0F630983B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -75,6 +77,7 @@
 				7AF36C3F7011608827EF703F /* HostModeRootView.swift */,
 				574FB1DF0AF073B8D3A2B1EE /* HostViewModel.swift */,
 				857E1CD656C39B36861AD772 /* Info.plist */,
+				BF1AF7EF2ABF9840F38873DA /* ManagedSessionStore.swift */,
 				68D2CC2F5749BB865FE1DE0F /* MultiTrackModels.swift */,
 				C6D62822C556D03150F26589 /* MultiTrackView.swift */,
 				51F587125760077EB7BA3750 /* MultiTrackViewModel.swift */,
@@ -198,6 +201,7 @@
 				DA88A40C2B49C756F57749EF /* FloatRingBuffer.c in Sources */,
 				7E6DEB0CCD73CEBC7F987823 /* HostModeRootView.swift in Sources */,
 				5F2ADE8800DC08F044F64C09 /* HostViewModel.swift in Sources */,
+				5427799ABCA002A01D430C4B /* ManagedSessionStore.swift in Sources */,
 				26461A70B5DBAA27A0D0AE4D /* MultiTrackAudioHostController.swift in Sources */,
 				51D670A8169091E09AFDF4A9 /* MultiTrackModels.swift in Sources */,
 				A87382D5FB9A0BFD14CB62E9 /* MultiTrackView.swift in Sources */,

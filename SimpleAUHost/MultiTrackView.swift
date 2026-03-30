@@ -9,25 +9,19 @@ private enum MultiTrackWorkspaceTab: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+private struct PendingSessionLoadRequest {
+    let url: URL
+    let sessionName: String
+}
+
 struct MultiTrackView: View {
     @StateObject private var viewModel = MultiTrackViewModel()
-    @State private var isImportingSession = false
-    @State private var isExportingSession = false
     @State private var selectedTab: MultiTrackWorkspaceTab = .rack
     @State private var showsDiagnostics = true
     @State private var showsEmbeddedPluginPane = true
     @State private var selectedRackTrackID: UUID?
     @State private var selectedRackPluginID: UUID?
-    @State private var sessionDocument = MultiTrackSessionDocument(
-        session: MultiTrackSessionFile(
-            name: "Untitled Session",
-            inputDeviceID: nil,
-            outputDeviceID: nil,
-            bufferSize: 128,
-            latencyBufferSettings: MultiTrackLatencyBufferSettings(hardwareBufferSize: 128),
-            tracks: [MultiTrackTrackConfiguration(name: "Track 1", layout: .mono)]
-        )
-    )
+    @State private var pendingSessionLoadRequest: PendingSessionLoadRequest?
     let onBackToModeSelection: (() -> Void)?
 
     init(onBackToModeSelection: (() -> Void)? = nil) {
@@ -80,36 +74,26 @@ struct MultiTrackView: View {
             viewModel.setTelemetryPublishingEnabled(false)
             viewModel.clearEmbeddedPluginEditor()
         }
-        .fileImporter(
-            isPresented: $isImportingSession,
-            allowedContentTypes: [.simpleAUHostMultiTrackSession, .json]
-        ) { result in
-            do {
-                let url = try result.get()
-                let accessed = url.startAccessingSecurityScopedResource()
-                defer {
-                    if accessed {
-                        url.stopAccessingSecurityScopedResource()
-                    }
+        .alert("Discard Unsaved Changes?", isPresented: Binding(
+            get: { pendingSessionLoadRequest != nil },
+            set: { isPresented in
+                if !isPresented {
+                    pendingSessionLoadRequest = nil
                 }
-                try viewModel.loadSession(from: url)
-                syncRackSelection()
-            } catch {
-                viewModel.statusMessage = error.localizedDescription
             }
-        }
-        .fileExporter(
-            isPresented: $isExportingSession,
-            document: sessionDocument,
-            contentType: .simpleAUHostMultiTrackSession,
-            defaultFilename: viewModel.suggestedSessionFilename()
-        ) { result in
-            switch result {
-            case .success(let url):
-                viewModel.rememberExportedSessionURL(url)
-            case .failure(let error):
-                viewModel.statusMessage = error.localizedDescription
+        )) {
+            Button("Cancel", role: .cancel) {
+                pendingSessionLoadRequest = nil
             }
+
+            Button("Load", role: .destructive) {
+                if let request = pendingSessionLoadRequest {
+                    performSessionLoad(from: request.url)
+                }
+                pendingSessionLoadRequest = nil
+            }
+        } message: {
+            Text("Load \(pendingSessionLoadRequest?.sessionName ?? "this show") and discard the current unsaved changes?")
         }
     }
 
@@ -135,7 +119,7 @@ struct MultiTrackView: View {
     }
 
     private var sessionTitleView: some View {
-        Text(viewModel.currentSessionName)
+        Text(viewModel.currentSessionDisplayName)
             .font(.system(size: 20, weight: .black, design: .rounded))
             .foregroundStyle(StudioTheme.strongText)
             .lineLimit(1)
@@ -254,6 +238,7 @@ struct MultiTrackView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 sessionActionPanel
+                managedSessionsPanel
                 showStatusPanel
                 diagnosticsPanel
             }
@@ -701,7 +686,7 @@ struct MultiTrackView: View {
                     .disabled(viewModel.isRunning)
 
                     Button("Open Show") {
-                        isImportingSession = true
+                        openSessionPanel()
                     }
                     .buttonStyle(StudioSecondaryButtonStyle())
                     .disabled(viewModel.isRunning)
@@ -711,8 +696,7 @@ struct MultiTrackView: View {
                             if viewModel.hasStoredSessionFile {
                                 try viewModel.saveSession()
                             } else {
-                                sessionDocument = viewModel.sessionDocumentForExport()
-                                isExportingSession = true
+                                saveSessionAs()
                             }
                         } catch {
                             viewModel.statusMessage = error.localizedDescription
@@ -721,8 +705,7 @@ struct MultiTrackView: View {
                     .buttonStyle(StudioPrimaryButtonStyle())
 
                     Button("Save As") {
-                        sessionDocument = viewModel.sessionDocumentForExport()
-                        isExportingSession = true
+                        saveSessionAs()
                     }
                     .buttonStyle(StudioSecondaryButtonStyle())
                 }
@@ -752,11 +735,54 @@ struct MultiTrackView: View {
         }
     }
 
+    private var managedSessionsPanel: some View {
+        StudioPanel("Managed Sessions", subtitle: "Quick-load shows from ~/Music/SAH/Sessions, newest first.") {
+            VStack(alignment: .leading, spacing: 12) {
+                if viewModel.managedSessions.isEmpty {
+                    Text("No managed sessions have been saved yet.")
+                        .font(.caption)
+                        .foregroundStyle(StudioTheme.mutedText)
+                } else {
+                    ForEach(viewModel.managedSessions) { session in
+                        managedSessionRow(session)
+                    }
+                }
+            }
+        }
+    }
+
+    private func managedSessionRow(_ session: ManagedSessionFile) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(session.displayName)
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .foregroundStyle(StudioTheme.strongText)
+
+                Text(session.modifiedDateLabel)
+                    .font(.caption)
+                    .foregroundStyle(StudioTheme.mutedText)
+            }
+
+            Spacer()
+
+            Button("Load") {
+                requestSessionLoad(from: session.url)
+            }
+            .buttonStyle(StudioSecondaryButtonStyle())
+            .disabled(viewModel.isRunning)
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.white.opacity(0.04))
+        )
+    }
+
     private var showStatusPanel: some View {
         StudioPanel("Current Show", subtitle: "Session identity, warnings, and live status.") {
             VStack(alignment: .leading, spacing: 14) {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                    StudioMetricTile("Session", value: viewModel.currentSessionName)
+                    StudioMetricTile("Session", value: viewModel.currentSessionDisplayName)
                     StudioMetricTile("Engine", value: viewModel.statusMessage)
                     StudioMetricTile("Tracks", value: "\(viewModel.tracks.count)")
                     StudioMetricTile("Enabled", value: "\(viewModel.tracks.filter(\.isEnabled).count)")
@@ -1320,6 +1346,58 @@ struct MultiTrackView: View {
     private func updateTelemetryPublishing() {
         let shouldPublishTelemetry = viewModel.isRunning && selectedTab == .show && showsDiagnostics
         viewModel.setTelemetryPublishingEnabled(shouldPublishTelemetry)
+    }
+
+    private func openSessionPanel() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.simpleAUHostMultiTrackSession, .json]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.directoryURL = try? viewModel.managedSessionsDirectoryURL()
+
+        guard panel.runModal() == .OK, let url = panel.url else {
+            return
+        }
+
+        requestSessionLoad(from: url)
+    }
+
+    private func saveSessionAs() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.simpleAUHostMultiTrackSession]
+        panel.canCreateDirectories = true
+        panel.directoryURL = try? viewModel.managedSessionsDirectoryURL()
+        panel.nameFieldStringValue = viewModel.suggestedSessionFilename()
+
+        guard panel.runModal() == .OK, let url = panel.url else {
+            return
+        }
+
+        do {
+            try viewModel.saveSession(to: url)
+        } catch {
+            viewModel.statusMessage = error.localizedDescription
+        }
+    }
+
+    private func requestSessionLoad(from url: URL) {
+        let sessionName = url.deletingPathExtension().lastPathComponent
+        if viewModel.hasUnsavedChanges {
+            pendingSessionLoadRequest = PendingSessionLoadRequest(url: url, sessionName: sessionName)
+            return
+        }
+
+        performSessionLoad(from: url)
+    }
+
+    private func performSessionLoad(from url: URL) {
+        do {
+            try viewModel.loadSession(from: url)
+            syncRackSelection()
+        } catch {
+            viewModel.statusMessage = error.localizedDescription
+        }
     }
 
     private func trimmedTelemetry(_ value: String, prefix: String) -> String {

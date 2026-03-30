@@ -1,4 +1,5 @@
 import AVFoundation
+import Combine
 import SwiftUI
 
 @MainActor
@@ -26,6 +27,8 @@ final class MultiTrackViewModel: ObservableObject {
     @Published private(set) var workerTelemetrySummary = "Workers: 0 shards, track/shard render: 0 / 0 us, util: 0%, wakeups: 0/s"
     @Published private(set) var currentSessionName = "Untitled Session"
     @Published private(set) var sessionWarnings: [String] = []
+    @Published private(set) var managedSessions: [ManagedSessionFile] = []
+    @Published private(set) var hasUnsavedChanges = false
 
     private let catalog = AudioHostController()
     private let controller = MultiTrackAudioHostController()
@@ -33,6 +36,12 @@ final class MultiTrackViewModel: ObservableObject {
     private var audioDropoutMonitorTask: Task<Void, Never>?
     private var currentSessionURL: URL?
     private var telemetryPublishingEnabled = false
+    private var persistenceCancellables = Set<AnyCancellable>()
+    private var isApplyingSessionState = false
+
+    init() {
+        setupSessionChangeObservers()
+    }
 
     deinit {
         audioDropoutMonitorTask?.cancel()
@@ -51,6 +60,10 @@ final class MultiTrackViewModel: ObservableObject {
 
     var hasStoredSessionFile: Bool {
         currentSessionURL != nil
+    }
+
+    var currentSessionDisplayName: String {
+        currentSessionName + (hasUnsavedChanges ? " *" : "")
     }
 
     var commonBufferSizeRange: ClosedRange<Int>? {
@@ -117,6 +130,9 @@ final class MultiTrackViewModel: ObservableObject {
 
     func load() {
         do {
+            let existingHasUnsavedChanges = hasUnsavedChanges
+            isApplyingSessionState = true
+            _ = try SAHManagedSessionStore.ensureDirectories()
             let allDevices = try catalog.availableDevices()
             inputDevices = allDevices.filter { $0.inputChannelCount > 0 }
             outputDevices = allDevices.filter { $0.outputChannelCount > 0 }
@@ -138,13 +154,17 @@ final class MultiTrackViewModel: ObservableObject {
             sanitizeTracks()
             sanitizeLatencyBufferSettings()
             updateSessionWarnings()
+            try refreshManagedSessions()
             updateSessionNameIfNeeded()
             if !isRunning {
                 audioDropoutCount = 0
                 droppedFrameCount = 0
             }
             statusMessage = isRunning ? "Running." : "Ready."
+            isApplyingSessionState = false
+            hasUnsavedChanges = existingHasUnsavedChanges
         } catch {
+            isApplyingSessionState = false
             statusMessage = error.localizedDescription
         }
     }
@@ -156,6 +176,7 @@ final class MultiTrackViewModel: ObservableObject {
 
     func createNewSession() {
         guard !isRunning else { return }
+        isApplyingSessionState = true
         selectedInputDeviceID = inputDevices.first?.id
         selectedOutputDeviceID = outputDevices.first?.id
         selectedBufferSize = availableBufferSizes.first ?? 128
@@ -169,6 +190,8 @@ final class MultiTrackViewModel: ObservableObject {
         currentSessionName = "Untitled Session"
         sessionWarnings = []
         statusMessage = "Ready."
+        isApplyingSessionState = false
+        hasUnsavedChanges = false
     }
 
     func sessionDocumentForExport() -> MultiTrackSessionDocument {
@@ -183,12 +206,19 @@ final class MultiTrackViewModel: ObservableObject {
         guard let currentSessionURL else {
             throw AudioHostError("Choose Save As to create a session file first.")
         }
+        try saveSession(to: currentSessionURL)
+    }
+
+    func saveSession(to url: URL) throws {
         captureLivePluginStates()
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = try encoder.encode(makeSessionFile())
-        try data.write(to: currentSessionURL, options: .atomic)
-        currentSessionName = sessionDisplayName(for: currentSessionURL)
+        try data.write(to: url, options: .atomic)
+        currentSessionURL = url
+        currentSessionName = sessionDisplayName(for: url)
+        hasUnsavedChanges = false
+        try refreshManagedSessions()
         statusMessage = "Saved \(currentSessionName)."
     }
 
@@ -207,6 +237,15 @@ final class MultiTrackViewModel: ObservableObject {
             throw AudioHostError("Failed to read the multi-track session file.")
         }
         applySession(session, sourceURL: url)
+        try refreshManagedSessions()
+    }
+
+    func refreshManagedSessions() throws {
+        managedSessions = try SAHManagedSessionStore.managedSessions()
+    }
+
+    func managedSessionsDirectoryURL() throws -> URL {
+        try SAHManagedSessionStore.ensureDirectories().sessions
     }
 
     func openPluginEditor(for trackID: UUID) {
@@ -457,6 +496,7 @@ final class MultiTrackViewModel: ObservableObject {
     }
 
     private func applySession(_ session: MultiTrackSessionFile, sourceURL: URL?) {
+        isApplyingSessionState = true
         selectedInputDeviceID = session.inputDeviceID
         selectedOutputDeviceID = session.outputDeviceID
         selectedBufferSize = session.bufferSize
@@ -475,6 +515,8 @@ final class MultiTrackViewModel: ObservableObject {
         sanitizeLatencyBufferSettings()
         updateSessionWarnings()
 
+        isApplyingSessionState = false
+        hasUnsavedChanges = false
         statusMessage = "Loaded \(currentSessionName)."
     }
 
@@ -833,6 +875,55 @@ final class MultiTrackViewModel: ObservableObject {
         if let currentSessionURL {
             currentSessionName = sessionDisplayName(for: currentSessionURL)
         }
+    }
+
+    private func setupSessionChangeObservers() {
+        $selectedInputDeviceID
+            .dropFirst()
+            .sink { [weak self] _ in
+                self?.markSessionAsEdited()
+            }
+            .store(in: &persistenceCancellables)
+
+        $selectedOutputDeviceID
+            .dropFirst()
+            .sink { [weak self] _ in
+                self?.markSessionAsEdited()
+            }
+            .store(in: &persistenceCancellables)
+
+        $selectedBufferSize
+            .dropFirst()
+            .sink { [weak self] _ in
+                self?.markSessionAsEdited()
+            }
+            .store(in: &persistenceCancellables)
+
+        $bufferedInternalBufferText
+            .dropFirst()
+            .sink { [weak self] _ in
+                self?.markSessionAsEdited()
+            }
+            .store(in: &persistenceCancellables)
+
+        $broadcastInternalBufferText
+            .dropFirst()
+            .sink { [weak self] _ in
+                self?.markSessionAsEdited()
+            }
+            .store(in: &persistenceCancellables)
+
+        $tracks
+            .dropFirst()
+            .sink { [weak self] _ in
+                self?.markSessionAsEdited()
+            }
+            .store(in: &persistenceCancellables)
+    }
+
+    private func markSessionAsEdited() {
+        guard !isApplyingSessionState else { return }
+        hasUnsavedChanges = true
     }
 
     private func sessionDisplayName(for url: URL) -> String {
