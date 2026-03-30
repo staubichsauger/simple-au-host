@@ -251,7 +251,70 @@ final class MultiTrackViewModel: ObservableObject {
     }
 
     func managedSessionsDirectoryURL() throws -> URL {
-        try SAHManagedSessionStore.ensureDirectories().sessions
+        try SAHManagedSessionStore.sessionsDirectoryURL()
+    }
+
+    func chainPresetsDirectoryURL() throws -> URL {
+        try SAHManagedSessionStore.chainPresetsDirectoryURL()
+    }
+
+    func suggestedChainPresetFilename(for trackID: UUID) -> String {
+        guard let track = tracks.first(where: { $0.id == trackID }) else {
+            return sanitizedFilename(from: "Chain Preset", pathExtension: "sahchain")
+        }
+        return sanitizedFilename(from: "\(track.name) Chain", pathExtension: "sahchain")
+    }
+
+    func saveChainPreset(for trackID: UUID, to url: URL) throws {
+        if isRunning {
+            captureLivePluginStates()
+        }
+        guard let track = tracks.first(where: { $0.id == trackID }) else {
+            throw AudioHostError("The selected track could not be found.")
+        }
+
+        let preset = MultiTrackChainPresetFile(
+            name: track.name,
+            layout: track.layout,
+            plugins: track.plugins
+        )
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(preset)
+        let resolvedURL = normalizedURL(url, pathExtension: "sahchain")
+        try data.write(to: resolvedURL, options: .atomic)
+        statusMessage = "Saved chain preset \(resolvedURL.deletingPathExtension().lastPathComponent)."
+    }
+
+    func loadChainPreset(for trackID: UUID, from url: URL) throws {
+        let data = try Data(contentsOf: url)
+        let preset: MultiTrackChainPresetFile
+        do {
+            preset = try JSONDecoder().decode(MultiTrackChainPresetFile.self, from: data)
+        } catch {
+            throw AudioHostError("Failed to read the chain preset file.")
+        }
+
+        guard let trackIndex = tracks.firstIndex(where: { $0.id == trackID }) else {
+            throw AudioHostError("The selected track could not be found.")
+        }
+
+        guard tracks[trackIndex].layout == preset.layout else {
+            throw AudioHostError(
+                "\(tracks[trackIndex].name) is \(tracks[trackIndex].layout.title.lowercased()), " +
+                "but this chain preset requires \(preset.layout.title.lowercased())."
+            )
+        }
+
+        tracks[trackIndex].plugins = preset.plugins.map { insert in
+            MultiTrackTrackConfiguration.PluginInsert(
+                pluginID: insert.pluginID,
+                pluginStateData: insert.pluginStateData
+            )
+        }
+        updateSessionWarnings()
+        statusMessage = "Loaded chain preset \(url.deletingPathExtension().lastPathComponent) into \(tracks[trackIndex].name)."
     }
 
     func openPluginEditor(for trackID: UUID) {
@@ -979,10 +1042,22 @@ final class MultiTrackViewModel: ObservableObject {
     }
 
     private func sanitizedSessionFilename(from name: String) -> String {
+        sanitizedFilename(from: name, pathExtension: "sahsession")
+    }
+
+    private func sanitizedFilename(from name: String, pathExtension: String) -> String {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let baseName = trimmed.isEmpty ? "MultiTrack Session" : trimmed
         let invalidCharacters = CharacterSet(charactersIn: "/:\\?%*|\"<>")
         let cleaned = String(baseName.unicodeScalars.map { invalidCharacters.contains($0) ? "-" : Character($0) })
-        return cleaned.hasSuffix(".sahsession") ? cleaned : "\(cleaned).sahsession"
+        let dottedExtension = ".\(pathExtension)"
+        return cleaned.hasSuffix(dottedExtension) ? cleaned : "\(cleaned)\(dottedExtension)"
+    }
+
+    private func normalizedURL(_ url: URL, pathExtension: String) -> URL {
+        if url.pathExtension.caseInsensitiveCompare(pathExtension) == .orderedSame {
+            return url
+        }
+        return url.appendingPathExtension(pathExtension)
     }
 }

@@ -82,6 +82,18 @@ enum SAHManagedSessionStore {
         }
     }
 
+    static func sessionsDirectoryURL(fileManager: FileManager = .default) throws -> URL {
+        try ensureDirectories(fileManager: fileManager).sessions
+    }
+
+    static func chainPresetsDirectoryURL(fileManager: FileManager = .default) throws -> URL {
+        try ensureDirectories(fileManager: fileManager).chainPresets
+    }
+
+    static func parameterPresetsDirectoryURL(fileManager: FileManager = .default) throws -> URL {
+        try ensureDirectories(fileManager: fileManager).parameterPresets
+    }
+
     private static func musicDirectoryURL(fileManager: FileManager) throws -> URL {
         if let url = fileManager.urls(for: .musicDirectory, in: .userDomainMask).first {
             return url

@@ -164,6 +164,13 @@ struct MultiTrackSessionFile: Codable {
     var tracks: [MultiTrackTrackConfiguration]
 }
 
+struct MultiTrackChainPresetFile: Codable {
+    var formatVersion: Int = 1
+    var name: String
+    var layout: TrackChannelLayout
+    var plugins: [MultiTrackTrackConfiguration.PluginInsert]
+}
+
 extension UTType {
     static let simpleAUHostMultiTrackSession = UTType(
         exportedAs: "dev.staubichsauger.simple-au-host.multi-track-session",

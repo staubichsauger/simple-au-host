@@ -970,6 +970,20 @@ struct MultiTrackView: View {
 
                 Spacer()
 
+                Button("Save Chain") {
+                    saveChainPreset(for: value.id)
+                }
+                .buttonStyle(StudioSecondaryButtonStyle())
+
+                Button("Load Chain") {
+                    loadChainPreset(for: value.id)
+                    if selectedRackTrackID == value.id {
+                        selectedRackPluginID = viewModel.tracks.first(where: { $0.id == value.id })?.plugins.first?.id
+                    }
+                }
+                .buttonStyle(StudioSecondaryButtonStyle())
+                .disabled(viewModel.isRunning)
+
                 Button("Focus In Rack") {
                     selectedTab = .rack
                     selectedRackTrackID = value.id
@@ -1402,6 +1416,41 @@ struct MultiTrackView: View {
 
         do {
             try viewModel.saveSession(to: url)
+        } catch {
+            viewModel.statusMessage = error.localizedDescription
+        }
+    }
+
+    private func saveChainPreset(for trackID: UUID) {
+        let panel = NSSavePanel()
+        panel.canCreateDirectories = true
+        panel.directoryURL = try? viewModel.chainPresetsDirectoryURL()
+        panel.nameFieldStringValue = viewModel.suggestedChainPresetFilename(for: trackID)
+
+        guard panel.runModal() == .OK, let url = panel.url else {
+            return
+        }
+
+        do {
+            try viewModel.saveChainPreset(for: trackID, to: url)
+        } catch {
+            viewModel.statusMessage = error.localizedDescription
+        }
+    }
+
+    private func loadChainPreset(for trackID: UUID) {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.directoryURL = try? viewModel.chainPresetsDirectoryURL()
+
+        guard panel.runModal() == .OK, let url = panel.url else {
+            return
+        }
+
+        do {
+            try viewModel.loadChainPreset(for: trackID, from: url)
         } catch {
             viewModel.statusMessage = error.localizedDescription
         }
