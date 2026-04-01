@@ -21,6 +21,17 @@ private struct PendingSessionLoadRequest {
     let sessionName: String
 }
 
+private struct RackPluginSelectionRequest: Identifiable {
+    let trackID: UUID
+    let insertID: UUID
+    let insertTitle: String
+    let emptyTitle: String
+
+    var id: String {
+        "\(trackID.uuidString)::\(insertID.uuidString)"
+    }
+}
+
 struct MultiTrackView: View {
     @StateObject private var viewModel = MultiTrackViewModel()
     @State private var selectedTab: MultiTrackWorkspaceTab = .rack
@@ -31,6 +42,7 @@ struct MultiTrackView: View {
     @State private var selectedRackTrackID: UUID?
     @State private var selectedRackPluginID: UUID?
     @State private var pendingSessionLoadRequest: PendingSessionLoadRequest?
+    @State private var rackPluginSelectionRequest: RackPluginSelectionRequest?
     @State private var draftWavesTuneSongTitle = ""
     @State private var draftWavesTuneSongKey = WavesTuneKeySelection()
     let onBackToModeSelection: (() -> Void)?
@@ -111,6 +123,20 @@ struct MultiTrackView: View {
         }
         .sheet(isPresented: $showsAddWavesTuneSongSheet) {
             addWavesTuneSongSheet
+        }
+        .sheet(item: $rackPluginSelectionRequest) { request in
+            RackPluginSelectionSheet(
+                title: request.insertTitle,
+                emptyTitle: request.emptyTitle,
+                currentPluginID: currentPluginID(for: request),
+                plugins: viewModel.plugins
+            ) { newPluginID in
+                updatePluginID(
+                    trackID: request.trackID,
+                    insertID: request.insertID,
+                    newValue: newPluginID
+                )
+            }
         }
     }
 
@@ -275,7 +301,7 @@ struct MultiTrackView: View {
 
     private var rackStripBoard: some View {
         ScrollView(.horizontal, showsIndicators: true) {
-            HStack(alignment: .top, spacing: 12) {
+            LazyHStack(alignment: .top, spacing: 12) {
                 ForEach($viewModel.tracks) { $track in
                     rackStrip($track)
                         .frame(width: 218)
@@ -849,20 +875,17 @@ struct MultiTrackView: View {
             }
 
             HStack(spacing: 8) {
-                Picker("Insert \(index + 1)", selection: plugin.pluginID) {
-                    Text("Empty").tag(String?.none)
-                    ForEach(viewModel.plugins) { availablePlugin in
-                        Text(availablePlugin.name).tag(Optional(availablePlugin.id))
-                    }
+                pluginSelectionButton(
+                    title: pluginSelectionTitle(for: plugin.wrappedValue.pluginID, emptyTitle: "Empty")
+                ) {
+                    openPluginSelection(
+                        trackID: trackID,
+                        insertID: plugin.wrappedValue.id,
+                        insertTitle: "Insert \(index + 1)",
+                        emptyTitle: "Empty"
+                    )
                 }
-                .labelsHidden()
-                .pickerStyle(.menu)
                 .disabled(viewModel.isRunning)
-                .onChange(of: plugin.wrappedValue.pluginID) { _, _ in
-                    selectedRackTrackID = trackID
-                    selectedRackPluginID = plugin.wrappedValue.id
-                    refreshEmbeddedPluginPane()
-                }
 
                 if plugin.wrappedValue.pluginID != nil {
                     Button {
@@ -1532,14 +1555,16 @@ struct MultiTrackView: View {
                 .disabled(viewModel.isRunning)
             }
 
-            Picker("Insert \(index + 1)", selection: plugin.pluginID) {
-                Text("Bypass").tag(String?.none)
-                ForEach(viewModel.plugins) { availablePlugin in
-                    Text(availablePlugin.name).tag(Optional(availablePlugin.id))
-                }
+            pluginSelectionButton(
+                title: pluginSelectionTitle(for: plugin.wrappedValue.pluginID, emptyTitle: "Bypass")
+            ) {
+                openPluginSelection(
+                    trackID: trackID,
+                    insertID: plugin.wrappedValue.id,
+                    insertTitle: viewModel.pluginInsertLabel(for: plugin.wrappedValue, index: index),
+                    emptyTitle: "Bypass"
+                )
             }
-            .labelsHidden()
-            .pickerStyle(.menu)
             .disabled(viewModel.isRunning)
 
             Button("Open Plugin UI") {
@@ -1890,16 +1915,39 @@ struct MultiTrackView: View {
         return viewModel.canOpenPluginEditor(for: plugin)
     }
 
-    private func updateSelectedPluginID(_ newValue: String?) {
-        guard let trackID = selectedTrack?.id,
-              let pluginID = selectedPlugin?.id,
-              let trackIndex = viewModel.tracks.firstIndex(where: { $0.id == trackID }),
-              let pluginIndex = viewModel.tracks[trackIndex].plugins.firstIndex(where: { $0.id == pluginID }) else {
+    private func openPluginSelection(
+        trackID: UUID,
+        insertID: UUID,
+        insertTitle: String,
+        emptyTitle: String
+    ) {
+        rackPluginSelectionRequest = RackPluginSelectionRequest(
+            trackID: trackID,
+            insertID: insertID,
+            insertTitle: insertTitle,
+            emptyTitle: emptyTitle
+        )
+    }
+
+    private func currentPluginID(for request: RackPluginSelectionRequest) -> String? {
+        guard let track = viewModel.tracks.first(where: { $0.id == request.trackID }),
+              let insert = track.plugins.first(where: { $0.id == request.insertID }) else {
+            return nil
+        }
+
+        return insert.pluginID
+    }
+
+    private func updatePluginID(trackID: UUID, insertID: UUID, newValue: String?) {
+        guard let trackIndex = viewModel.tracks.firstIndex(where: { $0.id == trackID }),
+              let pluginIndex = viewModel.tracks[trackIndex].plugins.firstIndex(where: { $0.id == insertID }) else {
             return
         }
 
         viewModel.tracks[trackIndex].plugins[pluginIndex].pluginID = newValue
+        selectedRackTrackID = trackID
         selectedRackPluginID = viewModel.tracks[trackIndex].plugins[pluginIndex].id
+        refreshEmbeddedPluginPane()
     }
 
     private func refreshEmbeddedPluginPane() {
@@ -2045,6 +2093,48 @@ struct MultiTrackView: View {
     private func trimmedTelemetry(_ value: String, prefix: String) -> String {
         value.replacingOccurrences(of: prefix, with: "")
     }
+
+    private func pluginSelectionTitle(for pluginID: String?, emptyTitle: String) -> String {
+        guard let pluginID,
+              let plugin = viewModel.plugins.first(where: { $0.id == pluginID }) else {
+            return emptyTitle
+        }
+
+        return plugin.name
+    }
+
+    private func pluginSelectionButton(
+        title: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Text(title)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(StudioTheme.mutedText)
+            }
+            .font(.system(size: 12, weight: .semibold, design: .rounded))
+            .foregroundStyle(StudioTheme.strongText)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.white.opacity(0.05))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
 }
 
 private struct EmbeddedPluginEditorContainer: NSViewControllerRepresentable {
@@ -2057,6 +2147,106 @@ private struct EmbeddedPluginEditorContainer: NSViewControllerRepresentable {
     func updateNSViewController(_ nsViewController: NSViewController, context: Context) {
         guard let hostingController = nsViewController as? HostingEditorViewController else { return }
         hostingController.setContentViewController(viewController)
+    }
+}
+
+private struct RackPluginSelectionSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let title: String
+    let emptyTitle: String
+    let currentPluginID: String?
+    let plugins: [AudioUnitPluginInfo]
+    let onSelect: (String?) -> Void
+
+    @State private var searchText = ""
+
+    private var filteredPlugins: [AudioUnitPluginInfo] {
+        let trimmedQuery = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuery.isEmpty else { return plugins }
+
+        return plugins.filter { plugin in
+            plugin.name.localizedCaseInsensitiveContains(trimmedQuery)
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(title)
+                .font(.system(size: 20, weight: .black, design: .rounded))
+                .foregroundStyle(StudioTheme.strongText)
+
+            TextField("Search plugins", text: $searchText)
+                .textFieldStyle(.roundedBorder)
+
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 10) {
+                    pluginChoiceRow(
+                        title: emptyTitle,
+                        isSelected: currentPluginID == nil
+                    ) {
+                        onSelect(nil)
+                        dismiss()
+                    }
+
+                    ForEach(filteredPlugins) { plugin in
+                        pluginChoiceRow(
+                            title: plugin.name,
+                            isSelected: currentPluginID == plugin.id
+                        ) {
+                            onSelect(plugin.id)
+                            dismiss()
+                        }
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+
+            HStack {
+                Text("\(filteredPlugins.count) plugin(s)")
+                    .font(.caption)
+                    .foregroundStyle(StudioTheme.mutedText)
+
+                Spacer()
+
+                Button("Close") {
+                    dismiss()
+                }
+                .buttonStyle(StudioSecondaryButtonStyle())
+            }
+        }
+        .padding(20)
+        .frame(minWidth: 520, minHeight: 520)
+        .background(StudioTheme.panelFill)
+    }
+
+    private func pluginChoiceRow(
+        title: String,
+        isSelected: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(isSelected ? StudioTheme.accent : StudioTheme.mutedText)
+
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(StudioTheme.strongText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(isSelected ? StudioTheme.accent.opacity(0.16) : Color.white.opacity(0.04))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(isSelected ? StudioTheme.accent.opacity(0.4) : Color.white.opacity(0.06), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
     }
 }
 
