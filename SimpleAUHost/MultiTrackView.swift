@@ -34,6 +34,7 @@ private struct RackPluginSelectionRequest: Identifiable {
 
 struct MultiTrackView: View {
     @StateObject private var viewModel = MultiTrackViewModel()
+    let closeCoordinator: AppCloseCoordinator
     @State private var selectedTab: MultiTrackWorkspaceTab = .rack
     @State private var showsDiagnostics = true
     @State private var showsEmbeddedPluginPane = true
@@ -47,7 +48,11 @@ struct MultiTrackView: View {
     @State private var draftWavesTuneSongKey = WavesTuneKeySelection()
     let onBackToModeSelection: (() -> Void)?
 
-    init(onBackToModeSelection: (() -> Void)? = nil) {
+    init(
+        closeCoordinator: AppCloseCoordinator,
+        onBackToModeSelection: (() -> Void)? = nil
+    ) {
+        self.closeCoordinator = closeCoordinator
         self.onBackToModeSelection = onBackToModeSelection
     }
 
@@ -66,6 +71,7 @@ struct MultiTrackView: View {
         }
         .task {
             viewModel.load()
+            configureCloseHandling()
             syncRackSelection()
             updateTelemetryPublishing()
         }
@@ -99,6 +105,7 @@ struct MultiTrackView: View {
         .onDisappear {
             viewModel.setTelemetryPublishingEnabled(false)
             viewModel.clearEmbeddedPluginEditor()
+            closeCoordinator.updateHandler(nil)
         }
         .alert("Discard Unsaved Changes?", isPresented: Binding(
             get: { pendingSessionLoadRequest != nil },
@@ -1983,7 +1990,33 @@ struct MultiTrackView: View {
         requestSessionLoad(from: url)
     }
 
-    private func saveSessionAs() {
+    private func configureCloseHandling() {
+        closeCoordinator.updateHandler(
+            .init(
+                hasUnsavedChanges: { viewModel.hasUnsavedChanges },
+                documentName: { viewModel.currentSessionName },
+                save: { saveCurrentSessionForClose() }
+            )
+        )
+    }
+
+    @discardableResult
+    private func saveCurrentSessionForClose() -> Bool {
+        do {
+            if viewModel.hasStoredSessionFile {
+                try viewModel.saveSession()
+                return true
+            }
+            return saveSessionAs()
+        } catch {
+            viewModel.statusMessage = error.localizedDescription
+            presentErrorAlert(error)
+            return false
+        }
+    }
+
+    @discardableResult
+    private func saveSessionAs() -> Bool {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.simpleAUHostMultiTrackSession]
         panel.canCreateDirectories = true
@@ -1991,14 +2024,21 @@ struct MultiTrackView: View {
         panel.nameFieldStringValue = viewModel.suggestedSessionFilename()
 
         guard panel.runModal() == .OK, let url = panel.url else {
-            return
+            return false
         }
 
         do {
             try viewModel.saveSession(to: url)
+            return true
         } catch {
             viewModel.statusMessage = error.localizedDescription
+            presentErrorAlert(error)
+            return false
         }
+    }
+
+    private func presentErrorAlert(_ error: Error) {
+        NSAlert(error: error).runModal()
     }
 
     private func saveChainPreset(for trackID: UUID) {

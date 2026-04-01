@@ -11,6 +11,7 @@
 		26461A70B5DBAA27A0D0AE4D /* MultiTrackAudioHostController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 907616E833D51D8D6FE5502E /* MultiTrackAudioHostController.swift */; };
 		3978E929F9DE78777CAD7D70 /* CoreAudio.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5FABE4A3EC0C46930DFA1CFA /* CoreAudio.framework */; };
 		4B5F4C1E2F0EB5D5EE2CF762 /* MultiTrackViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51F587125760077EB7BA3750 /* MultiTrackViewModel.swift */; };
+		4C68234FA1D742C19A836A10 /* AppCloseCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73CE103B18264F3BA589D5FA /* AppCloseCoordinator.swift */; };
 		51D670A8169091E09AFDF4A9 /* MultiTrackModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68D2CC2F5749BB865FE1DE0F /* MultiTrackModels.swift */; };
 		5427799ABCA002A01D430C4B /* ManagedSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF1AF7EF2ABF9840F38873DA /* ManagedSessionStore.swift */; };
 		58E70733817514AA56B4B415 /* AudioHostController.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE3A1C4E2349E802C98811DE /* AudioHostController.swift */; };
@@ -29,6 +30,7 @@
 		2B2D3D79507244C560BDD5E7 /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
 		2B76015B39F45AB414C53372 /* FloatRingBuffer.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = FloatRingBuffer.c; sourceTree = "<group>"; };
 		3C01A2877205B69CBC0C74A2 /* AudioToolbox.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AudioToolbox.framework; path = System/Library/Frameworks/AudioToolbox.framework; sourceTree = SDKROOT; };
+		73CE103B18264F3BA589D5FA /* AppCloseCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCloseCoordinator.swift; sourceTree = "<group>"; };
 		51F587125760077EB7BA3750 /* MultiTrackViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiTrackViewModel.swift; sourceTree = "<group>"; };
 		574FB1DF0AF073B8D3A2B1EE /* HostViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostViewModel.swift; sourceTree = "<group>"; };
 		5FABE4A3EC0C46930DFA1CFA /* CoreAudio.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreAudio.framework; path = System/Library/Frameworks/CoreAudio.framework; sourceTree = SDKROOT; };
@@ -73,6 +75,7 @@
 			isa = PBXGroup;
 			children = (
 				D176FA9E19AB56C0F630983B /* Assets.xcassets */,
+				73CE103B18264F3BA589D5FA /* AppCloseCoordinator.swift */,
 				D1AEDFBA668B5A410BB12D49 /* ContentView.swift */,
 				7AF36C3F7011608827EF703F /* HostModeRootView.swift */,
 				574FB1DF0AF073B8D3A2B1EE /* HostViewModel.swift */,
@@ -197,6 +200,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				58E70733817514AA56B4B415 /* AudioHostController.swift in Sources */,
+				4C68234FA1D742C19A836A10 /* AppCloseCoordinator.swift in Sources */,
 				ADFEE25038031CFF542E2323 /* ContentView.swift in Sources */,
 				DA88A40C2B49C756F57749EF /* FloatRingBuffer.c in Sources */,
 				7E6DEB0CCD73CEBC7F987823 /* HostModeRootView.swift in Sources */,

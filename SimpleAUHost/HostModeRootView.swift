@@ -6,6 +6,7 @@ enum HostModeChoice {
 }
 
 struct HostModeRootView: View {
+    let closeCoordinator: AppCloseCoordinator
     @State private var selectedMode: HostModeChoice?
 
     var body: some View {
@@ -16,13 +17,23 @@ struct HostModeRootView: View {
                     selectedMode = nil
                 }
             case .multiTrack:
-                MultiTrackView {
+                MultiTrackView(closeCoordinator: closeCoordinator) {
                     selectedMode = nil
                 }
             case nil:
                 HostModeSelectionView { mode in
                     selectedMode = mode
                 }
+            }
+        }
+        .onAppear {
+            if selectedMode != .multiTrack {
+                closeCoordinator.updateHandler(nil)
+            }
+        }
+        .onChange(of: selectedMode) { _, mode in
+            if mode != .multiTrack {
+                closeCoordinator.updateHandler(nil)
             }
         }
     }
