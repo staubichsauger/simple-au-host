@@ -251,10 +251,34 @@ struct WavesTuneKeySelection: Codable, Hashable {
     }
 }
 
+struct WavesTuneSongEntry: Identifiable, Codable, Hashable {
+    let id: UUID
+    var title: String
+    var key: WavesTuneKeySelection
+
+    init(
+        id: UUID = UUID(),
+        title: String,
+        key: WavesTuneKeySelection = WavesTuneKeySelection()
+    ) {
+        self.id = id
+        self.title = title
+        self.key = key
+    }
+
+    var normalized: WavesTuneSongEntry {
+        var song = self
+        song.key = key.normalized
+        return song
+    }
+}
+
 struct MultiTrackWavesTuneState: Codable, Hashable {
     var isEnabled = true
     var stagedKey = WavesTuneKeySelection()
     var appliedKey = WavesTuneKeySelection()
+    var songs: [WavesTuneSongEntry] = []
+    var selectedSongID: UUID?
 
     var normalized: MultiTrackWavesTuneState {
         var state = self
@@ -265,6 +289,10 @@ struct MultiTrackWavesTuneState: Codable, Hashable {
     mutating func normalize() {
         stagedKey = stagedKey.normalized
         appliedKey = appliedKey.normalized
+        songs = songs.map(\.normalized)
+        if let selectedSongID, !songs.contains(where: { $0.id == selectedSongID }) {
+            self.selectedSongID = nil
+        }
     }
 }
 

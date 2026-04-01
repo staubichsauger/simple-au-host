@@ -162,6 +162,44 @@ final class MultiTrackViewModel: ObservableObject {
         wavesTuneState.stagedKey.normalized != wavesTuneState.appliedKey.normalized
     }
 
+    var wavesTuneSongs: [WavesTuneSongEntry] {
+        wavesTuneState.songs
+    }
+
+    var selectedWavesTuneSong: WavesTuneSongEntry? {
+        guard let selectedSongID = wavesTuneState.selectedSongID else { return nil }
+        return wavesTuneState.songs.first { $0.id == selectedSongID }
+    }
+
+    var selectedWavesTuneSongIndex: Int? {
+        guard let selectedSongID = wavesTuneState.selectedSongID else { return nil }
+        return wavesTuneState.songs.firstIndex { $0.id == selectedSongID }
+    }
+
+    var selectedWavesTuneSongTitle: String {
+        guard let selectedWavesTuneSongIndex else { return "No Song Selected" }
+        return wavesTuneSongDisplayTitle(for: wavesTuneState.songs[selectedWavesTuneSongIndex], index: selectedWavesTuneSongIndex)
+    }
+
+    var selectedWavesTuneSongKeyTitle: String {
+        selectedWavesTuneSong?.key.title ?? "Select a song to apply its key."
+    }
+
+    var canSelectPreviousWavesTuneSong: Bool {
+        guard let selectedWavesTuneSongIndex else { return false }
+        return selectedWavesTuneSongIndex > 0
+    }
+
+    var canSelectNextWavesTuneSong: Bool {
+        guard !wavesTuneState.songs.isEmpty else { return false }
+        guard let selectedWavesTuneSongIndex else { return true }
+        return selectedWavesTuneSongIndex < wavesTuneState.songs.count - 1
+    }
+
+    var canSaveStagedKeyToSelectedWavesTuneSong: Bool {
+        selectedWavesTuneSongIndex != nil
+    }
+
     func load() {
         do {
             let existingHasUnsavedChanges = hasUnsavedChanges
@@ -679,25 +717,100 @@ final class MultiTrackViewModel: ObservableObject {
         wavesTuneState.stagedKey.accidental = accidental
     }
 
-    func applyStagedWavesTuneKey() {
-        wavesTuneState.stagedKey = wavesTuneState.stagedKey.normalized
-        wavesTuneState.appliedKey = wavesTuneState.stagedKey
-
-        guard isRunning else {
-            statusMessage = configuredWavesTuneRealtimeInsertCount > 0
-                ? "Saved Waves Tune key \(wavesTuneState.appliedKey.title). Start the engine to apply it."
-                : "No Waves Tune Real-Time inserts are configured."
+    func addWavesTuneSong(title: String, key: WavesTuneKeySelection) {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else {
+            statusMessage = "Enter a song name."
             return
         }
 
-        do {
-            let affectedInstances = try controller.applyWavesTuneRealtimeKeySelection(wavesTuneState.appliedKey)
-            statusMessage = affectedInstances > 0
-                ? "Applied Waves Tune key \(wavesTuneState.appliedKey.title) to \(affectedInstances) instance(s)."
-                : "No running Waves Tune Real-Time instances were found."
-        } catch {
-            statusMessage = error.localizedDescription
+        let song = WavesTuneSongEntry(
+            title: trimmedTitle,
+            key: key.normalized
+        )
+        wavesTuneState.songs.append(song)
+        activateWavesTuneSong(at: wavesTuneState.songs.count - 1, action: "Added")
+    }
+
+    func removeWavesTuneSong(_ id: UUID) {
+        guard let index = wavesTuneState.songs.firstIndex(where: { $0.id == id }) else { return }
+        let removedTitle = wavesTuneSongDisplayTitle(for: wavesTuneState.songs[index], index: index)
+        let removedWasSelected = wavesTuneState.selectedSongID == id
+        wavesTuneState.songs.remove(at: index)
+
+        guard removedWasSelected else {
+            statusMessage = "Removed \(removedTitle)."
+            return
         }
+
+        guard !wavesTuneState.songs.isEmpty else {
+            wavesTuneState.selectedSongID = nil
+            statusMessage = "Removed \(removedTitle)."
+            return
+        }
+
+        activateWavesTuneSong(at: min(index, wavesTuneState.songs.count - 1), action: "Selected")
+    }
+
+    func updateWavesTuneSongTitle(_ id: UUID, title: String) {
+        guard let index = wavesTuneState.songs.firstIndex(where: { $0.id == id }) else { return }
+        wavesTuneState.songs[index].title = title
+    }
+
+    func selectWavesTuneSong(_ id: UUID) {
+        guard let index = wavesTuneState.songs.firstIndex(where: { $0.id == id }) else { return }
+        activateWavesTuneSong(at: index, action: "Selected")
+    }
+
+    func stepWavesTuneSong(direction: Int) {
+        guard direction != 0, !wavesTuneState.songs.isEmpty else { return }
+
+        let targetIndex: Int
+        if let selectedWavesTuneSongIndex {
+            let nextIndex = selectedWavesTuneSongIndex + direction
+            guard wavesTuneState.songs.indices.contains(nextIndex) else { return }
+            targetIndex = nextIndex
+        } else if direction > 0 {
+            targetIndex = 0
+        } else {
+            targetIndex = wavesTuneState.songs.count - 1
+        }
+
+        activateWavesTuneSong(at: targetIndex, action: "Selected")
+    }
+
+    func triggerWavesTuneKeyPanic() {
+        var chromaticSelection = wavesTuneState.appliedKey.normalized
+        chromaticSelection.scaleMode = .chromatic
+        setActiveWavesTuneKey(
+            chromaticSelection,
+            offlineMessage: "Key Panic armed. Start the engine to apply Chromatic.",
+            onlineMessage: { affectedInstances in
+                "Key Panic applied Chromatic to \(affectedInstances) instance(s)."
+            }
+        )
+    }
+
+    func saveStagedKeyToSelectedWavesTuneSong() {
+        guard let selectedWavesTuneSongIndex else {
+            statusMessage = "Select a song first."
+            return
+        }
+
+        let normalizedKey = wavesTuneState.stagedKey.normalized
+        wavesTuneState.songs[selectedWavesTuneSongIndex].key = normalizedKey
+        activateWavesTuneSong(at: selectedWavesTuneSongIndex, action: "Saved")
+    }
+
+    func applyStagedWavesTuneKey() {
+        let normalizedKey = wavesTuneState.stagedKey.normalized
+        setActiveWavesTuneKey(
+            normalizedKey,
+            offlineMessage: "Saved Waves Tune key \(normalizedKey.title). Start the engine to apply it.",
+            onlineMessage: { affectedInstances in
+                "Applied Waves Tune key \(normalizedKey.title) to \(affectedInstances) instance(s)."
+            }
+        )
     }
 
     func applyCustomBufferSize() {
@@ -1262,6 +1375,54 @@ final class MultiTrackViewModel: ObservableObject {
             return url
         }
         return url.appendingPathExtension(pathExtension)
+    }
+
+    private func activateWavesTuneSong(at index: Int, action: String) {
+        guard wavesTuneState.songs.indices.contains(index) else { return }
+
+        wavesTuneState.songs[index].key = wavesTuneState.songs[index].key.normalized
+        wavesTuneState.selectedSongID = wavesTuneState.songs[index].id
+
+        let song = wavesTuneState.songs[index]
+        let songTitle = wavesTuneSongDisplayTitle(for: song, index: index)
+        setActiveWavesTuneKey(
+            song.key,
+            offlineMessage: "\(action) \(songTitle). Start the engine to apply \(song.key.title).",
+            onlineMessage: { affectedInstances in
+                "\(action) \(songTitle). Applied \(song.key.title) to \(affectedInstances) instance(s)."
+            }
+        )
+    }
+
+    private func setActiveWavesTuneKey(
+        _ selection: WavesTuneKeySelection,
+        offlineMessage: String,
+        onlineMessage: (Int) -> String
+    ) {
+        let normalizedSelection = selection.normalized
+        wavesTuneState.stagedKey = normalizedSelection
+        wavesTuneState.appliedKey = normalizedSelection
+
+        guard isRunning else {
+            statusMessage = configuredWavesTuneRealtimeInsertCount > 0
+                ? offlineMessage
+                : "\(offlineMessage) No Waves Tune Real-Time inserts are configured."
+            return
+        }
+
+        do {
+            let affectedInstances = try controller.applyWavesTuneRealtimeKeySelection(normalizedSelection)
+            statusMessage = affectedInstances > 0
+                ? onlineMessage(affectedInstances)
+                : "No running Waves Tune Real-Time instances were found."
+        } catch {
+            statusMessage = error.localizedDescription
+        }
+    }
+
+    func wavesTuneSongDisplayTitle(for song: WavesTuneSongEntry, index: Int) -> String {
+        let trimmedTitle = song.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmedTitle.isEmpty ? "Song \(index + 1)" : trimmedTitle
     }
 
     private func isWavesTuneRealtimePlugin(_ plugin: AudioUnitPluginInfo) -> Bool {
