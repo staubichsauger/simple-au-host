@@ -1331,7 +1331,7 @@ struct MultiTrackView: View {
                     StudioMetricTile("Actions", value: "Enable, panic, stage key, apply, next/previous song")
                 }
 
-                Text("Companion can poll `GET /api/v1/state` and trigger POST actions under `/api/v1/actions/waves-tune/...`. This listener is bound to 127.0.0.1 for local control on the same Mac.")
+                Text("Companion can poll `GET /api/v1/state` and trigger POST actions under `/api/v1/actions/waves-tune/...`. The displayed endpoint uses 127.0.0.1, which is the intended address when Companion runs on the same Mac.")
                     .font(.caption)
                     .foregroundStyle(StudioTheme.mutedText)
                     .fixedSize(horizontal: false, vertical: true)

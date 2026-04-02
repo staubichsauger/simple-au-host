@@ -94,7 +94,7 @@ Non-realtime latency classes use larger internal processing blocks and worker th
 Multi Track mode now exposes a local control API for Bitfocus Companion on `http://127.0.0.1:52719`.
 
 - The in-app status for this listener is shown in the Setup tab under `Companion Control`.
-- The listener is bound to `127.0.0.1`, so it is intended for Companion running on the same Mac.
+- The advertised endpoint is `127.0.0.1`, and that is the intended address when Companion runs on the same Mac.
 - The API is focused on Waves Tune show control: on/off, panic, staged key selection, apply, and next/previous song stepping.
 
 ### API routes

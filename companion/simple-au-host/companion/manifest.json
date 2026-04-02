@@ -13,7 +13,7 @@
     }
   ],
   "runtime": {
-    "type": "node22",
+    "type": "node18",
     "api": "nodejs-ipc",
     "apiVersion": "1.12.1",
     "entrypoint": "../dist/main.js"

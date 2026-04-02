@@ -120,6 +120,7 @@ final class CompanionControlServer: @unchecked Sendable {
     private var listener: NWListener?
     private var requestHandler: RequestHandler?
     private var stateHandler: StateHandler?
+    private var activeSessions: [ObjectIdentifier: ConnectionSession] = [:]
 
     init(port: UInt16 = CompanionControlDefaults.port) {
         self.port = port
@@ -139,11 +140,6 @@ final class CompanionControlServer: @unchecked Sendable {
         guard let listenerPort else {
             throw AudioHostError("The Companion control port is invalid.")
         }
-
-        parameters.requiredLocalEndpoint = .hostPort(
-            host: NWEndpoint.Host(CompanionControlDefaults.host),
-            port: listenerPort
-        )
 
         let listener = try NWListener(using: parameters, on: listenerPort)
         self.listener = listener
@@ -174,8 +170,12 @@ final class CompanionControlServer: @unchecked Sendable {
             let session = ConnectionSession(
                 connection: connection,
                 queue: self.queue,
-                requestHandler: requestHandler
+                requestHandler: requestHandler,
+                onClose: { [weak self] session in
+                    self?.activeSessions.removeValue(forKey: ObjectIdentifier(session))
+                }
             )
+            self.activeSessions[ObjectIdentifier(session)] = session
             session.start()
         }
 
@@ -183,6 +183,7 @@ final class CompanionControlServer: @unchecked Sendable {
     }
 
     func stop() {
+        activeSessions.removeAll()
         listener?.cancel()
         listener = nil
         stateHandler?(.stopped)
@@ -199,16 +200,20 @@ private final class ConnectionSession: @unchecked Sendable {
     private let connection: NWConnection
     private let queue: DispatchQueue
     private let requestHandler: CompanionControlServer.RequestHandler
+    private let onClose: @Sendable (ConnectionSession) -> Void
     private var buffer = Data()
+    private var hasClosed = false
 
     init(
         connection: NWConnection,
         queue: DispatchQueue,
-        requestHandler: @escaping CompanionControlServer.RequestHandler
+        requestHandler: @escaping CompanionControlServer.RequestHandler,
+        onClose: @escaping @Sendable (ConnectionSession) -> Void
     ) {
         self.connection = connection
         self.queue = queue
         self.requestHandler = requestHandler
+        self.onClose = onClose
     }
 
     func start() {
@@ -342,8 +347,15 @@ private final class ConnectionSession: @unchecked Sendable {
         data.append(response.body)
 
         connection.send(content: data, completion: .contentProcessed { [weak self] _ in
-            self?.connection.cancel()
+            self?.finish()
         })
+    }
+
+    private func finish() {
+        guard !hasClosed else { return }
+        hasClosed = true
+        connection.cancel()
+        onClose(self)
     }
 
     private func reasonPhrase(for statusCode: Int) -> String {

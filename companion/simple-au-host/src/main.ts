@@ -2,10 +2,11 @@ import {
 	combineRgb,
 	InstanceBase,
 	InstanceStatus,
-	Regex,
 	runEntrypoint,
 	type SomeCompanionConfigField,
 } from '@companion-module/base'
+import http from 'node:http'
+import https from 'node:https'
 
 interface ModuleConfig {
 	host: string
@@ -47,6 +48,11 @@ interface SimpleAUHostCommandResponse {
 	ok: boolean
 	message: string
 	state: SimpleAUHostState
+}
+
+interface ModuleHttpResponse<T> {
+	statusCode: number
+	body: T
 }
 
 const ROOT_CHOICES = [
@@ -106,9 +112,8 @@ class SimpleAUHostModule extends InstanceBase<ModuleConfig> {
 			{
 				type: 'textinput',
 				id: 'host',
-				label: 'SimpleAUHost IP',
+				label: 'SimpleAUHost Host',
 				width: 8,
-				regex: Regex.IP,
 				default: '127.0.0.1',
 			},
 			{
@@ -307,15 +312,8 @@ class SimpleAUHostModule extends InstanceBase<ModuleConfig> {
 		}
 
 		try {
-			const response = await fetch(this.url('/api/v1/state'), {
-				signal: AbortSignal.timeout(3000),
-			})
-
-			if (!response.ok) {
-				throw new Error(`HTTP ${response.status}`)
-			}
-
-			this.state = (await response.json()) as SimpleAUHostState
+			const response = await this.requestJson<SimpleAUHostState>('/api/v1/state')
+			this.state = response.body
 			this.updateStatus(InstanceStatus.Ok)
 			this.updateVariableValues()
 		} catch (error) {
@@ -327,21 +325,16 @@ class SimpleAUHostModule extends InstanceBase<ModuleConfig> {
 
 	private async postAction(path: string, payload?: Record<string, unknown>): Promise<void> {
 		try {
-			const response = await fetch(this.url(path), {
+			const response = await this.requestJson<SimpleAUHostCommandResponse>(path, {
 				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-				},
-				body: payload ? JSON.stringify(payload) : '{}',
-				signal: AbortSignal.timeout(3000),
+				body: payload ?? {},
 			})
 
-			const body = (await response.json()) as SimpleAUHostCommandResponse
-			if (!response.ok || !body.ok) {
-				throw new Error(body.message || `HTTP ${response.status}`)
+			if (!response.body.ok) {
+				throw new Error(response.body.message || `HTTP ${response.statusCode}`)
 			}
 
-			this.state = body.state
+			this.state = response.body.state
 			this.updateStatus(InstanceStatus.Ok)
 			this.updateVariableValues()
 		} catch (error) {
@@ -352,11 +345,94 @@ class SimpleAUHostModule extends InstanceBase<ModuleConfig> {
 		}
 	}
 
+	private async requestJson<T>(
+		path: string,
+		options?: {
+			method?: 'GET' | 'POST'
+			body?: Record<string, unknown>
+		}
+	): Promise<ModuleHttpResponse<T>> {
+		const url = new URL(this.url(path))
+		const transport = url.protocol === 'https:' ? https : http
+		const requestBody = options?.body ? JSON.stringify(options.body) : undefined
+		const method = options?.method ?? 'GET'
+
+		return await new Promise((resolve, reject) => {
+			const request = transport.request(
+				url,
+				{
+					method,
+					headers: requestBody
+						? {
+								'Content-Type': 'application/json',
+								'Content-Length': Buffer.byteLength(requestBody).toString(),
+							}
+						: undefined,
+				},
+				(response) => {
+					const chunks: Buffer[] = []
+
+					response.on('data', (chunk: Buffer | string) => {
+						chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+					})
+
+					response.on('end', () => {
+						const rawBody = Buffer.concat(chunks).toString('utf8')
+						const statusCode = response.statusCode ?? 0
+
+						if (statusCode < 200 || statusCode >= 300) {
+							reject(new Error(`HTTP ${statusCode}${rawBody ? `: ${rawBody}` : ''}`))
+							return
+						}
+
+						if (!rawBody) {
+							reject(new Error('SimpleAUHost returned an empty response body.'))
+							return
+						}
+
+						try {
+							resolve({
+								statusCode,
+								body: JSON.parse(rawBody) as T,
+							})
+						} catch {
+							reject(new Error('SimpleAUHost returned invalid JSON.'))
+						}
+					})
+				}
+			)
+
+			request.setTimeout(3000, () => {
+				request.destroy(new Error('Request timed out after 3000ms.'))
+			})
+
+			request.on('error', (error) => {
+				reject(error)
+			})
+
+			if (requestBody) {
+				request.write(requestBody)
+			}
+
+			request.end()
+		})
+	}
+
 	private url(path: string): string {
 		return `http://${this.config.host}:${this.config.port}${path}`
 	}
 
 	private describeError(error: unknown): string {
+		if (error && typeof error === 'object' && 'code' in error) {
+			const code = String((error as { code: unknown }).code)
+			if (code === 'ECONNREFUSED') {
+				return 'Connection refused. Verify SimpleAUHost is open in Multi Track mode and listening on the configured port.'
+			}
+			if (code === 'ETIMEDOUT') {
+				return 'Connection timed out.'
+			}
+		}
+
 		if (error instanceof Error && error.message) {
 			return error.message
 		}

@@ -6,16 +6,16 @@
   "main": "dist/main.js",
   "scripts": {
     "build": "rimraf dist && tsc -p tsconfig.build.json",
-    "package": "npm run build && companion-module-build"
+    "package": "npm run build && companion-module-build && cp pkg.tgz simple-au-host-0.1.0.tgz"
   },
   "license": "MIT",
   "dependencies": {
-    "@companion-module/base": "^1.12.1"
+    "@companion-module/base": "1.12.1"
   },
   "devDependencies": {
-    "@companion-module/tools": "^2.1.1",
-    "@types/node": "^22.10.2",
-    "rimraf": "^6.0.1",
+    "@companion-module/tools": "2.1.1",
+    "@types/node": "22.10.2",
+    "rimraf": "6.0.1",
     "typescript": "~5.5.4"
   }
 }
