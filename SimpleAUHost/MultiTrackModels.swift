@@ -163,9 +163,9 @@ enum WavesTuneAccidental: String, CaseIterable, Codable, Identifiable {
 
     var title: String {
         switch self {
-        case .flat: "b"
-        case .natural: "Natural"
-        case .sharp: "#"
+        case .flat: "♭"
+        case .natural: "♮"
+        case .sharp: "♯"
         }
     }
 
