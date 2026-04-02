@@ -29,8 +29,8 @@ enum StudioTheme {
     static let panelFill = Color(red: 0.10, green: 0.11, blue: 0.14)
     static let panelSecondaryFill = Color(red: 0.11, green: 0.12, blue: 0.15)
     static let panelStroke = Color.white.opacity(0.07)
-    static let accent = Color(red: 0.80, green: 0.96, blue: 0.32)
-    static let accentSoft = Color(red: 0.53, green: 0.76, blue: 0.20)
+    static let accent = Color(red: 0.55, green: 0.73, blue: 0.87)
+    static let accentSoft = Color(red: 0.40, green: 0.58, blue: 0.72)
     static let warning = Color(red: 0.99, green: 0.66, blue: 0.12)
     static let danger = Color(red: 0.96, green: 0.38, blue: 0.33)
     static let mutedText = Color.white.opacity(0.50)
@@ -245,7 +245,7 @@ struct StudioPrimaryButtonStyle: ButtonStyle {
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(StudioTheme.accent)
             )
-            .foregroundStyle(Color.black.opacity(0.88))
+            .foregroundStyle(Color(red: 0.06, green: 0.08, blue: 0.10))
             .opacity(configuration.isPressed ? 0.85 : 1)
     }
 }

@@ -114,7 +114,7 @@ private struct HostModeSelectionView: View {
                     "Realtime, buffered, or broadcast latency classes"
                 ],
                 buttonTitle: "Open Multi Track Rack",
-                accent: Color(red: 0.42, green: 0.84, blue: 0.97)
+                accent: Color(red: 0.62, green: 0.78, blue: 0.70)
             ) {
                 onSelect(.multiTrack)
             }
