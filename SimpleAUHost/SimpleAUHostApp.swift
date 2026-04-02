@@ -24,41 +24,26 @@ struct SimpleAUHostApp: App {
 }
 
 enum StudioTheme {
-    static let backgroundTop = Color(red: 0.09, green: 0.11, blue: 0.14)
-    static let backgroundBottom = Color(red: 0.03, green: 0.04, blue: 0.06)
-    static let panelFill = Color(red: 0.10, green: 0.12, blue: 0.15)
-    static let panelSecondaryFill = Color(red: 0.13, green: 0.15, blue: 0.19)
-    static let panelStroke = Color.white.opacity(0.08)
+    static let backgroundTop = Color(red: 0.08, green: 0.09, blue: 0.11)
+    static let backgroundBottom = Color(red: 0.04, green: 0.05, blue: 0.06)
+    static let panelFill = Color(red: 0.10, green: 0.11, blue: 0.14)
+    static let panelSecondaryFill = Color(red: 0.11, green: 0.12, blue: 0.15)
+    static let panelStroke = Color.white.opacity(0.07)
     static let accent = Color(red: 0.80, green: 0.96, blue: 0.32)
     static let accentSoft = Color(red: 0.53, green: 0.76, blue: 0.20)
     static let warning = Color(red: 0.99, green: 0.66, blue: 0.12)
     static let danger = Color(red: 0.96, green: 0.38, blue: 0.33)
-    static let mutedText = Color.white.opacity(0.62)
-    static let strongText = Color.white.opacity(0.96)
+    static let mutedText = Color.white.opacity(0.50)
+    static let strongText = Color.white.opacity(0.92)
 }
 
 struct StudioBackdrop: View {
     var body: some View {
-        ZStack {
-            LinearGradient(
-                colors: [StudioTheme.backgroundTop, StudioTheme.backgroundBottom],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-
-            Circle()
-                .fill(StudioTheme.accent.opacity(0.14))
-                .frame(width: 520, height: 520)
-                .blur(radius: 70)
-                .offset(x: 360, y: -260)
-
-            RoundedRectangle(cornerRadius: 160, style: .continuous)
-                .fill(Color.white.opacity(0.035))
-                .frame(width: 920, height: 220)
-                .rotationEffect(.degrees(-10))
-                .offset(x: -220, y: 240)
-                .blur(radius: 2)
-        }
+        LinearGradient(
+            colors: [StudioTheme.backgroundTop, StudioTheme.backgroundBottom],
+            startPoint: .top,
+            endPoint: .bottom
+        )
         .ignoresSafeArea()
     }
 }
@@ -88,21 +73,21 @@ struct StudioShell<Content: View, Toolbar: View>: View {
         ZStack {
             StudioBackdrop()
 
-            VStack(alignment: .leading, spacing: hasHeader ? 24 : 14) {
+            VStack(alignment: .leading, spacing: hasHeader ? 16 : 10) {
                 if hasHeader {
-                    HStack(alignment: .top, spacing: 20) {
-                        VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .top, spacing: 16) {
+                        VStack(alignment: .leading, spacing: 4) {
                             Text(eyebrow.uppercased())
-                                .font(.system(size: 11, weight: .bold, design: .rounded))
-                                .tracking(2)
+                                .font(.system(size: 10, weight: .semibold, design: .default))
+                                .tracking(1.4)
                                 .foregroundStyle(StudioTheme.accent)
 
                             Text(title)
-                                .font(.system(size: 34, weight: .black, design: .rounded))
+                                .font(.system(size: 22, weight: .bold, design: .default))
                                 .foregroundStyle(StudioTheme.strongText)
 
                             Text(subtitle)
-                                .font(.system(size: 14, weight: .medium, design: .rounded))
+                                .font(.system(size: 12, weight: .regular, design: .default))
                                 .foregroundStyle(StudioTheme.mutedText)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -114,7 +99,7 @@ struct StudioShell<Content: View, Toolbar: View>: View {
 
                 content
             }
-            .padding(28)
+            .padding(16)
         }
         .preferredColorScheme(.dark)
     }
@@ -143,19 +128,19 @@ struct StudioPanel<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: compact ? 12 : 16) {
+        VStack(alignment: .leading, spacing: compact ? 10 : 12) {
             if !title.isEmpty || (subtitle?.isEmpty == false) {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 3) {
                     if !title.isEmpty {
                         Text(title.uppercased())
-                            .font(.system(size: 11, weight: .bold, design: .rounded))
-                            .tracking(1.8)
+                            .font(.system(size: 10, weight: .semibold, design: .default))
+                            .tracking(1.2)
                             .foregroundStyle(StudioTheme.accent)
                     }
 
                     if let subtitle, !subtitle.isEmpty {
                         Text(subtitle)
-                            .font(.system(size: 13, weight: .medium, design: .rounded))
+                            .font(.system(size: 11, weight: .regular, design: .default))
                             .foregroundStyle(StudioTheme.mutedText)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -164,22 +149,15 @@ struct StudioPanel<Content: View>: View {
 
             content
         }
-        .padding(compact ? 16 : 18)
+        .padding(compact ? 12 : 14)
         .background(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [StudioTheme.panelSecondaryFill, StudioTheme.panelFill],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(StudioTheme.panelFill)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .stroke(StudioTheme.panelStroke, lineWidth: 1)
         )
-        .shadow(color: Color.black.opacity(0.28), radius: 24, y: 12)
     }
 }
 
@@ -190,11 +168,11 @@ struct StudioBadge: View {
 
     var body: some View {
         Label(title, systemImage: systemImage)
-            .font(.system(size: 12, weight: .bold, design: .rounded))
+            .font(.system(size: 11, weight: .medium, design: .default))
             .lineLimit(1)
-            .padding(.horizontal, 11)
-            .padding(.vertical, 7)
-            .background(tint.opacity(0.16), in: Capsule())
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(tint.opacity(0.12), in: Capsule())
             .foregroundStyle(tint)
     }
 }
@@ -211,24 +189,24 @@ struct StudioMetricTile: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 4) {
             Text(title.uppercased())
-                .font(.system(size: 10, weight: .bold, design: .rounded))
-                .tracking(1.5)
+                .font(.system(size: 9, weight: .medium, design: .default))
+                .tracking(1.0)
                 .foregroundStyle(StudioTheme.mutedText)
             Text(value)
-                .font(.system(.body, design: .monospaced).weight(.semibold))
+                .font(.system(size: 12, design: .monospaced).weight(.medium))
                 .foregroundStyle(tint)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
+        .padding(10)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.white.opacity(0.04))
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color.white.opacity(0.03))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .stroke(Color.white.opacity(0.05), lineWidth: 1)
         )
     }
@@ -244,13 +222,13 @@ struct StudioFieldLabel: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 2) {
             Text(title)
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .font(.system(size: 11, weight: .medium, design: .default))
                 .foregroundStyle(StudioTheme.strongText)
             if let subtitle, !subtitle.isEmpty {
                 Text(subtitle)
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .font(.system(size: 10, weight: .regular, design: .default))
                     .foregroundStyle(StudioTheme.mutedText)
             }
         }
@@ -260,38 +238,31 @@ struct StudioFieldLabel: View {
 struct StudioPrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 13, weight: .bold, design: .rounded))
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
+            .font(.system(size: 12, weight: .semibold, design: .default))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
             .background(
-                RoundedRectangle(cornerRadius: 13, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [StudioTheme.accent, StudioTheme.accentSoft],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(StudioTheme.accent)
             )
-            .foregroundStyle(Color.black.opacity(0.84))
-            .opacity(configuration.isPressed ? 0.88 : 1)
-            .scaleEffect(configuration.isPressed ? 0.99 : 1)
+            .foregroundStyle(Color.black.opacity(0.88))
+            .opacity(configuration.isPressed ? 0.85 : 1)
     }
 }
 
 struct StudioSecondaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 13, weight: .bold, design: .rounded))
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
+            .font(.system(size: 12, weight: .medium, design: .default))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
             .background(
-                RoundedRectangle(cornerRadius: 13, style: .continuous)
-                    .fill(Color.white.opacity(configuration.isPressed ? 0.08 : 0.06))
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color.white.opacity(configuration.isPressed ? 0.08 : 0.05))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 13, style: .continuous)
-                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .stroke(Color.white.opacity(0.07), lineWidth: 1)
             )
             .foregroundStyle(StudioTheme.strongText)
     }
@@ -300,16 +271,16 @@ struct StudioSecondaryButtonStyle: ButtonStyle {
 struct StudioDestructiveButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 13, weight: .bold, design: .rounded))
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
+            .font(.system(size: 12, weight: .medium, design: .default))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
             .background(
-                RoundedRectangle(cornerRadius: 13, style: .continuous)
-                    .fill(StudioTheme.danger.opacity(configuration.isPressed ? 0.18 : 0.12))
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(StudioTheme.danger.opacity(configuration.isPressed ? 0.16 : 0.10))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 13, style: .continuous)
-                    .stroke(StudioTheme.danger.opacity(0.28), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .stroke(StudioTheme.danger.opacity(0.24), lineWidth: 1)
             )
             .foregroundStyle(StudioTheme.danger)
     }

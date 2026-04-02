@@ -148,7 +148,7 @@ struct MultiTrackView: View {
     }
 
     private var workspaceTabs: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 8) {
             sessionTitleView
             workspaceTabButtons
 
@@ -157,20 +157,20 @@ struct MultiTrackView: View {
                 rackTabActions
             }
         }
-        .padding(4)
-        .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color.black.opacity(0.28))
-        )
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Color.black.opacity(0.20))
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(Color.white.opacity(0.07), lineWidth: 1)
+            Rectangle()
+                .fill(Color.white.opacity(0.05))
+                .frame(height: 1),
+            alignment: .bottom
         )
     }
 
     private var sessionTitleView: some View {
         Text(viewModel.currentSessionDisplayName)
-            .font(.system(size: 20, weight: .black, design: .rounded))
+            .font(.system(size: 14, weight: .semibold, design: .default))
             .foregroundStyle(StudioTheme.strongText)
             .lineLimit(1)
     }
@@ -188,10 +188,10 @@ struct MultiTrackView: View {
             selectedTab = tab
         } label: {
             Text(tab.rawValue.uppercased())
-                .font(.system(size: 12, weight: .bold, design: .rounded))
-                .tracking(1.8)
+                .font(.system(size: 11, weight: .medium, design: .default))
+                .tracking(1.0)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
+                .padding(.vertical, 8)
                 .background(tabBackground(for: tab))
                 .foregroundStyle(tabForeground(for: tab))
         }
@@ -199,7 +199,7 @@ struct MultiTrackView: View {
     }
 
     private func tabBackground(for tab: MultiTrackWorkspaceTab) -> some ShapeStyle {
-        selectedTab == tab ? Color.white.opacity(0.08) : Color.clear
+        selectedTab == tab ? Color.white.opacity(0.06) : Color.clear
     }
 
     private func tabForeground(for tab: MultiTrackWorkspaceTab) -> Color {
@@ -308,14 +308,14 @@ struct MultiTrackView: View {
 
     private var rackStripBoard: some View {
         ScrollView(.horizontal, showsIndicators: true) {
-            LazyHStack(alignment: .top, spacing: 12) {
+            LazyHStack(alignment: .top, spacing: 8) {
                 ForEach($viewModel.tracks) { $track in
                     rackStrip($track)
-                        .frame(width: 218)
+                        .frame(width: 176)
                 }
 
                 rackAddTrackStrip
-                    .frame(width: 218)
+                    .frame(width: 176)
             }
             .frame(maxHeight: .infinity, alignment: .topLeading)
             .padding(.horizontal, 2)
@@ -324,52 +324,51 @@ struct MultiTrackView: View {
     }
 
     private var rackAddTrackStrip: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 8) {
             addMonoTrackButton
             addStereoTrackButton
             Spacer(minLength: 0)
         }
-        .padding(14)
+        .padding(10)
         .frame(maxHeight: .infinity, alignment: .top)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color.black.opacity(0.16))
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.black.opacity(0.12))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(Color.white.opacity(0.07), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color.white.opacity(0.06), lineWidth: 1)
         )
     }
 
     private var rackInspectorPane: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 10) {
-                VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(rackInspectorTitle)
-                        .font(.system(size: 18, weight: .black, design: .rounded))
+                        .font(.system(size: 14, weight: .semibold, design: .default))
                         .foregroundStyle(StudioTheme.strongText)
 
                     Text(rackInspectorSubtitle)
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .font(.system(size: 11, weight: .regular, design: .default))
                         .foregroundStyle(StudioTheme.mutedText)
                         .lineLimit(2)
                 }
 
                 Spacer(minLength: 0)
 
-                HStack(spacing: 6) {
+                HStack(spacing: 4) {
                     ForEach(RackInspectorMode.allCases) { mode in
                         Button {
                             rackInspectorMode = mode
                         } label: {
                             Text(mode.rawValue)
-                                .font(.system(size: 11, weight: .bold, design: .rounded))
-                                .tracking(1.2)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
+                                .font(.system(size: 10, weight: .medium, design: .default))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 5)
                                 .background(
-                                    Capsule()
-                                        .fill(rackInspectorMode == mode ? Color.white.opacity(0.10) : Color.white.opacity(0.04))
+                                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                        .fill(rackInspectorMode == mode ? Color.white.opacity(0.08) : Color.white.opacity(0.03))
                                 )
                                 .foregroundStyle(rackInspectorMode == mode ? StudioTheme.accent : StudioTheme.mutedText)
                         }
@@ -382,7 +381,7 @@ struct MultiTrackView: View {
                         viewModel.popOutEmbeddedPluginEditor()
                     } label: {
                         Image(systemName: "arrow.up.right.square")
-                            .frame(width: 16, height: 16)
+                            .font(.system(size: 11))
                     }
                     .buttonStyle(StudioSecondaryButtonStyle())
                     .disabled(viewModel.embeddedPluginEditorSession == nil)
@@ -392,7 +391,7 @@ struct MultiTrackView: View {
                     showsEmbeddedPluginPane = false
                 } label: {
                     Image(systemName: "sidebar.right")
-                        .frame(width: 16, height: 16)
+                        .font(.system(size: 11))
                 }
                 .buttonStyle(StudioSecondaryButtonStyle())
             }
@@ -400,19 +399,13 @@ struct MultiTrackView: View {
             rackInspectorBody
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
-        .padding(16)
+        .padding(12)
         .background(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [StudioTheme.panelSecondaryFill, StudioTheme.panelFill],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(StudioTheme.panelFill)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(StudioTheme.panelStroke, lineWidth: 1)
         )
     }
@@ -447,8 +440,8 @@ struct MultiTrackView: View {
 
     private var tuningInspectorBody: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
                     compactMetricCard(
                         title: "Instances",
                         value: "\(viewModel.configuredWavesTuneRealtimeInsertCount)",
@@ -468,15 +461,15 @@ struct MultiTrackView: View {
                 ))
                 .toggleStyle(.switch)
 
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(alignment: .center, spacing: 10) {
-                        VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .center, spacing: 8) {
+                        VStack(alignment: .leading, spacing: 2) {
                             StudioFieldLabel("Setlist")
                             Text(viewModel.selectedWavesTuneSongTitle)
-                                .font(.system(size: 16, weight: .bold, design: .rounded))
+                                .font(.system(size: 13, weight: .semibold, design: .default))
                                 .foregroundStyle(StudioTheme.strongText)
                             Text(selectedWavesTuneSongSummary)
-                                .font(.system(size: 12, weight: .medium, design: .rounded))
+                                .font(.system(size: 10, weight: .regular, design: .default))
                                 .foregroundStyle(StudioTheme.mutedText)
                         }
 
@@ -526,7 +519,7 @@ struct MultiTrackView: View {
                     }
                 }
 
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 6) {
                     StudioFieldLabel("Scale")
                     Picker("Scale", selection: Binding(
                         get: { viewModel.wavesTuneState.stagedKey.scaleMode },
@@ -539,9 +532,9 @@ struct MultiTrackView: View {
                     .pickerStyle(.segmented)
                 }
 
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 6) {
                     StudioFieldLabel("Root")
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4), spacing: 6) {
                         ForEach(WavesTuneNoteLetter.allCases) { noteLetter in
                             tuningChoiceButton(
                                 title: noteLetter.title,
@@ -553,9 +546,9 @@ struct MultiTrackView: View {
                     }
                 }
 
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 6) {
                     StudioFieldLabel("Accidental")
-                    HStack(spacing: 8) {
+                    HStack(spacing: 6) {
                         ForEach(WavesTuneAccidental.allCases) { accidental in
                             let isAllowed = WavesTuneKeySelection.supports(
                                 accidental: accidental,
@@ -573,19 +566,19 @@ struct MultiTrackView: View {
                 }
 
                 if viewModel.configuredWavesTuneRealtimeInsertCount == 0 {
-                    Text("Add a Waves Tune Real-Time mono or stereo insert to any enabled track to use these controls.")
-                        .font(.caption)
+                    Text("Add a Waves Tune Real-Time insert to any enabled track to use these controls.")
+                        .font(.system(size: 10))
                         .foregroundStyle(StudioTheme.mutedText)
                 }
 
-                HStack(spacing: 12) {
-                    VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 10) {
+                    VStack(alignment: .leading, spacing: 2) {
                         Text("Staged")
-                            .font(.system(size: 11, weight: .bold, design: .rounded))
-                            .tracking(1.6)
+                            .font(.system(size: 9, weight: .medium, design: .default))
+                            .tracking(1.0)
                             .foregroundStyle(StudioTheme.mutedText)
                         Text(viewModel.stagedWavesTuneKeyTitle)
-                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                            .font(.system(size: 13, weight: .semibold, design: .default))
                             .foregroundStyle(StudioTheme.strongText)
                     }
 
@@ -721,10 +714,10 @@ struct MultiTrackView: View {
         } else if let session = viewModel.embeddedPluginEditorSession {
             EmbeddedPluginEditorContainer(viewController: session.viewController)
                 .background(Color.black.opacity(0.4))
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .stroke(Color.white.opacity(0.05), lineWidth: 1)
                 )
         } else {
             embeddedPluginPlaceholder(
@@ -735,29 +728,29 @@ struct MultiTrackView: View {
     }
 
     private func embeddedPluginPlaceholder(title: String, detail: String) -> some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 10) {
             Image(systemName: "dial.medium")
-                .font(.system(size: 30, weight: .regular))
-                .foregroundStyle(StudioTheme.accent)
+                .font(.system(size: 22, weight: .regular))
+                .foregroundStyle(StudioTheme.mutedText)
 
             Text(title)
-                .font(.system(size: 20, weight: .black, design: .rounded))
+                .font(.system(size: 14, weight: .semibold, design: .default))
                 .foregroundStyle(StudioTheme.strongText)
 
             Text(detail)
-                .font(.system(size: 13, weight: .medium, design: .rounded))
+                .font(.system(size: 11, weight: .regular, design: .default))
                 .foregroundStyle(StudioTheme.mutedText)
                 .multilineTextAlignment(.center)
-                .frame(maxWidth: 280)
+                .frame(maxWidth: 260)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color.black.opacity(0.22))
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color.black.opacity(0.18))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(Color.white.opacity(0.06), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .stroke(Color.white.opacity(0.05), lineWidth: 1)
         )
     }
 
@@ -789,7 +782,7 @@ struct MultiTrackView: View {
         let value = track.wrappedValue
         let isSelectedTrack = selectedTrack?.id == value.id
 
-        return VStack(alignment: .leading, spacing: 12) {
+        return VStack(alignment: .leading, spacing: 8) {
             rackStripHeaderContainer(track, value: value, isSelectedTrack: isSelectedTrack)
             rackInsertSection(track, value: value)
 
@@ -797,15 +790,15 @@ struct MultiTrackView: View {
 
             rackStripFooter(track, value: value)
         }
-        .padding(14)
+        .padding(8)
         .frame(maxHeight: .infinity, alignment: .top)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color.black.opacity(0.22))
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.black.opacity(0.18))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(isSelectedTrack ? StudioTheme.accent.opacity(0.45) : Color.white.opacity(0.07), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(isSelectedTrack ? StudioTheme.accent.opacity(0.40) : Color.white.opacity(0.06), lineWidth: 1)
         )
     }
 
@@ -815,11 +808,11 @@ struct MultiTrackView: View {
         isSelectedTrack: Bool
     ) -> some View {
         rackStripHeader(track, value: value, isSelectedTrack: isSelectedTrack)
-            .padding(12)
+            .padding(8)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(isSelectedTrack ? Color.white.opacity(0.09) : Color.white.opacity(0.04))
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(isSelectedTrack ? Color.white.opacity(0.07) : Color.white.opacity(0.03))
             )
             .onTapGesture {
                 selectedRackTrackID = value.id
@@ -833,7 +826,7 @@ struct MultiTrackView: View {
         _ track: Binding<MultiTrackTrackConfiguration>,
         value: MultiTrackTrackConfiguration
     ) -> some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 6) {
             ForEach(Array(track.plugins.enumerated()), id: \.element.id) { index, plugin in
                 rackInsertSlot(trackID: value.id, plugin: plugin, index: index)
             }
@@ -843,17 +836,21 @@ struct MultiTrackView: View {
                 selectedRackTrackID = value.id
                 selectedRackPluginID = viewModel.tracks.first(where: { $0.id == value.id })?.plugins.last?.id
             } label: {
-                VStack(spacing: 8) {
+                HStack(spacing: 4) {
                     Image(systemName: "plus")
-                        .font(.headline.weight(.bold))
-                    Text("ADD PLUGIN")
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
-                        .tracking(1.4)
+                        .font(.system(size: 10, weight: .semibold))
+                    Text("Add Plugin")
+                        .font(.system(size: 10, weight: .medium, design: .default))
                 }
-                .frame(maxWidth: .infinity, minHeight: 72)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
                 .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.white.opacity(0.035))
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .fill(Color.white.opacity(0.03))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .stroke(Color.white.opacity(0.05), lineWidth: 1)
                 )
             }
             .buttonStyle(.plain)
@@ -869,55 +866,51 @@ struct MultiTrackView: View {
     ) -> some View {
         let isSelected = selectedRackTrackID == trackID && selectedRackPluginID == plugin.wrappedValue.id
 
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("INSERT \(index + 1)")
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
-                    .tracking(1.4)
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(plugin.wrappedValue.pluginID == nil ? Color.white.opacity(0.15) : StudioTheme.accent)
+                    .frame(width: 6, height: 6)
+                Text("\(index + 1)")
+                    .font(.system(size: 9, weight: .medium, design: .default))
                     .foregroundStyle(isSelected ? StudioTheme.accent : StudioTheme.mutedText)
                 Spacer()
-                Circle()
-                    .fill(plugin.wrappedValue.pluginID == nil ? Color.white.opacity(0.18) : StudioTheme.accent)
-                    .frame(width: 8, height: 8)
-            }
-
-            HStack(spacing: 8) {
-                pluginSelectionButton(
-                    title: pluginSelectionTitle(for: plugin.wrappedValue.pluginID, emptyTitle: "Empty")
-                ) {
-                    openPluginSelection(
-                        trackID: trackID,
-                        insertID: plugin.wrappedValue.id,
-                        insertTitle: "Insert \(index + 1)",
-                        emptyTitle: "Empty"
-                    )
-                }
-                .disabled(viewModel.isRunning)
-
                 if plugin.wrappedValue.pluginID != nil {
                     Button {
                         viewModel.openPluginEditor(for: trackID, pluginID: plugin.wrappedValue.id)
                     } label: {
                         Image(systemName: "arrow.up.right.square")
-                            .font(.system(size: 13, weight: .bold))
-                            .frame(width: 18, height: 18)
+                            .font(.system(size: 10, weight: .medium))
                     }
-                    .buttonStyle(StudioSecondaryButtonStyle())
+                    .buttonStyle(.plain)
+                    .foregroundStyle(StudioTheme.mutedText)
                     .disabled(!viewModel.canOpenPluginEditor(for: plugin.wrappedValue))
                 }
             }
+
+            pluginSelectionButton(
+                title: pluginSelectionTitle(for: plugin.wrappedValue.pluginID, emptyTitle: "Empty")
+            ) {
+                openPluginSelection(
+                    trackID: trackID,
+                    insertID: plugin.wrappedValue.id,
+                    insertTitle: "Insert \(index + 1)",
+                    emptyTitle: "Empty"
+                )
+            }
+            .disabled(viewModel.isRunning)
         }
-        .padding(10)
+        .padding(6)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(isSelected ? Color(red: 0.06, green: 0.18, blue: 0.24) : Color.white.opacity(0.035))
+            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                .fill(isSelected ? Color.white.opacity(0.06) : Color.white.opacity(0.025))
         )
         .overlay {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(isSelected ? Color(red: 0.34, green: 0.84, blue: 0.97) : Color.white.opacity(0.06), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                .stroke(isSelected ? StudioTheme.accent.opacity(0.40) : Color.white.opacity(0.05), lineWidth: 1)
         }
-        .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
         .onTapGesture {
             selectedRackTrackID = trackID
             selectedRackPluginID = plugin.wrappedValue.id
@@ -929,10 +922,10 @@ struct MultiTrackView: View {
         value: MultiTrackTrackConfiguration,
         isSelectedTrack: Bool
     ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 5) {
             TextField("Track name", text: track.name)
                 .textFieldStyle(.plain)
-                .font(.system(size: 16, weight: .black, design: .rounded))
+                .font(.system(size: 12, weight: .semibold, design: .default))
                 .foregroundStyle(StudioTheme.strongText)
                 .disabled(viewModel.isRunning)
 
@@ -1018,67 +1011,59 @@ struct MultiTrackView: View {
         _ track: Binding<MultiTrackTrackConfiguration>,
         value: MultiTrackTrackConfiguration
     ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 6) {
             Toggle("Enabled", isOn: track.isEnabled)
                 .toggleStyle(.switch)
+                .controlSize(.small)
                 .disabled(viewModel.isRunning)
 
-            HStack(spacing: 8) {
-                Button("Copy FX") {
+            // FX clipboard + presets in a compact icon-labeled grid
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 4) {
+                rackFooterButton("Copy FX", icon: "doc.on.doc") {
                     viewModel.copyTrackProcessing(from: value.id)
                 }
-                .buttonStyle(StudioSecondaryButtonStyle())
-
-                Button("Paste FX") {
+                rackFooterButton("Paste FX", icon: "clipboard") {
                     viewModel.pasteTrackProcessing(to: value.id)
                     if selectedRackTrackID == value.id {
                         selectedRackPluginID = viewModel.tracks.first(where: { $0.id == value.id })?.plugins.first?.id
                     }
                 }
-                .buttonStyle(StudioSecondaryButtonStyle())
                 .disabled(!viewModel.canPasteTrackProcessing(to: value.id))
-            }
 
-            HStack(spacing: 8) {
-                Button("Save Chain") {
+                rackFooterButton("Save", icon: "square.and.arrow.down") {
                     saveChainPreset(for: value.id)
                 }
-                .buttonStyle(StudioSecondaryButtonStyle())
-
-                Button("Load Chain") {
+                rackFooterButton("Load", icon: "square.and.arrow.up") {
                     loadChainPreset(for: value.id)
                     if selectedRackTrackID == value.id {
                         selectedRackPluginID = viewModel.tracks.first(where: { $0.id == value.id })?.plugins.first?.id
                     }
                 }
-                .buttonStyle(StudioSecondaryButtonStyle())
                 .disabled(viewModel.isRunning)
             }
 
-            HStack(spacing: 8) {
-                Button("Save Params") {
-                    saveParameterPreset(for: value.id)
-                }
-                .buttonStyle(StudioSecondaryButtonStyle())
-                .disabled(!value.hasPlugins)
-
-                Button("Load Params") {
-                    loadParameterPreset(for: value.id)
-                    if selectedRackTrackID == value.id {
-                        selectedRackPluginID = viewModel.tracks.first(where: { $0.id == value.id })?.plugins.first?.id
-                    }
-                }
-                .buttonStyle(StudioSecondaryButtonStyle())
-                .disabled(!value.hasPlugins)
-            }
-
-            Button("Remove Track") {
+            Button {
                 viewModel.removeTrack(id: value.id)
                 syncRackSelection()
+            } label: {
+                Text("Remove")
+                    .font(.system(size: 10, weight: .medium, design: .default))
+                    .frame(maxWidth: .infinity)
             }
             .buttonStyle(StudioDestructiveButtonStyle())
             .disabled(viewModel.isRunning)
         }
+    }
+
+    private func rackFooterButton(_ title: String, icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: icon)
+                .font(.system(size: 9, weight: .medium, design: .default))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 4)
+                .padding(.horizontal, 4)
+        }
+        .buttonStyle(StudioSecondaryButtonStyle())
     }
 
     private var sessionActionPanel: some View {
@@ -1159,14 +1144,14 @@ struct MultiTrackView: View {
     }
 
     private func managedSessionRow(_ session: ManagedSessionFile) -> some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(session.displayName)
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .font(.system(size: 12, weight: .medium, design: .default))
                     .foregroundStyle(StudioTheme.strongText)
 
                 Text(session.modifiedDateLabel)
-                    .font(.caption)
+                    .font(.system(size: 10))
                     .foregroundStyle(StudioTheme.mutedText)
             }
 
@@ -1178,10 +1163,10 @@ struct MultiTrackView: View {
             .buttonStyle(StudioSecondaryButtonStyle())
             .disabled(viewModel.isRunning)
         }
-        .padding(14)
+        .padding(10)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.white.opacity(0.04))
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color.white.opacity(0.03))
         )
     }
 
@@ -1678,23 +1663,23 @@ struct MultiTrackView: View {
     private func rackMiniLabel(_ title: String, _ value: String) -> some View {
         HStack {
             Text(title.uppercased())
-                .font(.system(size: 9, weight: .bold, design: .rounded))
-                .tracking(1.3)
+                .font(.system(size: 9, weight: .medium, design: .default))
+                .tracking(0.8)
                 .foregroundStyle(StudioTheme.mutedText)
             Spacer()
             Text(value)
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
                 .foregroundStyle(StudioTheme.strongText)
         }
     }
 
     private func rackControlRow<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
-        HStack(alignment: .center, spacing: 8) {
+        HStack(alignment: .center, spacing: 6) {
             Text(title.uppercased())
-                .font(.system(size: 9, weight: .bold, design: .rounded))
-                .tracking(1.3)
+                .font(.system(size: 9, weight: .medium, design: .default))
+                .tracking(0.8)
                 .foregroundStyle(StudioTheme.mutedText)
-                .frame(width: 52, alignment: .leading)
+                .frame(width: 48, alignment: .leading)
 
             content()
                 .frame(maxWidth: .infinity, alignment: .trailing)
@@ -1709,16 +1694,16 @@ struct MultiTrackView: View {
     ) -> some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .font(.system(size: 12, weight: .medium, design: .default))
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
+                .padding(.vertical, 7)
                 .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(isSelected ? StudioTheme.accent.opacity(0.22) : Color.white.opacity(0.05))
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .fill(isSelected ? StudioTheme.accent.opacity(0.18) : Color.white.opacity(0.04))
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(isSelected ? StudioTheme.accent.opacity(0.75) : Color.white.opacity(0.08), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .stroke(isSelected ? StudioTheme.accent.opacity(0.60) : Color.white.opacity(0.06), lineWidth: 1)
                 )
                 .foregroundStyle(isSelected ? StudioTheme.accent : StudioTheme.strongText)
         }
@@ -1732,24 +1717,24 @@ struct MultiTrackView: View {
         value: String,
         tint: Color = StudioTheme.strongText
     ) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 3) {
             Text(title.uppercased())
-                .font(.system(size: 9, weight: .bold, design: .rounded))
-                .tracking(1.4)
+                .font(.system(size: 9, weight: .medium, design: .default))
+                .tracking(0.8)
                 .foregroundStyle(StudioTheme.mutedText)
             Text(value)
-                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .font(.system(size: 12, weight: .medium, design: .default))
                 .foregroundStyle(tint)
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
+        .padding(8)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.white.opacity(0.04))
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color.white.opacity(0.03))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .stroke(Color.white.opacity(0.05), lineWidth: 1)
         )
     }
@@ -1757,21 +1742,20 @@ struct MultiTrackView: View {
     private func wavesTuneSongRow(_ song: WavesTuneSongEntry, index: Int) -> some View {
         let isSelected = viewModel.wavesTuneState.selectedSongID == song.id
 
-        return HStack(spacing: 8) {
+        return HStack(spacing: 6) {
             Button {
                 viewModel.selectWavesTuneSong(song.id)
             } label: {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "play.circle")
-                    .font(.system(size: 15, weight: .bold))
-                    .frame(width: 18, height: 18)
+                    .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(isSelected ? StudioTheme.accent : StudioTheme.mutedText)
             }
             .buttonStyle(.plain)
 
             Text("\(index + 1)")
-                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .font(.system(size: 10, weight: .medium, design: .default))
                 .foregroundStyle(StudioTheme.mutedText)
-                .frame(width: 20)
+                .frame(width: 16)
 
             TextField(
                 "Song \(index + 1)",
@@ -1781,23 +1765,23 @@ struct MultiTrackView: View {
                 )
             )
             .textFieldStyle(.plain)
-            .font(.system(size: 13, weight: .bold, design: .rounded))
+            .font(.system(size: 12, weight: .medium, design: .default))
             .foregroundStyle(StudioTheme.strongText)
 
             Button(song.key.title) {
                 viewModel.selectWavesTuneSong(song.id)
             }
             .buttonStyle(.plain)
-            .font(.system(size: 11, weight: .bold, design: .rounded))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
+            .font(.system(size: 10, weight: .medium, design: .default))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
             .background(
-                Capsule()
-                    .fill(isSelected ? StudioTheme.accent.opacity(0.20) : Color.white.opacity(0.05))
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(isSelected ? StudioTheme.accent.opacity(0.15) : Color.white.opacity(0.04))
             )
             .overlay(
-                Capsule()
-                    .stroke(isSelected ? StudioTheme.accent.opacity(0.65) : Color.white.opacity(0.08), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .stroke(isSelected ? StudioTheme.accent.opacity(0.50) : Color.white.opacity(0.06), lineWidth: 1)
             )
             .foregroundStyle(isSelected ? StudioTheme.accent : StudioTheme.strongText)
 
@@ -1805,20 +1789,20 @@ struct MultiTrackView: View {
                 viewModel.removeWavesTuneSong(song.id)
             } label: {
                 Image(systemName: "trash")
-                    .frame(width: 14, height: 14)
+                    .font(.system(size: 10))
             }
             .buttonStyle(.plain)
             .foregroundStyle(StudioTheme.warning)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 9)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(isSelected ? StudioTheme.accent.opacity(0.10) : Color.white.opacity(0.035))
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(isSelected ? StudioTheme.accent.opacity(0.08) : Color.white.opacity(0.025))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(isSelected ? StudioTheme.accent.opacity(0.38) : Color.white.opacity(0.06), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .stroke(isSelected ? StudioTheme.accent.opacity(0.30) : Color.white.opacity(0.05), lineWidth: 1)
         )
     }
 
@@ -2148,7 +2132,7 @@ struct MultiTrackView: View {
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            HStack(spacing: 8) {
+            HStack(spacing: 4) {
                 Text(title)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -2156,21 +2140,21 @@ struct MultiTrackView: View {
                 Spacer(minLength: 0)
 
                 Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.system(size: 8, weight: .medium))
                     .foregroundStyle(StudioTheme.mutedText)
             }
-            .font(.system(size: 12, weight: .semibold, design: .rounded))
+            .font(.system(size: 10, weight: .medium, design: .default))
             .foregroundStyle(StudioTheme.strongText)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 5)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color.white.opacity(0.05))
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(Color.white.opacity(0.04))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .stroke(Color.white.opacity(0.06), lineWidth: 1)
             )
         }
         .buttonStyle(.plain)

@@ -133,29 +133,27 @@ private struct ModeCard: View {
 
     var body: some View {
         StudioPanel("", compact: false) {
-            VStack(alignment: .leading, spacing: 18) {
-                VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(eyebrow.uppercased())
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
-                        .tracking(1.8)
+                        .font(.system(size: 10, weight: .medium, design: .default))
+                        .tracking(1.2)
                         .foregroundStyle(accent)
 
                     Text(title)
-                        .font(.system(size: 28, weight: .black, design: .rounded))
+                        .font(.system(size: 20, weight: .bold, design: .default))
                         .foregroundStyle(StudioTheme.strongText)
 
                     Text(description)
-                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                        .font(.system(size: 12, weight: .regular, design: .default))
                         .foregroundStyle(StudioTheme.mutedText)
                 }
 
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 8) {
                     ForEach(features, id: \.self) { feature in
-                        Label(feature, systemImage: "seal.fill")
-                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        Label(feature, systemImage: "checkmark")
+                            .font(.system(size: 12, weight: .regular, design: .default))
                             .foregroundStyle(StudioTheme.strongText)
-                            .symbolRenderingMode(.palette)
-                            .foregroundStyle(accent, accent.opacity(0.35))
                     }
                 }
 
@@ -164,13 +162,11 @@ private struct ModeCard: View {
                 Button(buttonTitle, action: action)
                     .buttonStyle(StudioPrimaryButtonStyle())
             }
-            .frame(maxWidth: .infinity, minHeight: 290, alignment: .topLeading)
+            .frame(maxWidth: .infinity, minHeight: 240, alignment: .topLeading)
         }
-        .overlay(alignment: .topTrailing) {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(accent.opacity(0.35), lineWidth: 1)
-                .padding(1)
-                .blendMode(.screen)
-        }
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(accent.opacity(0.25), lineWidth: 1)
+        )
     }
 }
