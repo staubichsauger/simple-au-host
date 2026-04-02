@@ -1268,6 +1268,33 @@ final class MultiTrackViewModel: ObservableObject {
                 return companionControlErrorHTTPResponse(statusCode: 400, message: error.localizedDescription)
             }
 
+        case ("POST", "/api/v1/actions/waves-tune/scale-mode"):
+            do {
+                let payload = try decodeCompanionControlRequest(CompanionControlSetScaleModeRequest.self, from: request.body)
+                try setCompanionControlWavesTuneScaleMode(payload.scaleMode)
+                return companionControlCommandHTTPResponse()
+            } catch {
+                return companionControlErrorHTTPResponse(statusCode: 400, message: error.localizedDescription)
+            }
+
+        case ("POST", "/api/v1/actions/waves-tune/note-letter"):
+            do {
+                let payload = try decodeCompanionControlRequest(CompanionControlSetNoteLetterRequest.self, from: request.body)
+                try setCompanionControlWavesTuneNoteLetter(payload.noteLetter)
+                return companionControlCommandHTTPResponse()
+            } catch {
+                return companionControlErrorHTTPResponse(statusCode: 400, message: error.localizedDescription)
+            }
+
+        case ("POST", "/api/v1/actions/waves-tune/accidental"):
+            do {
+                let payload = try decodeCompanionControlRequest(CompanionControlSetAccidentalRequest.self, from: request.body)
+                try setCompanionControlWavesTuneAccidental(payload.accidental)
+                return companionControlCommandHTTPResponse()
+            } catch {
+                return companionControlErrorHTTPResponse(statusCode: 400, message: error.localizedDescription)
+            }
+
         case ("POST", "/api/v1/actions/waves-tune/apply"):
             applyStagedWavesTuneKey()
             return companionControlCommandHTTPResponse()
@@ -1570,6 +1597,42 @@ final class MultiTrackViewModel: ObservableObject {
             accidental: rootChoice.accidental
         ).normalized
         statusMessage = "Staged Waves Tune key \(wavesTuneState.stagedKey.title)."
+    }
+
+    private func setCompanionControlWavesTuneScaleMode(_ scaleMode: String) throws {
+        guard let scaleMode = WavesTuneScaleMode(rawValue: scaleMode.lowercased()) else {
+            throw AudioHostError("Unsupported Waves Tune scale mode: \(scaleMode).")
+        }
+
+        wavesTuneState.stagedKey.scaleMode = scaleMode
+        statusMessage = "Staged Waves Tune scale \(wavesTuneState.stagedKey.title)."
+    }
+
+    private func setCompanionControlWavesTuneNoteLetter(_ noteLetter: String) throws {
+        guard let noteLetter = WavesTuneNoteLetter(rawValue: noteLetter.lowercased()) else {
+            throw AudioHostError("Unsupported Waves Tune note letter: \(noteLetter).")
+        }
+
+        wavesTuneState.stagedKey.noteLetter = noteLetter
+        wavesTuneState.stagedKey.normalize()
+        statusMessage = "Staged Waves Tune root \(wavesTuneState.stagedKey.title)."
+    }
+
+    private func setCompanionControlWavesTuneAccidental(_ accidental: String) throws {
+        guard let accidental = WavesTuneAccidental(rawValue: accidental.lowercased()) else {
+            throw AudioHostError("Unsupported Waves Tune accidental: \(accidental).")
+        }
+        guard WavesTuneKeySelection.supports(
+            accidental: accidental,
+            for: wavesTuneState.stagedKey.noteLetter
+        ) else {
+            throw AudioHostError(
+                "\(wavesTuneState.stagedKey.noteLetter.title) does not support \(accidental.title)."
+            )
+        }
+
+        wavesTuneState.stagedKey.accidental = accidental
+        statusMessage = "Staged Waves Tune root \(wavesTuneState.stagedKey.title)."
     }
 
     private func activateWavesTuneSong(at index: Int, action: String) {

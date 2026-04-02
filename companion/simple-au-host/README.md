@@ -6,6 +6,9 @@ This Bitfocus Companion module targets the built-in local HTTP control API expos
 
 - Waves Tune on/off
 - Waves Tune toggle
+- set note letter
+- set accidental
+- set scale mode
 - stage key root + scale
 - apply staged key
 - key panic

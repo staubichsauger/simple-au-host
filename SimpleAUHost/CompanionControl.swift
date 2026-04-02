@@ -76,6 +76,18 @@ struct CompanionControlSetStagedKeyRequest: Decodable, Sendable {
     let scaleMode: String
 }
 
+struct CompanionControlSetScaleModeRequest: Decodable, Sendable {
+    let scaleMode: String
+}
+
+struct CompanionControlSetNoteLetterRequest: Decodable, Sendable {
+    let noteLetter: String
+}
+
+struct CompanionControlSetAccidentalRequest: Decodable, Sendable {
+    let accidental: String
+}
+
 struct CompanionControlStepSongRequest: Decodable, Sendable {
     let direction: Int
 }

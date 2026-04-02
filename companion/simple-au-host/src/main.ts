@@ -75,6 +75,22 @@ const ROOT_CHOICES = [
 	{ id: 'b', label: 'B' },
 ]
 
+const NOTE_LETTER_CHOICES = [
+	{ id: 'c', label: 'C' },
+	{ id: 'd', label: 'D' },
+	{ id: 'e', label: 'E' },
+	{ id: 'f', label: 'F' },
+	{ id: 'g', label: 'G' },
+	{ id: 'a', label: 'A' },
+	{ id: 'b', label: 'B' },
+]
+
+const ACCIDENTAL_CHOICES = [
+	{ id: 'flat', label: 'Flat' },
+	{ id: 'natural', label: 'Natural' },
+	{ id: 'sharp', label: 'Sharp' },
+]
+
 const SCALE_CHOICES = [
 	{ id: 'chromatic', label: 'Chromatic' },
 	{ id: 'major', label: 'Major' },
@@ -178,6 +194,57 @@ class SimpleAUHostModule extends InstanceBase<ModuleConfig> {
 				callback: async (event) => {
 					await this.postAction('/api/v1/actions/waves-tune/staged-key', {
 						root: event.options.root,
+						scaleMode: event.options.scaleMode,
+					})
+				},
+			},
+			set_note_letter: {
+				name: 'Set Note Letter',
+				options: [
+					{
+						type: 'dropdown',
+						id: 'noteLetter',
+						label: 'Note Letter',
+						default: 'c',
+						choices: NOTE_LETTER_CHOICES,
+					},
+				],
+				callback: async (event) => {
+					await this.postAction('/api/v1/actions/waves-tune/note-letter', {
+						noteLetter: event.options.noteLetter,
+					})
+				},
+			},
+			set_accidental: {
+				name: 'Set Accidental',
+				options: [
+					{
+						type: 'dropdown',
+						id: 'accidental',
+						label: 'Accidental',
+						default: 'natural',
+						choices: ACCIDENTAL_CHOICES,
+					},
+				],
+				callback: async (event) => {
+					await this.postAction('/api/v1/actions/waves-tune/accidental', {
+						accidental: event.options.accidental,
+					})
+				},
+			},
+			set_scale_mode: {
+				name: 'Set Scale Mode',
+				options: [
+					{
+						type: 'dropdown',
+						id: 'scaleMode',
+						label: 'Scale',
+						default: 'major',
+						choices: SCALE_CHOICES,
+					},
+				],
+				callback: async (event) => {
+					await this.postAction('/api/v1/actions/waves-tune/scale-mode', {
 						scaleMode: event.options.scaleMode,
 					})
 				},

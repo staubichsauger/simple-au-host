@@ -104,6 +104,9 @@ Multi Track mode now exposes a local control API for Bitfocus Companion on `http
 - `POST /api/v1/actions/waves-tune/enabled` with `{"enabled":true|false}`
 - `POST /api/v1/actions/waves-tune/toggle-enabled`
 - `POST /api/v1/actions/waves-tune/staged-key` with `{"root":"g#","scaleMode":"major"}`
+- `POST /api/v1/actions/waves-tune/note-letter` with `{"noteLetter":"g"}`
+- `POST /api/v1/actions/waves-tune/accidental` with `{"accidental":"sharp"}`
+- `POST /api/v1/actions/waves-tune/scale-mode` with `{"scaleMode":"major"}`
 - `POST /api/v1/actions/waves-tune/apply`
 - `POST /api/v1/actions/waves-tune/panic`
 - `POST /api/v1/actions/waves-tune/step-song` with `{"direction":1}` or `{"direction":-1}`
