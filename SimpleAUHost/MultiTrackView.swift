@@ -46,6 +46,7 @@ struct MultiTrackView: View {
     @State private var rackPluginSelectionRequest: RackPluginSelectionRequest?
     @State private var draftWavesTuneSongTitle = ""
     @State private var draftWavesTuneSongKey = WavesTuneKeySelection()
+    @State private var tuningPopoutPanel: NSPanel?
     let onBackToModeSelection: (() -> Void)?
 
     init(
@@ -105,6 +106,8 @@ struct MultiTrackView: View {
         .onDisappear {
             viewModel.setTelemetryPublishingEnabled(false)
             viewModel.clearEmbeddedPluginEditor()
+            tuningPopoutPanel?.close()
+            tuningPopoutPanel = nil
             closeCoordinator.updateHandler(nil)
         }
         .alert("Discard Unsaved Changes?", isPresented: Binding(
@@ -377,16 +380,14 @@ struct MultiTrackView: View {
                     }
                 }
 
-                if rackInspectorMode == .plugin {
-                    Button {
-                        viewModel.popOutEmbeddedPluginEditor()
-                    } label: {
-                        Image(systemName: "arrow.up.right.square")
-                            .font(.system(size: 11))
-                    }
-                    .buttonStyle(StudioSecondaryButtonStyle())
-                    .disabled(viewModel.embeddedPluginEditorSession == nil)
+                Button {
+                    popOutCurrentInspector()
+                } label: {
+                    Image(systemName: "arrow.up.right.square")
+                        .font(.system(size: 11))
                 }
+                .buttonStyle(StudioSecondaryButtonStyle())
+                .disabled(!canPopOutInspector)
 
                 Button {
                     showsEmbeddedPluginPane = false
@@ -1955,6 +1956,50 @@ struct MultiTrackView: View {
         viewModel.showEmbeddedPluginEditor(for: track.id, pluginID: plugin.id)
     }
 
+    private var canPopOutInspector: Bool {
+        switch rackInspectorMode {
+        case .plugin:
+            return viewModel.embeddedPluginEditorSession != nil
+        case .tuning:
+            return true
+        }
+    }
+
+    private func popOutCurrentInspector() {
+        switch rackInspectorMode {
+        case .plugin:
+            viewModel.popOutEmbeddedPluginEditor()
+        case .tuning:
+            popOutTuningInspector()
+        }
+    }
+
+    private func popOutTuningInspector() {
+        if let existing = tuningPopoutPanel {
+            existing.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        let tuningView = TuningPopoutView(viewModel: viewModel)
+        let hostingController = NSHostingController(rootView: tuningView)
+        hostingController.preferredContentSize = NSSize(width: 480, height: 600)
+
+        let panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 600),
+            styleMask: [.titled, .closable, .resizable, .utilityWindow],
+            backing: .buffered,
+            defer: false
+        )
+        panel.title = "Waves Tune Control"
+        panel.contentViewController = hostingController
+        panel.isFloatingPanel = true
+        panel.hidesOnDeactivate = false
+        panel.center()
+        panel.makeKeyAndOrderFront(nil)
+
+        tuningPopoutPanel = panel
+    }
+
     private func updateTelemetryPublishing() {
         let shouldPublishTelemetry = viewModel.isRunning && selectedTab == .show && showsDiagnostics
         viewModel.setTelemetryPublishingEnabled(shouldPublishTelemetry)
@@ -2159,6 +2204,313 @@ struct MultiTrackView: View {
             )
         }
         .buttonStyle(.plain)
+    }
+}
+
+private struct TuningPopoutView: View {
+    @ObservedObject var viewModel: MultiTrackViewModel
+    @State private var showsAddSongSheet = false
+    @State private var draftSongTitle = ""
+    @State private var draftSongKey = WavesTuneKeySelection()
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    metricCard(
+                        title: "Instances",
+                        value: "\(viewModel.configuredWavesTuneRealtimeInsertCount)",
+                        tint: viewModel.configuredWavesTuneRealtimeInsertCount > 0 ? StudioTheme.accent : StudioTheme.mutedText
+                    )
+                    metricCard(title: "Applied", value: viewModel.appliedWavesTuneKeyTitle)
+                    metricCard(
+                        title: "State",
+                        value: viewModel.wavesTuneState.isEnabled ? "Active" : "Bypassed",
+                        tint: viewModel.wavesTuneState.isEnabled ? StudioTheme.accent : StudioTheme.warning
+                    )
+                }
+
+                Toggle("Tune Active", isOn: Binding(
+                    get: { viewModel.wavesTuneState.isEnabled },
+                    set: { viewModel.setWavesTuneEnabled($0) }
+                ))
+                .toggleStyle(.switch)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .center, spacing: 8) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            StudioFieldLabel("Setlist")
+                            Text(viewModel.selectedWavesTuneSongTitle)
+                                .font(.system(size: 13, weight: .semibold, design: .default))
+                                .foregroundStyle(StudioTheme.strongText)
+                            Text(songSummary)
+                                .font(.system(size: 10, weight: .regular, design: .default))
+                                .foregroundStyle(StudioTheme.mutedText)
+                        }
+
+                        Spacer(minLength: 0)
+
+                        HStack(spacing: 8) {
+                            Button("Key Panic") {
+                                viewModel.triggerWavesTuneKeyPanic()
+                            }
+                            .buttonStyle(StudioDestructiveButtonStyle())
+
+                            Button {
+                                viewModel.stepWavesTuneSong(direction: -1)
+                            } label: {
+                                Image(systemName: "chevron.left")
+                                    .frame(width: 16, height: 16)
+                            }
+                            .buttonStyle(StudioSecondaryButtonStyle())
+                            .disabled(!viewModel.canSelectPreviousWavesTuneSong)
+
+                            Button {
+                                viewModel.stepWavesTuneSong(direction: 1)
+                            } label: {
+                                Image(systemName: "chevron.right")
+                                    .frame(width: 16, height: 16)
+                            }
+                            .buttonStyle(StudioSecondaryButtonStyle())
+                            .disabled(!viewModel.canSelectNextWavesTuneSong)
+
+                            Button("Add Song") {
+                                draftSongTitle = ""
+                                draftSongKey = WavesTuneKeySelection()
+                                showsAddSongSheet = true
+                            }
+                            .buttonStyle(StudioSecondaryButtonStyle())
+                        }
+                    }
+
+                    if viewModel.wavesTuneSongs.isEmpty {
+                        Text("Add songs in show order. Selecting a song or stepping next/previous applies its key immediately.")
+                            .font(.caption)
+                            .foregroundStyle(StudioTheme.mutedText)
+                    } else {
+                        VStack(spacing: 8) {
+                            ForEach(Array(viewModel.wavesTuneSongs.enumerated()), id: \.element.id) { index, song in
+                                songRow(song, index: index)
+                            }
+                        }
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    StudioFieldLabel("Scale")
+                    Picker("Scale", selection: Binding(
+                        get: { viewModel.wavesTuneState.stagedKey.scaleMode },
+                        set: { viewModel.setWavesTuneScaleMode($0) }
+                    )) {
+                        ForEach(WavesTuneScaleMode.allCases) { scaleMode in
+                            Text(scaleMode.title).tag(scaleMode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    StudioFieldLabel("Root")
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4), spacing: 6) {
+                        ForEach(WavesTuneNoteLetter.allCases) { noteLetter in
+                            choiceButton(
+                                title: noteLetter.title,
+                                isSelected: viewModel.wavesTuneState.stagedKey.noteLetter == noteLetter
+                            ) {
+                                viewModel.setWavesTuneNoteLetter(noteLetter)
+                            }
+                        }
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    StudioFieldLabel("Accidental")
+                    HStack(spacing: 6) {
+                        ForEach(WavesTuneAccidental.allCases) { accidental in
+                            let isAllowed = WavesTuneKeySelection.supports(
+                                accidental: accidental,
+                                for: viewModel.wavesTuneState.stagedKey.noteLetter
+                            )
+                            choiceButton(
+                                title: accidental.title,
+                                isSelected: viewModel.wavesTuneState.stagedKey.accidental == accidental,
+                                isEnabled: isAllowed
+                            ) {
+                                viewModel.setWavesTuneAccidental(accidental)
+                            }
+                        }
+                    }
+                }
+
+                HStack(spacing: 10) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Staged")
+                            .font(.system(size: 9, weight: .medium, design: .default))
+                            .tracking(1.0)
+                            .foregroundStyle(StudioTheme.mutedText)
+                        Text(viewModel.stagedWavesTuneKeyTitle)
+                            .font(.system(size: 13, weight: .semibold, design: .default))
+                            .foregroundStyle(StudioTheme.strongText)
+                    }
+
+                    Spacer()
+
+                    Button("Save Song Key") {
+                        viewModel.saveStagedKeyToSelectedWavesTuneSong()
+                    }
+                    .buttonStyle(StudioSecondaryButtonStyle())
+                    .disabled(!viewModel.canSaveStagedKeyToSelectedWavesTuneSong)
+
+                    Button("Apply") {
+                        viewModel.applyStagedWavesTuneKey()
+                    }
+                    .buttonStyle(StudioPrimaryButtonStyle())
+                    .disabled(!viewModel.canApplyStagedWavesTuneKey)
+                }
+            }
+            .padding(14)
+        }
+        .frame(minWidth: 440, minHeight: 400)
+        .background(StudioTheme.panelFill)
+        .preferredColorScheme(.dark)
+        .sheet(isPresented: $showsAddSongSheet) {
+            addSongSheet
+        }
+    }
+
+    private var songSummary: String {
+        if viewModel.wavesTuneSongs.isEmpty {
+            return "No songs yet. Add one to build the setlist."
+        }
+        if let idx = viewModel.selectedWavesTuneSongIndex {
+            return "Song \(idx + 1) of \(viewModel.wavesTuneSongs.count) - \(viewModel.selectedWavesTuneSongKeyTitle)"
+        }
+        return "Select a song to make it live."
+    }
+
+    private var addSongSheet: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Add Song")
+                .font(.system(size: 16, weight: .semibold, design: .default))
+                .foregroundStyle(StudioTheme.strongText)
+
+            TextField("Song title", text: $draftSongTitle)
+                .textFieldStyle(.roundedBorder)
+
+            HStack(spacing: 10) {
+                Spacer()
+                Button("Cancel") { showsAddSongSheet = false }
+                    .buttonStyle(StudioSecondaryButtonStyle())
+                Button("Add") {
+                    let title = draftSongTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !title.isEmpty else { return }
+                    viewModel.addWavesTuneSong(title: title, key: draftSongKey)
+                    showsAddSongSheet = false
+                }
+                .buttonStyle(StudioPrimaryButtonStyle())
+                .disabled(draftSongTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(16)
+        .frame(width: 320)
+        .background(StudioTheme.panelFill)
+    }
+
+    private func songRow(_ song: WavesTuneSongEntry, index: Int) -> some View {
+        let isSelected = viewModel.wavesTuneState.selectedSongID == song.id
+
+        return HStack(spacing: 6) {
+            Button {
+                viewModel.selectWavesTuneSong(song.id)
+            } label: {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "play.circle")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(isSelected ? StudioTheme.accent : StudioTheme.mutedText)
+            }
+            .buttonStyle(.plain)
+
+            Text("\(index + 1)")
+                .font(.system(size: 10, weight: .medium, design: .default))
+                .foregroundStyle(StudioTheme.mutedText)
+                .frame(width: 16)
+
+            Text(song.title)
+                .font(.system(size: 12, weight: .medium, design: .default))
+                .foregroundStyle(StudioTheme.strongText)
+                .lineLimit(1)
+
+            Spacer(minLength: 0)
+
+            Text(song.key.title)
+                .font(.system(size: 10, weight: .medium, design: .default))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(isSelected ? StudioTheme.accent.opacity(0.15) : Color.white.opacity(0.04))
+                )
+                .foregroundStyle(isSelected ? StudioTheme.accent : StudioTheme.strongText)
+
+            Button {
+                viewModel.removeWavesTuneSong(song.id)
+            } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: 10))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(StudioTheme.warning)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(isSelected ? StudioTheme.accent.opacity(0.08) : Color.white.opacity(0.025))
+        )
+    }
+
+    private func metricCard(title: String, value: String, tint: Color = StudioTheme.strongText) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title.uppercased())
+                .font(.system(size: 9, weight: .medium, design: .default))
+                .tracking(0.8)
+                .foregroundStyle(StudioTheme.mutedText)
+            Text(value)
+                .font(.system(size: 12, weight: .medium, design: .default))
+                .foregroundStyle(tint)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(8)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color.white.opacity(0.03))
+        )
+    }
+
+    private func choiceButton(
+        title: String,
+        isSelected: Bool,
+        isEnabled: Bool = true,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 12, weight: .medium, design: .default))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 7)
+                .background(
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .fill(isSelected ? StudioTheme.accent.opacity(0.18) : Color.white.opacity(0.04))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .stroke(isSelected ? StudioTheme.accent.opacity(0.60) : Color.white.opacity(0.06), lineWidth: 1)
+                )
+                .foregroundStyle(isSelected ? StudioTheme.accent : StudioTheme.strongText)
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1 : 0.35)
     }
 }
 
