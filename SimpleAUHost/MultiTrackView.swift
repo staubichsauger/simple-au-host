@@ -1032,16 +1032,29 @@ struct MultiTrackView: View {
                 }
                 .disabled(!viewModel.canPasteTrackProcessing(to: value.id))
 
-                rackFooterButton("Save", icon: "square.and.arrow.down") {
+                rackFooterButton("Chain", icon: "square.and.arrow.down") {
                     saveChainPreset(for: value.id)
                 }
-                rackFooterButton("Load", icon: "square.and.arrow.up") {
+                rackFooterButton("Chain", icon: "square.and.arrow.up") {
                     loadChainPreset(for: value.id)
                     if selectedRackTrackID == value.id {
                         selectedRackPluginID = viewModel.tracks.first(where: { $0.id == value.id })?.plugins.first?.id
                     }
                 }
                 .disabled(viewModel.isRunning)
+
+                rackFooterButton("Params", icon: "slider.horizontal.3") {
+                    saveParameterPreset(for: value.id)
+                }
+                .disabled(!value.hasPlugins)
+
+                rackFooterButton("Params", icon: "square.and.arrow.up.on.square") {
+                    loadParameterPreset(for: value.id)
+                    if selectedRackTrackID == value.id {
+                        selectedRackPluginID = viewModel.tracks.first(where: { $0.id == value.id })?.plugins.first?.id
+                    }
+                }
+                .disabled(!value.hasPlugins)
             }
 
             Button {
