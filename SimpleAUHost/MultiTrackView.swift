@@ -152,10 +152,11 @@ struct MultiTrackView: View {
             sessionTitleView
             workspaceTabButtons
 
-            if selectedTab == .rack {
-                Spacer()
-                rackTabActions
-            }
+            Spacer()
+
+            rackTabActions
+                .opacity(selectedTab == .rack ? 1 : 0)
+                .allowsHitTesting(selectedTab == .rack)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
