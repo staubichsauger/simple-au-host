@@ -521,48 +521,48 @@ struct MultiTrackView: View {
                     }
                 }
 
-                VStack(alignment: .leading, spacing: 6) {
-                    StudioFieldLabel("Scale")
-                    Picker("Scale", selection: Binding(
-                        get: { viewModel.wavesTuneState.stagedKey.scaleMode },
-                        set: { viewModel.setWavesTuneScaleMode($0) }
-                    )) {
-                        ForEach(WavesTuneScaleMode.allCases) { scaleMode in
-                            Text(scaleMode.title).tag(scaleMode)
+                HStack(spacing: 8) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        StudioFieldLabel("Scale")
+                        Picker("Scale", selection: Binding(
+                            get: { viewModel.wavesTuneState.stagedKey.scaleMode },
+                            set: { viewModel.setWavesTuneScaleMode($0) }
+                        )) {
+                            ForEach(WavesTuneScaleMode.allCases) { scaleMode in
+                                Text(scaleMode.title).tag(scaleMode)
+                            }
                         }
+                        .pickerStyle(.segmented)
                     }
-                    .pickerStyle(.segmented)
-                }
 
-                VStack(alignment: .leading, spacing: 6) {
-                    StudioFieldLabel("Root")
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4), spacing: 6) {
-                        ForEach(WavesTuneNoteLetter.allCases) { noteLetter in
-                            tuningChoiceButton(
-                                title: noteLetter.title,
-                                isSelected: viewModel.wavesTuneState.stagedKey.noteLetter == noteLetter
-                            ) {
-                                viewModel.setWavesTuneNoteLetter(noteLetter)
+                    VStack(alignment: .leading, spacing: 6) {
+                        StudioFieldLabel("Accidental")
+                        HStack(spacing: 4) {
+                            ForEach(WavesTuneAccidental.allCases) { accidental in
+                                let isAllowed = WavesTuneKeySelection.supports(
+                                    accidental: accidental,
+                                    for: viewModel.wavesTuneState.stagedKey.noteLetter
+                                )
+                                tuningChoiceButton(
+                                    title: accidental.title,
+                                    isSelected: viewModel.wavesTuneState.stagedKey.accidental == accidental,
+                                    isEnabled: isAllowed
+                                ) {
+                                    viewModel.setWavesTuneAccidental(accidental)
+                                }
                             }
                         }
                     }
+                    .fixedSize(horizontal: true, vertical: false)
                 }
 
-                VStack(alignment: .leading, spacing: 6) {
-                    StudioFieldLabel("Accidental")
-                    HStack(spacing: 6) {
-                        ForEach(WavesTuneAccidental.allCases) { accidental in
-                            let isAllowed = WavesTuneKeySelection.supports(
-                                accidental: accidental,
-                                for: viewModel.wavesTuneState.stagedKey.noteLetter
-                            )
-                            tuningChoiceButton(
-                                title: accidental.title,
-                                isSelected: viewModel.wavesTuneState.stagedKey.accidental == accidental,
-                                isEnabled: isAllowed
-                            ) {
-                                viewModel.setWavesTuneAccidental(accidental)
-                            }
+                HStack(spacing: 4) {
+                    ForEach(WavesTuneNoteLetter.allCases) { noteLetter in
+                        tuningChoiceButton(
+                            title: noteLetter.title,
+                            isSelected: viewModel.wavesTuneState.stagedKey.noteLetter == noteLetter
+                        ) {
+                            viewModel.setWavesTuneNoteLetter(noteLetter)
                         }
                     }
                 }
@@ -627,46 +627,46 @@ struct MultiTrackView: View {
                     )
             }
 
-            VStack(alignment: .leading, spacing: 10) {
-                StudioFieldLabel("Scale")
-                Picker("Song Scale", selection: $draftWavesTuneSongKey.scaleMode) {
-                    ForEach(WavesTuneScaleMode.allCases) { scaleMode in
-                        Text(scaleMode.title).tag(scaleMode)
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 6) {
+                    StudioFieldLabel("Scale")
+                    Picker("Song Scale", selection: $draftWavesTuneSongKey.scaleMode) {
+                        ForEach(WavesTuneScaleMode.allCases) { scaleMode in
+                            Text(scaleMode.title).tag(scaleMode)
+                        }
                     }
+                    .pickerStyle(.segmented)
                 }
-                .pickerStyle(.segmented)
-            }
 
-            VStack(alignment: .leading, spacing: 10) {
-                StudioFieldLabel("Root")
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
-                    ForEach(WavesTuneNoteLetter.allCases) { noteLetter in
-                        tuningChoiceButton(
-                            title: noteLetter.title,
-                            isSelected: draftWavesTuneSongKey.noteLetter == noteLetter
-                        ) {
-                            draftWavesTuneSongKey.noteLetter = noteLetter
-                            draftWavesTuneSongKey.normalize()
+                VStack(alignment: .leading, spacing: 6) {
+                    StudioFieldLabel("Accidental")
+                    HStack(spacing: 4) {
+                        ForEach(WavesTuneAccidental.allCases) { accidental in
+                            let isAllowed = WavesTuneKeySelection.supports(
+                                accidental: accidental,
+                                for: draftWavesTuneSongKey.noteLetter
+                            )
+                            tuningChoiceButton(
+                                title: accidental.title,
+                                isSelected: draftWavesTuneSongKey.accidental == accidental,
+                                isEnabled: isAllowed
+                            ) {
+                                draftWavesTuneSongKey.accidental = accidental
+                            }
                         }
                     }
                 }
+                .fixedSize(horizontal: true, vertical: false)
             }
 
-            VStack(alignment: .leading, spacing: 10) {
-                StudioFieldLabel("Accidental")
-                HStack(spacing: 8) {
-                    ForEach(WavesTuneAccidental.allCases) { accidental in
-                        let isAllowed = WavesTuneKeySelection.supports(
-                            accidental: accidental,
-                            for: draftWavesTuneSongKey.noteLetter
-                        )
-                        tuningChoiceButton(
-                            title: accidental.title,
-                            isSelected: draftWavesTuneSongKey.accidental == accidental,
-                            isEnabled: isAllowed
-                        ) {
-                            draftWavesTuneSongKey.accidental = accidental
-                        }
+            HStack(spacing: 4) {
+                ForEach(WavesTuneNoteLetter.allCases) { noteLetter in
+                    tuningChoiceButton(
+                        title: noteLetter.title,
+                        isSelected: draftWavesTuneSongKey.noteLetter == noteLetter
+                    ) {
+                        draftWavesTuneSongKey.noteLetter = noteLetter
+                        draftWavesTuneSongKey.normalize()
                     }
                 }
             }
@@ -2309,48 +2309,48 @@ private struct TuningPopoutView: View {
                     }
                 }
 
-                VStack(alignment: .leading, spacing: 6) {
-                    StudioFieldLabel("Scale")
-                    Picker("Scale", selection: Binding(
-                        get: { viewModel.wavesTuneState.stagedKey.scaleMode },
-                        set: { viewModel.setWavesTuneScaleMode($0) }
-                    )) {
-                        ForEach(WavesTuneScaleMode.allCases) { scaleMode in
-                            Text(scaleMode.title).tag(scaleMode)
+                HStack(spacing: 8) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        StudioFieldLabel("Scale")
+                        Picker("Scale", selection: Binding(
+                            get: { viewModel.wavesTuneState.stagedKey.scaleMode },
+                            set: { viewModel.setWavesTuneScaleMode($0) }
+                        )) {
+                            ForEach(WavesTuneScaleMode.allCases) { scaleMode in
+                                Text(scaleMode.title).tag(scaleMode)
+                            }
                         }
+                        .pickerStyle(.segmented)
                     }
-                    .pickerStyle(.segmented)
-                }
 
-                VStack(alignment: .leading, spacing: 6) {
-                    StudioFieldLabel("Root")
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4), spacing: 6) {
-                        ForEach(WavesTuneNoteLetter.allCases) { noteLetter in
-                            choiceButton(
-                                title: noteLetter.title,
-                                isSelected: viewModel.wavesTuneState.stagedKey.noteLetter == noteLetter
-                            ) {
-                                viewModel.setWavesTuneNoteLetter(noteLetter)
+                    VStack(alignment: .leading, spacing: 6) {
+                        StudioFieldLabel("Accidental")
+                        HStack(spacing: 4) {
+                            ForEach(WavesTuneAccidental.allCases) { accidental in
+                                let isAllowed = WavesTuneKeySelection.supports(
+                                    accidental: accidental,
+                                    for: viewModel.wavesTuneState.stagedKey.noteLetter
+                                )
+                                choiceButton(
+                                    title: accidental.title,
+                                    isSelected: viewModel.wavesTuneState.stagedKey.accidental == accidental,
+                                    isEnabled: isAllowed
+                                ) {
+                                    viewModel.setWavesTuneAccidental(accidental)
+                                }
                             }
                         }
                     }
+                    .fixedSize(horizontal: true, vertical: false)
                 }
 
-                VStack(alignment: .leading, spacing: 6) {
-                    StudioFieldLabel("Accidental")
-                    HStack(spacing: 6) {
-                        ForEach(WavesTuneAccidental.allCases) { accidental in
-                            let isAllowed = WavesTuneKeySelection.supports(
-                                accidental: accidental,
-                                for: viewModel.wavesTuneState.stagedKey.noteLetter
-                            )
-                            choiceButton(
-                                title: accidental.title,
-                                isSelected: viewModel.wavesTuneState.stagedKey.accidental == accidental,
-                                isEnabled: isAllowed
-                            ) {
-                                viewModel.setWavesTuneAccidental(accidental)
-                            }
+                HStack(spacing: 4) {
+                    ForEach(WavesTuneNoteLetter.allCases) { noteLetter in
+                        choiceButton(
+                            title: noteLetter.title,
+                            isSelected: viewModel.wavesTuneState.stagedKey.noteLetter == noteLetter
+                        ) {
+                            viewModel.setWavesTuneNoteLetter(noteLetter)
                         }
                     }
                 }
