@@ -37,6 +37,11 @@ For now, the main validation path is a clean build:
 
 - `xcodebuild -project SimpleAUHost.xcodeproj -scheme SimpleAUHost -configuration Debug build`
 
+The Bitfocus Companion module scaffold under `companion/simple-au-host/` can be validated with:
+
+- `cd companion/simple-au-host && npm install`
+- `cd companion/simple-au-host && npm run build`
+
 ## How it works
 
 This project hosts Core Audio devices directly through AUHAL input and output units rather than `AVAudioEngine`.
@@ -83,6 +88,27 @@ Each track can be:
 - assigned a latency class: `realtime`, `buffered`, or `broadcast`
 
 Non-realtime latency classes use larger internal processing blocks and worker threads. Track outputs are summed together in the final output callback.
+
+## Companion Integration
+
+Multi Track mode now exposes a local control API for Bitfocus Companion on `http://127.0.0.1:52719`.
+
+- The in-app status for this listener is shown in the Setup tab under `Companion Control`.
+- The listener is bound to `127.0.0.1`, so it is intended for Companion running on the same Mac.
+- The API is focused on Waves Tune show control: on/off, panic, staged key selection, apply, and next/previous song stepping.
+
+### API routes
+
+- `GET /api/v1/health`
+- `GET /api/v1/state`
+- `POST /api/v1/actions/waves-tune/enabled` with `{"enabled":true|false}`
+- `POST /api/v1/actions/waves-tune/toggle-enabled`
+- `POST /api/v1/actions/waves-tune/staged-key` with `{"root":"g#","scaleMode":"major"}`
+- `POST /api/v1/actions/waves-tune/apply`
+- `POST /api/v1/actions/waves-tune/panic`
+- `POST /api/v1/actions/waves-tune/step-song` with `{"direction":1}` or `{"direction":-1}`
+
+The Companion module scaffold that targets this API lives in `companion/simple-au-host/`.
 
 ## Project files
 

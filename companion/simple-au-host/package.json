@@ -1,0 +1,21 @@
+{
+  "name": "simple-au-host",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "rimraf dist && tsc -p tsconfig.build.json",
+    "package": "npm run build && companion-module-build"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@companion-module/base": "^1.12.1"
+  },
+  "devDependencies": {
+    "@companion-module/tools": "^2.1.1",
+    "@types/node": "^22.10.2",
+    "rimraf": "^6.0.1",
+    "typescript": "~5.5.4"
+  }
+}

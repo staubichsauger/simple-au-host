@@ -305,6 +305,7 @@ struct MultiTrackView: View {
             VStack(alignment: .leading, spacing: 18) {
                 sessionOverviewPanel
                 bufferingPanel
+                companionControlPanel
             }
             .padding(.bottom, 8)
         }
@@ -1316,6 +1317,24 @@ struct MultiTrackView: View {
                         latencyField(title: "Broadcast/Post", text: $viewModel.broadcastInternalBufferText, action: viewModel.applyBroadcastInternalBufferSize)
                     }
                 }
+            }
+        }
+    }
+
+    private var companionControlPanel: some View {
+        StudioPanel("Companion Control", subtitle: "Local HTTP endpoint for Bitfocus Companion or other control surfaces.") {
+            VStack(alignment: .leading, spacing: 14) {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                    StudioMetricTile("Endpoint", value: viewModel.companionControlEndpointURLString, tint: StudioTheme.accent)
+                    StudioMetricTile("Status", value: viewModel.companionControlStatus)
+                    StudioMetricTile("Scope", value: "Multi Track mode only")
+                    StudioMetricTile("Actions", value: "Enable, panic, stage key, apply, next/previous song")
+                }
+
+                Text("Companion can poll `GET /api/v1/state` and trigger POST actions under `/api/v1/actions/waves-tune/...`. This listener is bound to 127.0.0.1 for local control on the same Mac.")
+                    .font(.caption)
+                    .foregroundStyle(StudioTheme.mutedText)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }

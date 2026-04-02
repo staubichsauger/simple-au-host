@@ -1,0 +1,25 @@
+{
+  "id": "simple-au-host",
+  "name": "SimpleAUHost",
+  "shortname": "simpleauhost",
+  "description": "Tuning and Waves Tune control for SimpleAUHost",
+  "version": "0.1.0",
+  "license": "MIT",
+  "repository": "https://github.com/staubichsauger/simple-au-host",
+  "bugs": "https://github.com/staubichsauger/simple-au-host/issues",
+  "maintainers": [
+    {
+      "name": "Tim Schweikert"
+    }
+  ],
+  "runtime": {
+    "type": "node22",
+    "api": "nodejs-ipc",
+    "apiVersion": "1.12.1",
+    "entrypoint": "../dist/main.js"
+  },
+  "legacyIds": [],
+  "manufacturer": "Staubichsauger",
+  "products": ["SimpleAUHost"],
+  "keywords": ["audio", "waves tune", "tuning", "streamdeck"]
+}
