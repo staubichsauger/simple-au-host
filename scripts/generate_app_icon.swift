@@ -1,188 +1,338 @@
 import AppKit
 
+struct IconSpec {
+    let filename: String
+    let pixelSize: Int
+}
+
 let fileManager = FileManager.default
-let outputDirectory = URL(fileURLWithPath: CommandLine.arguments.dropFirst().first ?? "SimpleAUHost/Assets.xcassets/AppIcon.appiconset", isDirectory: true)
+let outputDirectory = URL(
+    fileURLWithPath: CommandLine.arguments.dropFirst().first ?? "SimpleAUHost/Assets.xcassets/AppIcon.appiconset",
+    isDirectory: true
+)
+
+let specs = [
+    IconSpec(filename: "icon_16x16.png", pixelSize: 16),
+    IconSpec(filename: "icon_16x16@2x.png", pixelSize: 32),
+    IconSpec(filename: "icon_32x32.png", pixelSize: 32),
+    IconSpec(filename: "icon_32x32@2x.png", pixelSize: 64),
+    IconSpec(filename: "icon_128x128.png", pixelSize: 128),
+    IconSpec(filename: "icon_128x128@2x.png", pixelSize: 256),
+    IconSpec(filename: "icon_256x256.png", pixelSize: 256),
+    IconSpec(filename: "icon_256x256@2x.png", pixelSize: 512),
+    IconSpec(filename: "icon_512x512.png", pixelSize: 512),
+    IconSpec(filename: "icon_512x512@2x.png", pixelSize: 1024)
+]
+
+enum DetailLevel {
+    case compact
+    case standard
+    case full
+}
+
+let teal = NSColor(calibratedRed: 0.13, green: 0.92, blue: 0.82, alpha: 1)
+let orange = NSColor(calibratedRed: 1.00, green: 0.56, blue: 0.23, alpha: 1)
+let navy = NSColor(calibratedRed: 0.05, green: 0.09, blue: 0.18, alpha: 1)
+let cobalt = NSColor(calibratedRed: 0.14, green: 0.29, blue: 0.62, alpha: 1)
+let slate = NSColor(calibratedRed: 0.09, green: 0.12, blue: 0.23, alpha: 1)
 
 try fileManager.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
 
-let canvasSize = CGSize(width: 1024, height: 1024)
-let iconRect = CGRect(origin: .zero, size: canvasSize)
-let bitmap = NSBitmapImageRep(
-    bitmapDataPlanes: nil,
-    pixelsWide: Int(canvasSize.width),
-    pixelsHigh: Int(canvasSize.height),
-    bitsPerSample: 8,
-    samplesPerPixel: 4,
-    hasAlpha: true,
-    isPlanar: false,
-    colorSpaceName: .deviceRGB,
-    bitmapFormat: [],
-    bytesPerRow: 0,
-    bitsPerPixel: 0
-)!
-
-guard let graphicsContext = NSGraphicsContext(bitmapImageRep: bitmap) else {
-    fatalError("Failed to create bitmap graphics context")
+for spec in specs {
+    try renderIcon(spec)
 }
 
-NSGraphicsContext.saveGraphicsState()
-NSGraphicsContext.current = graphicsContext
+func renderIcon(_ spec: IconSpec) throws {
+    let bitmap = NSBitmapImageRep(
+        bitmapDataPlanes: nil,
+        pixelsWide: spec.pixelSize,
+        pixelsHigh: spec.pixelSize,
+        bitsPerSample: 8,
+        samplesPerPixel: 4,
+        hasAlpha: true,
+        isPlanar: false,
+        colorSpaceName: .deviceRGB,
+        bitmapFormat: [],
+        bytesPerRow: 0,
+        bitsPerPixel: 0
+    )!
 
-guard let context = NSGraphicsContext.current?.cgContext else {
-    fatalError("Failed to create graphics context")
+    guard let graphicsContext = NSGraphicsContext(bitmapImageRep: bitmap) else {
+        fatalError("Failed to create bitmap graphics context")
+    }
+
+    let detailLevel: DetailLevel
+    if spec.pixelSize <= 32 {
+        detailLevel = .compact
+    } else if spec.pixelSize <= 128 {
+        detailLevel = .standard
+    } else {
+        detailLevel = .full
+    }
+
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = graphicsContext
+
+    guard let context = NSGraphicsContext.current?.cgContext else {
+        fatalError("Failed to create graphics context")
+    }
+
+    context.setAllowsAntialiasing(true)
+    context.setShouldAntialias(true)
+    context.interpolationQuality = .high
+    context.scaleBy(x: CGFloat(spec.pixelSize) / 1024.0, y: CGFloat(spec.pixelSize) / 1024.0)
+
+    drawIcon(in: context, detailLevel: detailLevel)
+
+    NSGraphicsContext.restoreGraphicsState()
+
+    guard let pngData = bitmap.representation(using: .png, properties: [:]) else {
+        fatalError("Failed to render PNG output")
+    }
+
+    let outputURL = outputDirectory.appendingPathComponent(spec.filename)
+    try pngData.write(to: outputURL)
+    print(outputURL.path)
 }
 
-context.setAllowsAntialiasing(true)
-context.setShouldAntialias(true)
-context.interpolationQuality = .high
+func drawIcon(in context: CGContext, detailLevel: DetailLevel) {
+    let iconRect = CGRect(x: 0, y: 0, width: 1024, height: 1024)
+    let bodyRect = iconRect.insetBy(dx: 70, dy: 70)
+    let bodyPath = NSBezierPath(roundedRect: bodyRect, xRadius: 228, yRadius: 228)
 
-let cornerRadius: CGFloat = 224
-let bodyRect = iconRect.insetBy(dx: 72, dy: 72)
-let bodyPath = NSBezierPath(roundedRect: bodyRect, xRadius: cornerRadius, yRadius: cornerRadius)
+    context.saveGState()
+    bodyPath.addClip()
 
-context.saveGState()
-bodyPath.addClip()
+    let baseGradient = NSGradient(colors: [navy, cobalt, orange])!
+    baseGradient.draw(in: bodyPath, angle: -32)
 
-let backgroundGradient = NSGradient(colors: [
-    NSColor(calibratedRed: 0.07, green: 0.09, blue: 0.18, alpha: 1),
-    NSColor(calibratedRed: 0.10, green: 0.20, blue: 0.42, alpha: 1),
-    NSColor(calibratedRed: 0.98, green: 0.45, blue: 0.19, alpha: 1)
-])!
-backgroundGradient.draw(in: bodyPath, angle: -38)
+    let topGlow = CGGradient(
+        colorsSpace: CGColorSpaceCreateDeviceRGB(),
+        colors: [
+            NSColor.white.withAlphaComponent(0.22).cgColor,
+            NSColor.white.withAlphaComponent(0.0).cgColor
+        ] as CFArray,
+        locations: [0.0, 1.0]
+    )!
+    context.drawRadialGradient(
+        topGlow,
+        startCenter: CGPoint(x: 332, y: 804),
+        startRadius: 10,
+        endCenter: CGPoint(x: 332, y: 804),
+        endRadius: 470,
+        options: .drawsAfterEndLocation
+    )
 
-let orbCenter = CGPoint(x: canvasSize.width * 0.34, y: canvasSize.height * 0.74)
-let orbColors = [
-    NSColor(calibratedRed: 1.0, green: 0.86, blue: 0.49, alpha: 0.95).cgColor,
-    NSColor(calibratedRed: 1.0, green: 0.58, blue: 0.25, alpha: 0.0).cgColor
-] as CFArray
-let orbLocations: [CGFloat] = [0.0, 1.0]
-let orbGradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: orbColors, locations: orbLocations)!
-context.drawRadialGradient(orbGradient, startCenter: orbCenter, startRadius: 20, endCenter: orbCenter, endRadius: 420, options: .drawsAfterEndLocation)
+    let cornerGlow = CGGradient(
+        colorsSpace: CGColorSpaceCreateDeviceRGB(),
+        colors: [
+            orange.withAlphaComponent(0.42).cgColor,
+            orange.withAlphaComponent(0.0).cgColor
+        ] as CFArray,
+        locations: [0.0, 1.0]
+    )!
+    context.drawRadialGradient(
+        cornerGlow,
+        startCenter: CGPoint(x: 816, y: 164),
+        startRadius: 12,
+        endCenter: CGPoint(x: 816, y: 164),
+        endRadius: 360,
+        options: .drawsAfterEndLocation
+    )
 
-let gridPath = NSBezierPath()
-for offset in stride(from: -300 as CGFloat, through: 1100, by: 72) {
-    gridPath.move(to: CGPoint(x: offset, y: 0))
-    gridPath.line(to: CGPoint(x: offset + 420, y: 1024))
+    if detailLevel == .full {
+        drawBackgroundBands(in: context)
+    }
+
+    context.restoreGState()
+
+    drawShellStroke(in: context, rect: bodyRect)
+    drawSignalStage(in: context, detailLevel: detailLevel)
 }
-context.setStrokeColor(NSColor.white.withAlphaComponent(0.08).cgColor)
-context.setLineWidth(18)
-for lineDash in [28.0, 18.0] {
-    context.setLineDash(phase: 0, lengths: [lineDash, lineDash])
-    context.addPath(gridPath.cgPath)
+
+func drawBackgroundBands(in context: CGContext) {
+    context.saveGState()
+    context.setStrokeColor(NSColor.white.withAlphaComponent(0.09).cgColor)
+    context.setLineWidth(20)
+
+    for index in 0..<4 {
+        let offset = CGFloat(index) * 102
+        let band = NSBezierPath()
+        band.move(to: CGPoint(x: -90 + offset, y: 120))
+        band.curve(
+            to: CGPoint(x: 320 + offset, y: 980),
+            controlPoint1: CGPoint(x: 70 + offset, y: 430),
+            controlPoint2: CGPoint(x: 180 + offset, y: 760)
+        )
+        context.addPath(band.cgPath)
+        context.strokePath()
+    }
+
+    context.restoreGState()
+}
+
+func drawShellStroke(in context: CGContext, rect: CGRect) {
+    let strokePath = NSBezierPath(roundedRect: rect, xRadius: 228, yRadius: 228)
+    context.saveGState()
+    context.setStrokeColor(NSColor.white.withAlphaComponent(0.16).cgColor)
+    context.setLineWidth(12)
+    context.addPath(strokePath.cgPath)
     context.strokePath()
+
+    let innerHighlight = NSBezierPath(roundedRect: rect.insetBy(dx: 22, dy: 22), xRadius: 202, yRadius: 202)
+    context.setStrokeColor(NSColor.white.withAlphaComponent(0.08).cgColor)
+    context.setLineWidth(6)
+    context.addPath(innerHighlight.cgPath)
+    context.strokePath()
+    context.restoreGState()
 }
 
-let laneRect = CGRect(x: 180, y: 284, width: 664, height: 456)
-let lanePath = NSBezierPath(roundedRect: laneRect, xRadius: 170, yRadius: 170)
+func drawSignalStage(in context: CGContext, detailLevel: DetailLevel) {
+    let stageRect = CGRect(x: 168, y: 286, width: 688, height: 452)
+    let stagePath = NSBezierPath(roundedRect: stageRect, xRadius: 166, yRadius: 166)
 
-context.saveGState()
-lanePath.addClip()
-let laneGradient = NSGradient(colors: [
-    NSColor(calibratedRed: 0.03, green: 0.05, blue: 0.13, alpha: 0.92),
-    NSColor(calibratedRed: 0.11, green: 0.14, blue: 0.31, alpha: 0.84)
-])!
-laneGradient.draw(in: lanePath, angle: 90)
-context.restoreGState()
+    if detailLevel != .compact {
+        context.saveGState()
+        stagePath.addClip()
+        let stageGradient = NSGradient(colors: [
+            slate.withAlphaComponent(0.94),
+            NSColor(calibratedRed: 0.07, green: 0.10, blue: 0.20, alpha: 0.90)
+        ])!
+        stageGradient.draw(in: stagePath, angle: 90)
 
-context.setStrokeColor(NSColor.white.withAlphaComponent(0.18).cgColor)
-context.setLineWidth(10)
-context.addPath(lanePath.cgPath)
-context.strokePath()
+        if detailLevel == .full {
+            drawTrackMeters(in: context)
+        }
 
-let railPath = NSBezierPath()
-railPath.move(to: CGPoint(x: 240, y: 512))
-railPath.curve(to: CGPoint(x: 784, y: 512), controlPoint1: CGPoint(x: 366, y: 514), controlPoint2: CGPoint(x: 656, y: 510))
-context.setStrokeColor(NSColor.white.withAlphaComponent(0.14).cgColor)
-context.setLineWidth(34)
-context.setLineCap(.round)
-context.addPath(railPath.cgPath)
-context.strokePath()
+        context.restoreGState()
 
-func drawPort(center: CGPoint, accent: NSColor, direction: CGFloat) {
-    let outerRect = CGRect(x: center.x - 98, y: center.y - 98, width: 196, height: 196)
-    let innerRect = CGRect(x: center.x - 48, y: center.y - 48, width: 96, height: 96)
-    let stemRect = CGRect(x: center.x - 18 + direction * -76, y: center.y - 110, width: 36, height: 220)
+        context.saveGState()
+        context.setStrokeColor(NSColor.white.withAlphaComponent(0.17).cgColor)
+        context.setLineWidth(10)
+        context.addPath(stagePath.cgPath)
+        context.strokePath()
+        context.restoreGState()
+    }
 
-    let outer = NSBezierPath(ovalIn: outerRect)
-    context.setFillColor(NSColor(calibratedWhite: 0.06, alpha: 0.95).cgColor)
-    context.addPath(outer.cgPath)
+    drawPorts(in: context, detailLevel: detailLevel)
+    drawWaveform(in: context, detailLevel: detailLevel)
+}
+
+func drawTrackMeters(in context: CGContext) {
+    let laneYs: [CGFloat] = [395, 512, 629]
+    let laneColors = [
+        teal.withAlphaComponent(0.16),
+        NSColor.white.withAlphaComponent(0.10),
+        orange.withAlphaComponent(0.14)
+    ]
+
+    for (laneIndex, y) in laneYs.enumerated() {
+        for barIndex in 0..<7 {
+            let x = 340 + CGFloat(barIndex) * 46
+            let height = CGFloat(36 + ((laneIndex + barIndex) % 4) * 18)
+            let rect = CGRect(x: x, y: y - height / 2, width: 22, height: height)
+            let path = NSBezierPath(roundedRect: rect, xRadius: 11, yRadius: 11)
+            context.setFillColor(laneColors[laneIndex].cgColor)
+            context.addPath(path.cgPath)
+            context.fillPath()
+        }
+    }
+}
+
+func drawPorts(in context: CGContext, detailLevel: DetailLevel) {
+    drawPort(
+        in: context,
+        center: CGPoint(x: 278, y: 512),
+        accent: teal,
+        detailLevel: detailLevel
+    )
+    drawPort(
+        in: context,
+        center: CGPoint(x: 746, y: 512),
+        accent: orange,
+        detailLevel: detailLevel
+    )
+}
+
+func drawPort(in context: CGContext, center: CGPoint, accent: NSColor, detailLevel: DetailLevel) {
+    let outerDiameter: CGFloat = detailLevel == .compact ? 178 : 190
+    let outerRect = CGRect(
+        x: center.x - outerDiameter / 2,
+        y: center.y - outerDiameter / 2,
+        width: outerDiameter,
+        height: outerDiameter
+    )
+    let outerPath = NSBezierPath(ovalIn: outerRect)
+
+    context.saveGState()
+    context.setFillColor(NSColor(calibratedWhite: 0.06, alpha: 0.96).cgColor)
+    context.addPath(outerPath.cgPath)
     context.fillPath()
 
-    context.setStrokeColor(accent.withAlphaComponent(0.95).cgColor)
-    context.setLineWidth(18)
-    context.addPath(outer.cgPath)
+    context.setStrokeColor(accent.cgColor)
+    context.setLineWidth(detailLevel == .compact ? 18 : 20)
+    context.addPath(outerPath.cgPath)
     context.strokePath()
 
-    let stem = NSBezierPath(roundedRect: stemRect, xRadius: 18, yRadius: 18)
-    context.setFillColor(accent.withAlphaComponent(0.88).cgColor)
-    context.addPath(stem.cgPath)
-    context.fillPath()
+    let innerDiameter: CGFloat = detailLevel == .compact ? 62 : 74
+    let innerRect = CGRect(
+        x: center.x - innerDiameter / 2,
+        y: center.y - innerDiameter / 2,
+        width: innerDiameter,
+        height: innerDiameter
+    )
+    context.setFillColor(accent.withAlphaComponent(0.96).cgColor)
+    context.fillEllipse(in: innerRect)
 
-    let inner = NSBezierPath(ovalIn: innerRect)
-    context.setFillColor(NSColor(calibratedWhite: 0.11, alpha: 1).cgColor)
-    context.addPath(inner.cgPath)
-    context.fillPath()
+    if detailLevel != .compact {
+        let highlightRect = outerRect.insetBy(dx: 18, dy: 18)
+        context.setStrokeColor(NSColor.white.withAlphaComponent(0.14).cgColor)
+        context.setLineWidth(6)
+        context.addEllipse(in: highlightRect)
+        context.strokePath()
+    }
+
+    context.restoreGState()
 }
 
-drawPort(center: CGPoint(x: 282, y: 512), accent: NSColor(calibratedRed: 0.22, green: 0.87, blue: 0.75, alpha: 1), direction: -1)
-drawPort(center: CGPoint(x: 742, y: 512), accent: NSColor(calibratedRed: 1.0, green: 0.60, blue: 0.28, alpha: 1), direction: 1)
+func drawWaveform(in context: CGContext, detailLevel: DetailLevel) {
+    let points = [
+        CGPoint(x: 334, y: 512),
+        CGPoint(x: 422, y: 512),
+        CGPoint(x: 486, y: 640),
+        CGPoint(x: 548, y: 412),
+        CGPoint(x: 618, y: 602),
+        CGPoint(x: 694, y: 512)
+    ]
 
-let waveform = NSBezierPath()
-waveform.move(to: CGPoint(x: 260, y: 512))
-waveform.curve(to: CGPoint(x: 360, y: 512), controlPoint1: CGPoint(x: 290, y: 512), controlPoint2: CGPoint(x: 320, y: 512))
-waveform.curve(to: CGPoint(x: 430, y: 638), controlPoint1: CGPoint(x: 396, y: 512), controlPoint2: CGPoint(x: 398, y: 638))
-waveform.curve(to: CGPoint(x: 512, y: 512), controlPoint1: CGPoint(x: 462, y: 638), controlPoint2: CGPoint(x: 478, y: 512))
-waveform.curve(to: CGPoint(x: 600, y: 386), controlPoint1: CGPoint(x: 546, y: 512), controlPoint2: CGPoint(x: 558, y: 386))
-waveform.curve(to: CGPoint(x: 664, y: 512), controlPoint1: CGPoint(x: 638, y: 386), controlPoint2: CGPoint(x: 630, y: 512))
-waveform.curve(to: CGPoint(x: 764, y: 512), controlPoint1: CGPoint(x: 700, y: 512), controlPoint2: CGPoint(x: 730, y: 512))
+    let waveform = NSBezierPath()
+    waveform.move(to: points[0])
+    for point in points.dropFirst() {
+        waveform.line(to: point)
+    }
 
-context.saveGState()
-context.setShadow(offset: .zero, blur: 34, color: NSColor.white.withAlphaComponent(0.55).cgColor)
-context.setStrokeColor(NSColor.white.withAlphaComponent(0.95).cgColor)
-context.setLineWidth(40)
-context.setLineCap(.round)
-context.setLineJoin(.round)
-context.addPath(waveform.cgPath)
-context.strokePath()
-context.restoreGState()
+    context.saveGState()
+    context.setLineCap(.round)
+    context.setLineJoin(.round)
+    context.setStrokeColor(NSColor.white.cgColor)
+    context.setLineWidth(detailLevel == .compact ? 82 : 72)
+    context.addPath(waveform.cgPath)
+    context.strokePath()
 
-context.setStrokeColor(NSColor(calibratedRed: 0.51, green: 0.97, blue: 0.92, alpha: 0.92).cgColor)
-context.setLineWidth(14)
-context.addPath(waveform.cgPath)
-context.strokePath()
+    if detailLevel != .compact {
+        context.setStrokeColor(cobalt.withAlphaComponent(0.42).cgColor)
+        context.setLineWidth(20)
+        context.addPath(waveform.cgPath)
+        context.strokePath()
+    }
 
-let sparkleCenters = [
-    CGPoint(x: 442, y: 650),
-    CGPoint(x: 592, y: 366),
-    CGPoint(x: 512, y: 524)
-]
-for (index, center) in sparkleCenters.enumerated() {
-    let radius = CGFloat(index == 2 ? 18 : 12)
-    let rect = CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2)
-    context.setFillColor(NSColor.white.withAlphaComponent(index == 2 ? 0.95 : 0.75).cgColor)
-    context.fillEllipse(in: rect)
+    if detailLevel == .full {
+        for point in [points[2], points[3], points[4]] {
+            let dotRect = CGRect(x: point.x - 10, y: point.y - 10, width: 20, height: 20)
+            context.setFillColor(NSColor.white.withAlphaComponent(0.96).cgColor)
+            context.fillEllipse(in: dotRect)
+        }
+    }
+
+    context.restoreGState()
 }
-
-context.restoreGState()
-
-let glossRect = bodyRect.insetBy(dx: 24, dy: 24)
-let glossPath = NSBezierPath(roundedRect: glossRect, xRadius: 196, yRadius: 196)
-context.saveGState()
-glossPath.addClip()
-let glossGradient = NSGradient(colors: [
-    NSColor.white.withAlphaComponent(0.24),
-    NSColor.white.withAlphaComponent(0.02),
-    NSColor.clear
-])!
-glossGradient.draw(from: CGPoint(x: 0, y: 930), to: CGPoint(x: 0, y: 430), options: [])
-context.restoreGState()
-
-NSGraphicsContext.restoreGraphicsState()
-
-guard let pngData = bitmap.representation(using: .png, properties: [:]) else {
-    fatalError("Failed to render PNG output")
-}
-
-let outputURL = outputDirectory.appendingPathComponent("icon_512x512@2x.png")
-try pngData.write(to: outputURL)
-print(outputURL.path)
