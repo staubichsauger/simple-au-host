@@ -190,6 +190,20 @@ final class MultiTrackViewModel: ObservableObject {
         selectedWavesTuneSong?.key.title ?? "Select a song to apply its key."
     }
 
+    var previousWavesTuneSongIndex: Int? {
+        guard !wavesTuneState.songs.isEmpty else { return nil }
+        guard let selectedWavesTuneSongIndex else { return wavesTuneState.songs.count - 1 }
+        let previousIndex = selectedWavesTuneSongIndex - 1
+        return wavesTuneState.songs.indices.contains(previousIndex) ? previousIndex : nil
+    }
+
+    var nextWavesTuneSongIndex: Int? {
+        guard !wavesTuneState.songs.isEmpty else { return nil }
+        guard let selectedWavesTuneSongIndex else { return 0 }
+        let nextIndex = selectedWavesTuneSongIndex + 1
+        return wavesTuneState.songs.indices.contains(nextIndex) ? nextIndex : nil
+    }
+
     var canSelectPreviousWavesTuneSong: Bool {
         guard let selectedWavesTuneSongIndex else { return false }
         return selectedWavesTuneSongIndex > 0
@@ -1225,6 +1239,12 @@ final class MultiTrackViewModel: ObservableObject {
                 },
                 selectedSongIndex: selectedWavesTuneSongIndex,
                 songCount: wavesTuneState.songs.count,
+                previousSongKey: previousWavesTuneSongIndex.map {
+                    CompanionControlKeySnapshot(selection: wavesTuneState.songs[$0].key)
+                },
+                nextSongKey: nextWavesTuneSongIndex.map {
+                    CompanionControlKeySnapshot(selection: wavesTuneState.songs[$0].key)
+                },
                 canSelectPreviousSong: canSelectPreviousWavesTuneSong,
                 canSelectNextSong: canSelectNextWavesTuneSong
             )

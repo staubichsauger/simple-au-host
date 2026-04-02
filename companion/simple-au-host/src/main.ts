@@ -30,6 +30,8 @@ interface SimpleAUHostWavesTuneState {
 	selectedSongTitle: string | null
 	selectedSongIndex: number | null
 	songCount: number
+	previousSongKey: SimpleAUHostKeyState | null
+	nextSongKey: SimpleAUHostKeyState | null
 	canSelectPreviousSong: boolean
 	canSelectNextSong: boolean
 }
@@ -96,6 +98,35 @@ const SCALE_CHOICES = [
 	{ id: 'major', label: 'Major' },
 	{ id: 'minor', label: 'Minor' },
 ]
+
+function capitalizeLabel(value: string | null | undefined): string {
+	if (!value) {
+		return ''
+	}
+
+	return value.charAt(0).toUpperCase() + value.slice(1)
+}
+
+function formatNoteLetter(value: string | null | undefined): string {
+	return value ? value.toUpperCase() : ''
+}
+
+function optionString(value: unknown): string {
+	return typeof value === 'string' ? value : ''
+}
+
+function keyMatches(
+	key: SimpleAUHostKeyState | null | undefined,
+	root: string,
+	scaleMode: string
+): boolean {
+	if (!key) {
+		return false
+	}
+
+	return `${key.noteLetter}${key.accidental === 'natural' ? '' : key.accidental === 'sharp' ? '#' : 'b'}` === root
+		&& key.scaleMode === scaleMode
+}
 
 class SimpleAUHostModule extends InstanceBase<ModuleConfig> {
 	config: ModuleConfig = {
@@ -318,6 +349,159 @@ class SimpleAUHostModule extends InstanceBase<ModuleConfig> {
 					return this.state?.wavesTune.canApplyStagedKey ?? false
 				},
 			},
+			staged_note_letter_is: {
+				name: 'Staged Note Letter Is',
+				type: 'boolean',
+				defaultStyle: {
+					bgcolor: combineRgb(0, 120, 212),
+					color: combineRgb(255, 255, 255),
+				},
+				options: [
+					{
+						type: 'dropdown',
+						id: 'noteLetter',
+						label: 'Note Letter',
+						default: 'c',
+						choices: NOTE_LETTER_CHOICES,
+					},
+				],
+				callback: (feedback) => {
+					return this.state?.wavesTune.stagedKey.noteLetter === optionString(feedback.options.noteLetter)
+				},
+			},
+			staged_accidental_is: {
+				name: 'Staged Accidental Is',
+				type: 'boolean',
+				defaultStyle: {
+					bgcolor: combineRgb(160, 96, 16),
+					color: combineRgb(255, 255, 255),
+				},
+				options: [
+					{
+						type: 'dropdown',
+						id: 'accidental',
+						label: 'Accidental',
+						default: 'natural',
+						choices: ACCIDENTAL_CHOICES,
+					},
+				],
+				callback: (feedback) => {
+					return this.state?.wavesTune.stagedKey.accidental === optionString(feedback.options.accidental)
+				},
+			},
+			staged_scale_mode_is: {
+				name: 'Staged Scale Mode Is',
+				type: 'boolean',
+				defaultStyle: {
+					bgcolor: combineRgb(32, 128, 64),
+					color: combineRgb(255, 255, 255),
+				},
+				options: [
+					{
+						type: 'dropdown',
+						id: 'scaleMode',
+						label: 'Scale',
+						default: 'major',
+						choices: SCALE_CHOICES,
+					},
+				],
+				callback: (feedback) => {
+					return this.state?.wavesTune.stagedKey.scaleMode === optionString(feedback.options.scaleMode)
+				},
+			},
+			active_key_is: {
+				name: 'Active Key Is',
+				type: 'boolean',
+				defaultStyle: {
+					bgcolor: combineRgb(96, 48, 160),
+					color: combineRgb(255, 255, 255),
+				},
+				options: [
+					{
+						type: 'dropdown',
+						id: 'root',
+						label: 'Root',
+						default: 'c',
+						choices: ROOT_CHOICES,
+					},
+					{
+						type: 'dropdown',
+						id: 'scaleMode',
+						label: 'Scale',
+						default: 'major',
+						choices: SCALE_CHOICES,
+					},
+				],
+				callback: (feedback) => {
+					return keyMatches(
+						this.state?.wavesTune.appliedKey,
+						optionString(feedback.options.root),
+						optionString(feedback.options.scaleMode)
+					)
+				},
+			},
+			previous_song_key_is: {
+				name: 'Previous Song Key Is',
+				type: 'boolean',
+				defaultStyle: {
+					bgcolor: combineRgb(140, 80, 0),
+					color: combineRgb(255, 255, 255),
+				},
+				options: [
+					{
+						type: 'dropdown',
+						id: 'root',
+						label: 'Root',
+						default: 'c',
+						choices: ROOT_CHOICES,
+					},
+					{
+						type: 'dropdown',
+						id: 'scaleMode',
+						label: 'Scale',
+						default: 'major',
+						choices: SCALE_CHOICES,
+					},
+				],
+				callback: (feedback) => {
+					return keyMatches(
+						this.state?.wavesTune.previousSongKey,
+						optionString(feedback.options.root),
+						optionString(feedback.options.scaleMode)
+					)
+				},
+			},
+			next_song_key_is: {
+				name: 'Next Song Key Is',
+				type: 'boolean',
+				defaultStyle: {
+					bgcolor: combineRgb(140, 0, 80),
+					color: combineRgb(255, 255, 255),
+				},
+				options: [
+					{
+						type: 'dropdown',
+						id: 'root',
+						label: 'Root',
+						default: 'c',
+						choices: ROOT_CHOICES,
+					},
+					{
+						type: 'dropdown',
+						id: 'scaleMode',
+						label: 'Scale',
+						default: 'major',
+						choices: SCALE_CHOICES,
+					},
+				],
+				callback: (feedback) => {
+					return keyMatches(
+						this.state?.wavesTune.nextSongKey,
+						optionString(feedback.options.root),
+						optionString(feedback.options.scaleMode)
+					)
+				},
+			},
 		})
 	}
 
@@ -327,9 +511,15 @@ class SimpleAUHostModule extends InstanceBase<ModuleConfig> {
 			{ variableId: 'status_message', name: 'Current status message' },
 			{ variableId: 'engine_running', name: 'Engine running flag' },
 			{ variableId: 'waves_tune_enabled', name: 'Waves Tune enabled flag' },
+			{ variableId: 'active_key_title', name: 'Currently active key title' },
 			{ variableId: 'staged_key_title', name: 'Staged key title' },
 			{ variableId: 'applied_key_title', name: 'Applied key title' },
+			{ variableId: 'staged_note_letter', name: 'Staged note letter' },
+			{ variableId: 'staged_scale_mode', name: 'Staged scale mode' },
+			{ variableId: 'staged_accidental', name: 'Staged accidental' },
 			{ variableId: 'selected_song_title', name: 'Selected song title' },
+			{ variableId: 'previous_song_key_title', name: 'Previous song key title' },
+			{ variableId: 'next_song_key_title', name: 'Next song key title' },
 			{ variableId: 'song_position', name: 'Selected song position (1-based)' },
 			{ variableId: 'song_count', name: 'Song count' },
 		])
@@ -346,9 +536,15 @@ class SimpleAUHostModule extends InstanceBase<ModuleConfig> {
 			status_message: this.state?.statusMessage ?? '',
 			engine_running: this.state?.isRunning ? 'true' : 'false',
 			waves_tune_enabled: this.state?.wavesTune.isEnabled ? 'true' : 'false',
+			active_key_title: this.state?.wavesTune.appliedKey.title ?? '',
 			staged_key_title: this.state?.wavesTune.stagedKey.title ?? '',
 			applied_key_title: this.state?.wavesTune.appliedKey.title ?? '',
+			staged_note_letter: formatNoteLetter(this.state?.wavesTune.stagedKey.noteLetter),
+			staged_scale_mode: capitalizeLabel(this.state?.wavesTune.stagedKey.scaleMode),
+			staged_accidental: capitalizeLabel(this.state?.wavesTune.stagedKey.accidental),
 			selected_song_title: this.state?.wavesTune.selectedSongTitle ?? '',
+			previous_song_key_title: this.state?.wavesTune.previousSongKey?.title ?? '',
+			next_song_key_title: this.state?.wavesTune.nextSongKey?.title ?? '',
 			song_position: songPosition,
 			song_count: this.state ? String(this.state.wavesTune.songCount) : '0',
 		})

@@ -36,6 +36,8 @@ struct CompanionControlWavesTuneSnapshot: Codable, Sendable {
     let selectedSongTitle: String?
     let selectedSongIndex: Int?
     let songCount: Int
+    let previousSongKey: CompanionControlKeySnapshot?
+    let nextSongKey: CompanionControlKeySnapshot?
     let canSelectPreviousSong: Bool
     let canSelectNextSong: Bool
 }

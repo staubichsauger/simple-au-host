@@ -20,6 +20,12 @@ This Bitfocus Companion module targets the built-in local HTTP control API expos
 - Waves Tune enabled
 - engine running
 - staged key differs from applied key
+- staged note letter is
+- staged accidental is
+- staged scale mode is
+- active key is
+- previous song key is
+- next song key is
 
 ## Variables
 
@@ -27,9 +33,15 @@ This Bitfocus Companion module targets the built-in local HTTP control API expos
 - `$(simpleauhost:status_message)`
 - `$(simpleauhost:engine_running)`
 - `$(simpleauhost:waves_tune_enabled)`
+- `$(simpleauhost:active_key_title)`
 - `$(simpleauhost:staged_key_title)`
 - `$(simpleauhost:applied_key_title)`
+- `$(simpleauhost:staged_note_letter)`
+- `$(simpleauhost:staged_scale_mode)`
+- `$(simpleauhost:staged_accidental)`
 - `$(simpleauhost:selected_song_title)`
+- `$(simpleauhost:previous_song_key_title)`
+- `$(simpleauhost:next_song_key_title)`
 - `$(simpleauhost:song_position)`
 - `$(simpleauhost:song_count)`
 
