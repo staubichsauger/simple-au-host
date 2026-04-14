@@ -2,6 +2,22 @@ import AVFoundation
 import Combine
 import SwiftUI
 
+enum StartupSavedSessionSelection: String, CaseIterable, Identifiable {
+    case lastSaved
+    case specific
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .lastSaved:
+            "Last Saved Show"
+        case .specific:
+            "Specific Show"
+        }
+    }
+}
+
 @MainActor
 final class MultiTrackViewModel: ObservableObject {
     private struct CopiedTrackProcessing {
@@ -34,6 +50,11 @@ final class MultiTrackViewModel: ObservableObject {
     @Published private(set) var sessionWarnings: [String] = []
     @Published private(set) var managedSessions: [ManagedSessionFile] = []
     @Published private(set) var hasUnsavedChanges = false
+    @Published var loadsSavedSessionOnStartup = false
+    @Published var startupSavedSessionSelection: StartupSavedSessionSelection = .lastSaved
+    @Published var startupSpecificSessionURL: URL?
+    @Published var opensStartupSpecificSessionAsTemplate = false
+    @Published private(set) var lastSavedSessionURL: URL?
     @Published private(set) var companionControlEndpointURLString = CompanionControlDefaults.baseURLString
     @Published private(set) var companionControlStatus = "Starting local Companion control API..."
     @Published var wavesTuneState = MultiTrackWavesTuneState()
@@ -41,6 +62,7 @@ final class MultiTrackViewModel: ObservableObject {
     private let catalog = AudioHostController()
     private let controller = MultiTrackAudioHostController()
     private let companionControlServer = CompanionControlServer()
+    private let userDefaults: UserDefaults
     private var latencyBufferSettings = MultiTrackLatencyBufferSettings(hardwareBufferSize: DefaultBufferSizes.hardwareFrames)
     private var audioDropoutMonitorTask: Task<Void, Never>?
     private var currentSessionURL: URL?
@@ -48,8 +70,12 @@ final class MultiTrackViewModel: ObservableObject {
     private var copiedTrackProcessing: CopiedTrackProcessing?
     private var persistenceCancellables = Set<AnyCancellable>()
     private var isApplyingSessionState = false
+    private var hasAppliedStartupSessionPreference = false
+    private var isCurrentSessionStartupTemplate = false
 
-    init() {
+    init(userDefaults: UserDefaults = .standard) {
+        self.userDefaults = userDefaults
+        loadPersistedStartupPreferences()
         setupSessionChangeObservers()
         startCompanionControlServer()
     }
@@ -76,6 +102,34 @@ final class MultiTrackViewModel: ObservableObject {
 
     var currentSessionDisplayName: String {
         currentSessionName + (hasUnsavedChanges ? " *" : "")
+    }
+
+    var lastSavedSessionDisplayName: String {
+        guard let lastSavedSessionURL else { return "No saved show recorded yet." }
+        return sessionDisplayName(for: lastSavedSessionURL)
+    }
+
+    var lastSavedSessionPath: String? {
+        lastSavedSessionURL?.path
+    }
+
+    var lastSavedSessionExists: Bool {
+        guard let lastSavedSessionURL else { return false }
+        return FileManager.default.fileExists(atPath: lastSavedSessionURL.path)
+    }
+
+    var startupSpecificSessionDisplayName: String {
+        guard let startupSpecificSessionURL else { return "No startup show selected." }
+        return sessionDisplayName(for: startupSpecificSessionURL)
+    }
+
+    var startupSpecificSessionPath: String? {
+        startupSpecificSessionURL?.path
+    }
+
+    var startupSpecificSessionExists: Bool {
+        guard let startupSpecificSessionURL else { return false }
+        return FileManager.default.fileExists(atPath: startupSpecificSessionURL.path)
     }
 
     var commonBufferSizeRange: ClosedRange<Int>? {
@@ -261,6 +315,44 @@ final class MultiTrackViewModel: ObservableObject {
         }
     }
 
+    func applyStartupSessionPreferenceIfNeeded() {
+        guard !hasAppliedStartupSessionPreference else { return }
+        hasAppliedStartupSessionPreference = true
+
+        guard loadsSavedSessionOnStartup else { return }
+
+        let startupURL: URL?
+        let missingSelectionMessage: String
+
+        switch startupSavedSessionSelection {
+        case .lastSaved:
+            startupURL = lastSavedSessionURL
+            missingSelectionMessage = "Save a show first before using Last Saved Show at launch."
+        case .specific:
+            startupURL = startupSpecificSessionURL
+            missingSelectionMessage = "Choose a specific show in Setup > Settings to open at launch."
+        }
+
+        guard let startupURL else {
+            statusMessage = missingSelectionMessage
+            return
+        }
+
+        guard FileManager.default.fileExists(atPath: startupURL.path) else {
+            statusMessage = "Startup show \(sessionDisplayName(for: startupURL)) is unavailable."
+            return
+        }
+
+        do {
+            try loadSession(from: startupURL)
+            if startupSavedSessionSelection == .specific && opensStartupSpecificSessionAsTemplate {
+                openCurrentSessionAsTemplate()
+            }
+        } catch {
+            statusMessage = "Failed to load startup show \(sessionDisplayName(for: startupURL)): \(error.localizedDescription)"
+        }
+    }
+
     func handleDeviceSelectionChange() {
         sanitizeTracks()
         updateSessionWarnings()
@@ -280,6 +372,7 @@ final class MultiTrackViewModel: ObservableObject {
         addTrack(layout: .mono)
         wavesTuneState = MultiTrackWavesTuneState()
         currentSessionURL = nil
+        isCurrentSessionStartupTemplate = false
         currentSessionName = "Untitled Session"
         sessionWarnings = []
         statusMessage = "Ready."
@@ -292,7 +385,10 @@ final class MultiTrackViewModel: ObservableObject {
     }
 
     func suggestedSessionFilename() -> String {
-        sanitizedSessionFilename(from: currentSessionName)
+        if isCurrentSessionStartupTemplate {
+            return sanitizedSessionFilename(from: "\(currentSessionName)-\(Self.templateDateFormatter.string(from: Date()))")
+        }
+        return sanitizedSessionFilename(from: currentSessionName)
     }
 
     func saveSession() throws {
@@ -309,7 +405,9 @@ final class MultiTrackViewModel: ObservableObject {
         let data = try encoder.encode(makeSessionFile())
         try data.write(to: url, options: .atomic)
         currentSessionURL = url
+        isCurrentSessionStartupTemplate = false
         currentSessionName = sessionDisplayName(for: url)
+        recordLastSavedSessionURL(url)
         hasUnsavedChanges = false
         try refreshManagedSessions()
         statusMessage = "Saved \(currentSessionName)."
@@ -317,7 +415,9 @@ final class MultiTrackViewModel: ObservableObject {
 
     func rememberExportedSessionURL(_ url: URL) {
         currentSessionURL = url
+        isCurrentSessionStartupTemplate = false
         currentSessionName = sessionDisplayName(for: url)
+        recordLastSavedSessionURL(url)
         statusMessage = "Saved \(currentSessionName)."
     }
 
@@ -330,11 +430,35 @@ final class MultiTrackViewModel: ObservableObject {
             throw AudioHostError("Failed to read the multi-track session file.")
         }
         applySession(session, sourceURL: url)
+        recordLastSavedSessionURL(url)
         try refreshManagedSessions()
     }
 
     func refreshManagedSessions() throws {
         managedSessions = try SAHManagedSessionStore.managedSessions()
+    }
+
+    func setLoadsSavedSessionOnStartup(_ isEnabled: Bool) {
+        loadsSavedSessionOnStartup = isEnabled
+        persistStartupPreferences()
+    }
+
+    func setStartupSavedSessionSelection(_ selection: StartupSavedSessionSelection) {
+        startupSavedSessionSelection = selection
+        persistStartupPreferences()
+    }
+
+    func setStartupSpecificSessionURL(_ url: URL?) {
+        startupSpecificSessionURL = url
+        if url != nil {
+            startupSavedSessionSelection = .specific
+        }
+        persistStartupPreferences()
+    }
+
+    func setOpensStartupSpecificSessionAsTemplate(_ isEnabled: Bool) {
+        opensStartupSpecificSessionAsTemplate = isEnabled
+        persistStartupPreferences()
     }
 
     func managedSessionsDirectoryURL() throws -> URL {
@@ -1495,6 +1619,13 @@ final class MultiTrackViewModel: ObservableObject {
         hasUnsavedChanges = true
     }
 
+    private func openCurrentSessionAsTemplate() {
+        currentSessionURL = nil
+        isCurrentSessionStartupTemplate = true
+        hasUnsavedChanges = false
+        statusMessage = "Loaded \(currentSessionName) as a startup template."
+    }
+
     private func sessionDisplayName(for url: URL) -> String {
         url.deletingPathExtension().lastPathComponent
     }
@@ -1517,6 +1648,37 @@ final class MultiTrackViewModel: ObservableObject {
             return url
         }
         return url.appendingPathExtension(pathExtension)
+    }
+
+    private func loadPersistedStartupPreferences() {
+        loadsSavedSessionOnStartup = userDefaults.bool(forKey: Self.loadsSavedSessionOnStartupKey)
+
+        if let rawValue = userDefaults.string(forKey: Self.startupSavedSessionSelectionKey),
+           let selection = StartupSavedSessionSelection(rawValue: rawValue) {
+            startupSavedSessionSelection = selection
+        }
+
+        startupSpecificSessionURL = Self.fileURL(fromStoredPath: userDefaults.string(forKey: Self.startupSpecificSessionPathKey))
+        opensStartupSpecificSessionAsTemplate = userDefaults.bool(forKey: Self.opensStartupSpecificSessionAsTemplateKey)
+        lastSavedSessionURL = Self.fileURL(fromStoredPath: userDefaults.string(forKey: Self.lastSavedSessionPathKey))
+    }
+
+    private func persistStartupPreferences() {
+        userDefaults.set(loadsSavedSessionOnStartup, forKey: Self.loadsSavedSessionOnStartupKey)
+        userDefaults.set(startupSavedSessionSelection.rawValue, forKey: Self.startupSavedSessionSelectionKey)
+
+        if let startupSpecificSessionURL {
+            userDefaults.set(startupSpecificSessionURL.path, forKey: Self.startupSpecificSessionPathKey)
+        } else {
+            userDefaults.removeObject(forKey: Self.startupSpecificSessionPathKey)
+        }
+
+        userDefaults.set(opensStartupSpecificSessionAsTemplate, forKey: Self.opensStartupSpecificSessionAsTemplateKey)
+    }
+
+    private func recordLastSavedSessionURL(_ url: URL) {
+        lastSavedSessionURL = url
+        userDefaults.set(url.path, forKey: Self.lastSavedSessionPathKey)
     }
 
     private func startCompanionControlServer() {
@@ -1708,6 +1870,23 @@ final class MultiTrackViewModel: ObservableObject {
     }
 
     private static let iso8601Formatter = ISO8601DateFormatter()
+    private static let templateDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+    private static let loadsSavedSessionOnStartupKey = "startup.loadsSavedSessionOnStartup"
+    private static let startupSavedSessionSelectionKey = "startup.savedSessionSelection"
+    private static let startupSpecificSessionPathKey = "startup.specificSessionPath"
+    private static let opensStartupSpecificSessionAsTemplateKey = "startup.opensSpecificSessionAsTemplate"
+    private static let lastSavedSessionPathKey = "startup.lastSavedSessionPath"
+
+    private static func fileURL(fromStoredPath path: String?) -> URL? {
+        guard let path, !path.isEmpty else { return nil }
+        return URL(fileURLWithPath: path, isDirectory: false)
+    }
 }
 
 private enum CompanionControlRootChoice: String {

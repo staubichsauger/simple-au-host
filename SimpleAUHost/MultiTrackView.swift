@@ -67,6 +67,7 @@ struct MultiTrackView: View {
         }
         .task {
             viewModel.load()
+            viewModel.applyStartupSessionPreferenceIfNeeded()
             configureCloseHandling()
             syncRackSelection()
             updateTelemetryPublishing()
@@ -299,6 +300,7 @@ struct MultiTrackView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 sessionOverviewPanel
+                startupSettingsPanel
                 bufferingPanel
                 companionControlPanel
             }
@@ -1308,6 +1310,115 @@ struct MultiTrackView: View {
         }
     }
 
+    private var startupSettingsPanel: some View {
+        StudioPanel("Settings", subtitle: "Choose what the app opens when it launches.") {
+            VStack(alignment: .leading, spacing: 14) {
+                Toggle(
+                    "Open a saved show at launch",
+                    isOn: Binding(
+                        get: { viewModel.loadsSavedSessionOnStartup },
+                        set: { viewModel.setLoadsSavedSessionOnStartup($0) }
+                    )
+                )
+                    .toggleStyle(.checkbox)
+
+                if viewModel.loadsSavedSessionOnStartup {
+                    VStack(alignment: .leading, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            StudioFieldLabel("Startup Show")
+                            Picker(
+                                "Startup Show",
+                                selection: Binding(
+                                    get: { viewModel.startupSavedSessionSelection },
+                                    set: { viewModel.setStartupSavedSessionSelection($0) }
+                                )
+                            ) {
+                                ForEach(StartupSavedSessionSelection.allCases) { selection in
+                                    Text(selection.title).tag(selection)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                            .frame(maxWidth: 360)
+                        }
+
+                        switch viewModel.startupSavedSessionSelection {
+                        case .lastSaved:
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(viewModel.lastSavedSessionDisplayName)
+                                    .font(.system(size: 13, weight: .semibold, design: .default))
+                                    .foregroundStyle(StudioTheme.strongText)
+
+                                Text(viewModel.lastSavedSessionPath ?? "Save a show once and it will become available here.")
+                                    .font(.caption)
+                                    .foregroundStyle(StudioTheme.mutedText)
+                                    .textSelection(.enabled)
+                                    .fixedSize(horizontal: false, vertical: true)
+
+                                if viewModel.lastSavedSessionURL != nil && !viewModel.lastSavedSessionExists {
+                                    Text("The last saved show could not be found at launch time.")
+                                        .font(.caption)
+                                        .foregroundStyle(StudioTheme.warning)
+                                }
+                            }
+
+                        case .specific:
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack(spacing: 10) {
+                                    Button("Choose Show") {
+                                        chooseStartupSessionPanel()
+                                    }
+                                    .buttonStyle(StudioSecondaryButtonStyle())
+
+                                    Button("Clear") {
+                                        viewModel.setStartupSpecificSessionURL(nil)
+                                    }
+                                    .buttonStyle(StudioSecondaryButtonStyle())
+                                    .disabled(viewModel.startupSpecificSessionURL == nil)
+                                }
+
+                                Toggle(
+                                    "Open selected show as template",
+                                    isOn: Binding(
+                                        get: { viewModel.opensStartupSpecificSessionAsTemplate },
+                                        set: { viewModel.setOpensStartupSpecificSessionAsTemplate($0) }
+                                    )
+                                )
+                                .toggleStyle(.checkbox)
+
+                                Text(viewModel.startupSpecificSessionDisplayName)
+                                    .font(.system(size: 13, weight: .semibold, design: .default))
+                                    .foregroundStyle(StudioTheme.strongText)
+
+                                Text(viewModel.startupSpecificSessionPath ?? "Choose the show file that should open when the app launches.")
+                                    .font(.caption)
+                                    .foregroundStyle(StudioTheme.mutedText)
+                                    .textSelection(.enabled)
+                                    .fixedSize(horizontal: false, vertical: true)
+
+                                if viewModel.startupSpecificSessionURL != nil && !viewModel.startupSpecificSessionExists {
+                                    Text("The selected startup show is no longer available at the saved path.")
+                                        .font(.caption)
+                                        .foregroundStyle(StudioTheme.warning)
+                                }
+
+                                if viewModel.opensStartupSpecificSessionAsTemplate {
+                                    Text("The selected show will load at launch, but Save will use Save As so the original file is not overwritten.")
+                                        .font(.caption)
+                                        .foregroundStyle(StudioTheme.mutedText)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Text("Launches into a new untitled show.")
+                        .font(.caption)
+                        .foregroundStyle(StudioTheme.mutedText)
+                }
+            }
+        }
+    }
+
     private var companionControlPanel: some View {
         StudioPanel("Companion Control", subtitle: "Local HTTP endpoint for Bitfocus Companion or other control surfaces.") {
             VStack(alignment: .leading, spacing: 14) {
@@ -2037,6 +2148,21 @@ struct MultiTrackView: View {
         }
 
         requestSessionLoad(from: url)
+    }
+
+    private func chooseStartupSessionPanel() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.simpleAUHostMultiTrackSession, .json]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.directoryURL = try? viewModel.managedSessionsDirectoryURL()
+
+        guard panel.runModal() == .OK, let url = panel.url else {
+            return
+        }
+
+        viewModel.setStartupSpecificSessionURL(url)
     }
 
     private func configureCloseHandling() {
