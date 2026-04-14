@@ -752,10 +752,6 @@ struct MultiTrackView: View {
         )
     }
 
-    private var selectedTrackCount: Int {
-        viewModel.tracks.filter(\.isEnabled).count
-    }
-
     private var selectedPluginInfoForRack: AudioUnitPluginInfo? {
         guard let pluginID = selectedPlugin?.pluginID else { return nil }
         return viewModel.plugins.first(where: { $0.id == pluginID })
@@ -1523,19 +1519,6 @@ struct MultiTrackView: View {
         }
     }
 
-    private func rackMiniLabel(_ title: String, _ value: String) -> some View {
-        HStack {
-            Text(title.uppercased())
-                .font(.system(size: 9, weight: .medium, design: .default))
-                .tracking(0.8)
-                .foregroundStyle(StudioTheme.mutedText)
-            Spacer()
-            Text(value)
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
-                .foregroundStyle(StudioTheme.strongText)
-        }
-    }
-
     private func rackControlRow<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
         HStack(alignment: .center, spacing: 6) {
             Text(title.uppercased())
@@ -1702,15 +1685,6 @@ struct MultiTrackView: View {
             key: draftWavesTuneSongKey
         )
         dismissAddWavesTuneSongSheet()
-    }
-
-    private func selectedTrackRoutingSummary(_ track: MultiTrackTrackConfiguration) -> some View {
-        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-            StudioMetricTile("Input", value: "Channel \(track.inputStartChannel)")
-            StudioMetricTile("Output", value: "Channel \(track.outputStartChannel)")
-            StudioMetricTile("Inserts", value: "\(track.plugins.count)")
-            StudioMetricTile("Internal Buffer", value: viewModel.internalBufferDescription(for: track))
-        }
     }
 
     private func syncRackSelection() {
