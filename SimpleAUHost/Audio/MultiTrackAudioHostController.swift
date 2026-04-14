@@ -666,8 +666,8 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         }
 
         private func serializedPluginState(for unit: AudioUnit) -> Data? {
-            var classInfo: CFPropertyList?
-            var propertySize = UInt32(MemoryLayout<CFPropertyList?>.size)
+            var classInfo: Unmanaged<CFPropertyList>?
+            var propertySize = UInt32(MemoryLayout<Unmanaged<CFPropertyList>?>.size)
             let status = AudioUnitGetProperty(
                 unit,
                 kAudioUnitProperty_ClassInfo,
@@ -682,7 +682,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             }
 
             return try? PropertyListSerialization.data(
-                fromPropertyList: classInfo,
+                fromPropertyList: classInfo.takeRetainedValue(),
                 format: .binary,
                 options: 0
             )
@@ -691,18 +691,21 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         private func applySerializedPluginState(_ data: Data?, to unit: AudioUnit) throws {
             guard let data else { return }
             let propertyList = try PropertyListSerialization.propertyList(from: data, options: [], format: nil)
-            var cfPropertyList = propertyList as CFPropertyList
-            try checkStatus(
-                AudioUnitSetProperty(
-                    unit,
-                    kAudioUnitProperty_ClassInfo,
-                    kAudioUnitScope_Global,
-                    0,
-                    &cfPropertyList,
-                    UInt32(MemoryLayout<CFPropertyList>.size)
-                ),
-                "Failed to restore saved Audio Unit state"
-            )
+            let cfPropertyList = propertyList as CFPropertyList
+            var unmanagedPropertyList = Unmanaged.passUnretained(cfPropertyList)
+            _ = try withExtendedLifetime(cfPropertyList) {
+                try checkStatus(
+                    AudioUnitSetProperty(
+                        unit,
+                        kAudioUnitProperty_ClassInfo,
+                        kAudioUnitScope_Global,
+                        0,
+                        &unmanagedPropertyList,
+                        UInt32(MemoryLayout<Unmanaged<CFPropertyList>>.size)
+                    ),
+                    "Failed to restore saved Audio Unit state"
+                )
+            }
         }
 
         private func applyToWavesTuneRealtimeUnits(
@@ -754,16 +757,19 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
                 let callback: RequestViewControllerBlock = { viewController in
                     continuation.resume(returning: viewController)
                 }
-                var callbackObject: AnyObject = unsafeBitCast(callback, to: AnyObject.self)
+                let callbackObject = unsafeBitCast(callback, to: AnyObject.self)
+                var unmanagedCallbackObject = Unmanaged.passUnretained(callbackObject)
 
-                let status = AudioUnitSetProperty(
-                    effectUnit,
-                    kAudioUnitProperty_RequestViewController,
-                    kAudioUnitScope_Global,
-                    0,
-                    &callbackObject,
-                    UInt32(MemoryLayout<AnyObject>.size)
-                )
+                let status = withExtendedLifetime(callbackObject) {
+                    AudioUnitSetProperty(
+                        effectUnit,
+                        kAudioUnitProperty_RequestViewController,
+                        kAudioUnitScope_Global,
+                        0,
+                        &unmanagedCallbackObject,
+                        UInt32(MemoryLayout<Unmanaged<AnyObject>>.size)
+                    )
+                }
 
                 if status != noErr {
                     if status == kAudioUnitErr_InvalidProperty {
