@@ -22,13 +22,9 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
   - single test: `xcodebuild test -project SimpleAUHost.xcodeproj -scheme <TestScheme> -destination 'platform=macOS' -only-testing:<Target>/<TestClass>/<testMethod>`
 
 ## Project structure
-- `SimpleAUHostApp.swift` starts the SwiftUI app and opens `HostModeRootView`.
-- `HostModeRootView.swift` is the top-level mode switch and mode picker. The app has two user-facing paths:
-  - **Simple mode**: single input channel -> optional single inserted Audio Unit -> single output channel.
-  - **Multi track mode**: multiple mono/stereo tracks, each with its own routing, plugin chain, session state, and latency class.
-- The UI/view-model split is strict:
-  - `ContentView.swift` + `HostViewModel.swift` drive simple mode.
-  - `MultiTrackView.swift` + `MultiTrackViewModel.swift` drive multi-track mode.
+- `SimpleAUHostApp.swift` starts the SwiftUI app and opens `MultiTrackView`.
+- The UI/view-model split is centered on multi-track mode:
+  - `MultiTrackView.swift` + `MultiTrackViewModel.swift` drive the app UI and session workflow.
 - `AppCloseCoordinator.swift` owns the macOS window/app close confirmation flow for unsaved multi-track sessions.
 - `ManagedSessionStore.swift` manages the app-owned storage directories under the user Music folder:
   - `~/Music/SAH/Sessions`
@@ -36,7 +32,7 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
   - `~/Music/SAH/Parameter Presets`
 - `CompanionControl.swift` implements the local HTTP control server used by the multi-track Waves Tune workflow.
 - The realtime engine lives under `SimpleAUHost/Audio/`:
-  - `AudioHostController.swift` implements the simple host engine.
+  - `AudioHostController.swift` provides shared device and Audio Unit catalog helpers used by the app.
   - `MultiTrackAudioHostController.swift` implements the multi-track engine.
 - `MultiTrackModels.swift` defines the persistent/configuration model for tracks, layouts, and latency classes.
 - `SimpleAUHost/Support/FloatRingBuffer.{h,c}` provides the lock-free C ring buffer and atomic counters used by both audio engines; the Swift code accesses it via `SimpleAUHost/Support/SimpleAUHost-Bridging-Header.h`.
@@ -47,20 +43,6 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 - A hard requirement in both modes is that the selected input and output devices already share the same nominal sample rate. There is no sample-rate conversion path.
 - Microphone permission gating happens in the view models before either controller is started.
 - The project links `Network.framework`; the local Companion control surface is an in-process HTTP server, not a separate helper app or daemon.
-
-## Simple mode architecture
-- `HostViewModel` owns UI state, persists the user’s last selections in `UserDefaults`, validates buffer/threaded-processing settings, and translates the UI into an `AudioHostConfiguration`.
-- `AudioHostController` owns the realtime graph:
-  - one AUHAL input unit captures a single mapped hardware input channel,
-  - one AUHAL output unit renders a single mapped hardware output channel,
-  - an optional effect Audio Unit sits between them,
-  - a dry ring buffer bridges input and output callbacks.
-- When threaded processing is enabled and a plugin is selected, the controller switches to a worker-thread model:
-  - input callback writes dry audio into a ring buffer,
-  - a dedicated worker thread renders the effect in larger blocks,
-  - output callback drains a second ring buffer after a preroll/priming threshold,
-  - dropout counters track underruns/overruns and missing callback sample time.
-- Effect rendering is always callback-driven through `AudioUnitRender`; in stereo-capable plugin cases, the controller mixes the two effect output channels back down to mono for the hardware output path.
 
 ## Multi-track mode architecture
 - `MultiTrackViewModel` builds a `MultiTrackHostConfiguration` from global device settings plus a dynamic list of enabled tracks. It is responsible for track sanitization, per-track routing validation, validation of the buffered/broadcast internal buffer sizes, and managed session/preset persistence.

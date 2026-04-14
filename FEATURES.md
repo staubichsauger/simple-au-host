@@ -2,17 +2,7 @@
 
 This file describes the current user-facing feature set of SimpleAUHost.
 
-## App Modes
-
-### Simple Mode
-
-Simple mode is the fast path for a single live signal chain:
-
-- select one hardware input device and channel
-- select one hardware output device and channel
-- optionally insert one Audio Unit effect
-- run the effect directly on the callback path or on a worker thread
-- monitor status, dropout counts, and callback/ring-buffer telemetry
+## App Mode
 
 ### Multi-Track Mode
 

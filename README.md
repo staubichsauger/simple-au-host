@@ -4,7 +4,6 @@ SimpleAUHost is a macOS app for hosting Audio Unit effects on live input signals
 
 It is aimed at direct live-routing workflows:
 
-- simple single-channel input -> plugin -> output
 - multi-track input/output routing with per-track processing
 - local Bitfocus Companion control for Waves Tune show operations
 
@@ -18,7 +17,6 @@ It is aimed at direct live-routing workflows:
 
 ## Current feature set
 
-- **Simple mode** for a single live signal path with one optional insert effect
 - **Multi-track mode** for mono/stereo tracks with routing, insert chains, and latency classes
 - Managed session and preset storage under `~/Music/SAH`
 - Unsaved-session protection on close in multi-track workflows

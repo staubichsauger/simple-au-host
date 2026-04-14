@@ -47,14 +47,9 @@ struct MultiTrackView: View {
     @State private var draftWavesTuneSongTitle = ""
     @State private var draftWavesTuneSongKey = WavesTuneKeySelection()
     @State private var tuningPopoutPanel: NSPanel?
-    let onBackToModeSelection: (() -> Void)?
 
-    init(
-        closeCoordinator: AppCloseCoordinator,
-        onBackToModeSelection: (() -> Void)? = nil
-    ) {
+    init(closeCoordinator: AppCloseCoordinator) {
         self.closeCoordinator = closeCoordinator
-        self.onBackToModeSelection = onBackToModeSelection
     }
 
     var body: some View {
@@ -1119,14 +1114,6 @@ struct MultiTrackView: View {
                 }
 
                 HStack(spacing: 12) {
-                    if let onBackToModeSelection {
-                        Button("Change Mode") {
-                            onBackToModeSelection()
-                        }
-                        .buttonStyle(StudioSecondaryButtonStyle())
-                        .disabled(viewModel.isRunning)
-                    }
-
                     Button("Refresh Devices") {
                         viewModel.load()
                     }

@@ -11,7 +11,7 @@ struct SimpleAUHostApp: App {
 
     var body: some Scene {
         WindowGroup {
-            HostModeRootView(closeCoordinator: closeCoordinator)
+            MultiTrackView(closeCoordinator: closeCoordinator)
                 .frame(minWidth: 1100, minHeight: 760)
                 .background(MainWindowObserver(closeCoordinator: closeCoordinator))
                 .task {
