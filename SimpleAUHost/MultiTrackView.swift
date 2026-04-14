@@ -67,6 +67,7 @@ struct MultiTrackView: View {
             }
         }
         .task {
+            selectedTab = viewModel.launchesIntoPerformViewOnStartup ? .perform : .rack
             viewModel.load()
             viewModel.applyStartupSessionPreferenceIfNeeded()
             viewModel.applyStartupEnginePreferenceIfNeeded()
@@ -206,28 +207,19 @@ struct MultiTrackView: View {
         selectedTab == tab ? StudioTheme.accent : StudioTheme.mutedText
     }
 
-    private var rackTabActions: some View {
-        HStack(spacing: 12) {
-            Button {
-                showsEmbeddedPluginPane.toggle()
-            } label: {
-                Label(showsEmbeddedPluginPane ? "Hide Panel" : "Show Panel", systemImage: showsEmbeddedPluginPane ? "sidebar.right" : "rectangle.split.2x1")
-            }
-            .buttonStyle(StudioSecondaryButtonStyle())
-
-            startStopButton
-        }
-    }
-
     @ViewBuilder
     private var workspaceToolbarActions: some View {
-        switch selectedTab {
-        case .perform:
+        HStack(spacing: 12) {
+            if selectedTab == .rack {
+                Button {
+                    showsEmbeddedPluginPane.toggle()
+                } label: {
+                    Label(showsEmbeddedPluginPane ? "Hide Panel" : "Show Panel", systemImage: showsEmbeddedPluginPane ? "sidebar.right" : "rectangle.split.2x1")
+                }
+                .buttonStyle(StudioSecondaryButtonStyle())
+            }
+
             startStopButton
-        case .rack:
-            rackTabActions
-        case .show, .setup:
-            EmptyView()
         }
     }
 
@@ -309,9 +301,6 @@ struct MultiTrackView: View {
     private var performTrackBoard: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                performSessionActionPanel
-                managedSessionsPanel
-
                 if viewModel.performTracks.isEmpty {
                     performEmptyState
                 } else {
@@ -319,6 +308,9 @@ struct MultiTrackView: View {
                         performTrackCard(track)
                     }
                 }
+
+                performSessionActionPanel
+                managedSessionsPanel
             }
             .padding(.bottom, 8)
         }
@@ -1201,31 +1193,18 @@ struct MultiTrackView: View {
     }
 
     private var performSessionActionPanel: some View {
-        sessionActionPanel(
-            subtitle: "Save, load, or start a new show without leaving Perform.",
-            showsTransportControls: false
-        )
+        sessionActionPanel(subtitle: "Save, load, or start a new show without leaving Perform.")
     }
 
     private var showSessionActionPanel: some View {
-        sessionActionPanel(
-            subtitle: "Manage the session file and core transport actions for this show.",
-            showsTransportControls: true
-        )
+        sessionActionPanel(subtitle: "Manage the session file and core transport actions for this show.")
     }
 
     @ViewBuilder
-    private func sessionActionPanel(
-        subtitle: String,
-        showsTransportControls: Bool
-    ) -> some View {
+    private func sessionActionPanel(subtitle: String) -> some View {
         StudioPanel("Show", subtitle: subtitle) {
             VStack(alignment: .leading, spacing: 14) {
                 sessionFileActions
-
-                if showsTransportControls {
-                    sessionTransportActions
-                }
             }
         }
     }
@@ -1249,20 +1228,6 @@ struct MultiTrackView: View {
                     saveShowButton
                     saveAsShowButton
                 }
-            }
-        }
-    }
-
-    private var sessionTransportActions: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 12) {
-                refreshDevicesButton
-                engineToggleButton
-            }
-
-            VStack(alignment: .leading, spacing: 12) {
-                refreshDevicesButton
-                engineToggleButton
             }
         }
     }
@@ -1304,22 +1269,6 @@ struct MultiTrackView: View {
             saveSessionAs()
         }
         .buttonStyle(StudioSecondaryButtonStyle())
-    }
-
-    private var refreshDevicesButton: some View {
-        Button("Refresh Devices") {
-            viewModel.load()
-        }
-        .buttonStyle(StudioSecondaryButtonStyle())
-        .disabled(viewModel.isRunning)
-    }
-
-    private var engineToggleButton: some View {
-        Button(viewModel.isRunning ? "Stop Engine" : "Start Engine") {
-            viewModel.toggleStartStop()
-        }
-        .buttonStyle(StudioPrimaryButtonStyle())
-        .disabled(!viewModel.canStart && !viewModel.isRunning)
     }
 
     private var managedSessionsPanel: some View {
@@ -1431,6 +1380,15 @@ struct MultiTrackView: View {
                     }
                 }
 
+                HStack {
+                    Spacer()
+
+                    Button("Refresh Devices") {
+                        viewModel.load()
+                    }
+                    .buttonStyle(StudioSecondaryButtonStyle())
+                }
+
                 VStack(alignment: .leading, spacing: 12) {
                     StudioFieldLabel("Hardware Buffer")
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -1503,6 +1461,15 @@ struct MultiTrackView: View {
     private var startupSettingsPanel: some View {
         StudioPanel("Settings", subtitle: "Choose what the app opens when it launches.") {
             VStack(alignment: .leading, spacing: 14) {
+                Toggle(
+                    "Open Perform tab at launch",
+                    isOn: Binding(
+                        get: { viewModel.launchesIntoPerformViewOnStartup },
+                        set: { viewModel.setLaunchesIntoPerformViewOnStartup($0) }
+                    )
+                )
+                .toggleStyle(.checkbox)
+
                 Toggle(
                     "Open a saved show at launch",
                     isOn: Binding(

@@ -50,6 +50,7 @@ final class MultiTrackViewModel: ObservableObject {
     @Published private(set) var sessionWarnings: [String] = []
     @Published private(set) var managedSessions: [ManagedSessionFile] = []
     @Published private(set) var hasUnsavedChanges = false
+    @Published var launchesIntoPerformViewOnStartup = false
     @Published var loadsSavedSessionOnStartup = false
     @Published var startsEngineOnLaunch = false
     @Published var startupSavedSessionSelection: StartupSavedSessionSelection = .lastSaved
@@ -456,6 +457,11 @@ final class MultiTrackViewModel: ObservableObject {
 
     func setLoadsSavedSessionOnStartup(_ isEnabled: Bool) {
         loadsSavedSessionOnStartup = isEnabled
+        persistStartupPreferences()
+    }
+
+    func setLaunchesIntoPerformViewOnStartup(_ isEnabled: Bool) {
+        launchesIntoPerformViewOnStartup = isEnabled
         persistStartupPreferences()
     }
 
@@ -1734,6 +1740,7 @@ final class MultiTrackViewModel: ObservableObject {
     }
 
     private func loadPersistedStartupPreferences() {
+        launchesIntoPerformViewOnStartup = userDefaults.bool(forKey: Self.launchesIntoPerformViewOnStartupKey)
         loadsSavedSessionOnStartup = userDefaults.bool(forKey: Self.loadsSavedSessionOnStartupKey)
         startsEngineOnLaunch = userDefaults.bool(forKey: Self.startsEngineOnLaunchKey)
 
@@ -1748,6 +1755,7 @@ final class MultiTrackViewModel: ObservableObject {
     }
 
     private func persistStartupPreferences() {
+        userDefaults.set(launchesIntoPerformViewOnStartup, forKey: Self.launchesIntoPerformViewOnStartupKey)
         userDefaults.set(loadsSavedSessionOnStartup, forKey: Self.loadsSavedSessionOnStartupKey)
         userDefaults.set(startsEngineOnLaunch, forKey: Self.startsEngineOnLaunchKey)
         userDefaults.set(startupSavedSessionSelection.rawValue, forKey: Self.startupSavedSessionSelectionKey)
@@ -1996,6 +2004,7 @@ final class MultiTrackViewModel: ObservableObject {
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter
     }()
+    private static let launchesIntoPerformViewOnStartupKey = "startup.launchesIntoPerformViewOnStartup"
     private static let loadsSavedSessionOnStartupKey = "startup.loadsSavedSessionOnStartup"
     private static let startsEngineOnLaunchKey = "startup.startsEngineOnLaunch"
     private static let startupSavedSessionSelectionKey = "startup.savedSessionSelection"
