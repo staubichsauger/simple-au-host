@@ -211,6 +211,10 @@ final class MultiTrackViewModel: ObservableObject {
             }
     }
 
+    var performTracks: [MultiTrackTrackConfiguration] {
+        tracks.filter(trackHasConfiguredWavesTuneRealtimeInsert)
+    }
+
     var stagedWavesTuneKeyTitle: String {
         wavesTuneState.stagedKey.title
     }
@@ -859,6 +863,43 @@ final class MultiTrackViewModel: ObservableObject {
         }
     }
 
+    func setWavesTuneStrength(_ strength: WavesTuneStrengthPreset, for trackID: UUID) {
+        guard let trackIndex = tracks.firstIndex(where: { $0.id == trackID }) else { return }
+        let track = tracks[trackIndex]
+        guard track.wavesTuneStrength != strength else { return }
+
+        tracks[trackIndex].wavesTuneStrength = strength
+
+        guard strength != .custom else {
+            statusMessage = isRunning
+                ? "Left \(tracks[trackIndex].name) on its current Waves Tune settings."
+                : "\(tracks[trackIndex].name) will keep its current Waves Tune settings."
+            return
+        }
+
+        guard isRunning else {
+            statusMessage = trackHasConfiguredWavesTuneRealtimeInsert(tracks[trackIndex])
+                ? "\(tracks[trackIndex].name) tune strength saved as \(strength.title)."
+                : "\(tracks[trackIndex].name) does not have Waves Tune Real-Time loaded."
+            return
+        }
+
+        guard tracks[trackIndex].isEnabled else {
+            statusMessage = "\(tracks[trackIndex].name) is disabled. \(strength.title) will apply when the track is enabled and started."
+            return
+        }
+
+        do {
+            let affectedInstances = try controller.applyWavesTuneRealtimeStrength(strength, to: trackID)
+            refreshWavesTuneStrengthSelectionFromRunningEngine(for: trackID)
+            statusMessage = affectedInstances > 0
+                ? "Set \(tracks[trackIndex].name) to \(tracks[trackIndex].wavesTuneStrength.title) tune strength."
+                : "No running Waves Tune Real-Time instances were found on \(tracks[trackIndex].name)."
+        } catch {
+            statusMessage = error.localizedDescription
+        }
+    }
+
     func setWavesTuneScaleMode(_ scaleMode: WavesTuneScaleMode) {
         wavesTuneState.stagedKey.scaleMode = scaleMode
     }
@@ -1038,6 +1079,7 @@ final class MultiTrackViewModel: ObservableObject {
                 try self.controller.start(configuration: configuration)
                 _ = try self.controller.setWavesTuneRealtimeBypassed(!self.wavesTuneState.isEnabled)
                 _ = try self.controller.applyWavesTuneRealtimeKeySelection(self.wavesTuneState.appliedKey.normalized)
+                self.syncWavesTuneStrengthSelectionsFromRunningEngine()
                 self.isRunning = true
                 self.refreshPublishedTelemetry()
                 self.startAudioDropoutMonitoring()
@@ -1892,6 +1934,40 @@ final class MultiTrackViewModel: ObservableObject {
 
     private func isWavesTuneRealtimePlugin(_ plugin: AudioUnitPluginInfo) -> Bool {
         plugin.name.localizedCaseInsensitiveContains("Waves Tune Real-Time")
+    }
+
+    private func trackHasConfiguredWavesTuneRealtimeInsert(_ track: MultiTrackTrackConfiguration) -> Bool {
+        track.plugins.contains { insert in
+            guard let pluginID = insert.pluginID,
+                  let plugin = plugins.first(where: { $0.id == pluginID }) else {
+                return false
+            }
+            return isWavesTuneRealtimePlugin(plugin)
+        }
+    }
+
+    private func syncWavesTuneStrengthSelectionsFromRunningEngine() {
+        let existingHasUnsavedChanges = hasUnsavedChanges
+        isApplyingSessionState = true
+        defer {
+            isApplyingSessionState = false
+            hasUnsavedChanges = existingHasUnsavedChanges
+        }
+
+        for track in tracks where track.isEnabled && trackHasConfiguredWavesTuneRealtimeInsert(track) {
+            refreshWavesTuneStrengthSelectionFromRunningEngine(for: track.id)
+        }
+    }
+
+    private func refreshWavesTuneStrengthSelectionFromRunningEngine(for trackID: UUID) {
+        guard let trackIndex = tracks.firstIndex(where: { $0.id == trackID }) else { return }
+
+        do {
+            guard let preset = try controller.currentWavesTuneRealtimeStrengthPreset(for: trackID) else { return }
+            tracks[trackIndex].wavesTuneStrength = preset
+        } catch {
+            statusMessage = error.localizedDescription
+        }
     }
 
     private static let iso8601Formatter = ISO8601DateFormatter()

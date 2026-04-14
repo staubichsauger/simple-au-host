@@ -296,6 +296,80 @@ struct MultiTrackWavesTuneState: Codable, Hashable {
     }
 }
 
+enum WavesTuneStrengthPreset: String, CaseIterable, Codable, Identifiable {
+    case fast
+    case standard
+    case slow
+    case custom
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .fast:
+            "Fast"
+        case .standard:
+            "Standard"
+        case .slow:
+            "Slow"
+        case .custom:
+            "Custom"
+        }
+    }
+
+    var speed: Float? {
+        switch self {
+        case .fast:
+            15
+        case .standard:
+            20
+        case .slow:
+            30
+        case .custom:
+            nil
+        }
+    }
+
+    var noteTransition: Float? {
+        switch self {
+        case .fast:
+            60
+        case .standard:
+            90
+        case .slow:
+            120
+        case .custom:
+            nil
+        }
+    }
+
+    var pluginSpeedValue: Float? {
+        speed.map { $0 * 10 }
+    }
+
+    var pluginNoteTransitionValue: Float? {
+        noteTransition.map { $0 * 10 }
+    }
+
+    static func matchingDisplayValues(
+        speed: Float,
+        noteTransition: Float
+    ) -> WavesTuneStrengthPreset {
+        for preset in [WavesTuneStrengthPreset.fast, .standard, .slow] {
+            guard let presetSpeed = preset.speed,
+                  let presetTransition = preset.noteTransition else {
+                continue
+            }
+
+            if abs(speed - presetSpeed) < 0.25, abs(noteTransition - presetTransition) < 0.25 {
+                return preset
+            }
+        }
+
+        return .custom
+    }
+}
+
 struct MultiTrackTrackConfiguration: Identifiable, Codable, Hashable {
     struct PluginInsert: Identifiable, Codable, Hashable {
         let id: UUID
@@ -323,8 +397,21 @@ struct MultiTrackTrackConfiguration: Identifiable, Codable, Hashable {
     var inputStartChannel: Int
     var outputStartChannel: Int
     var latencyClass: TrackLatencyClass
+    var wavesTuneStrength: WavesTuneStrengthPreset
     var plugins: [PluginInsert]
     var isEnabled: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case layout
+        case inputStartChannel
+        case outputStartChannel
+        case latencyClass
+        case wavesTuneStrength
+        case plugins
+        case isEnabled
+    }
 
     init(
         id: UUID = UUID(),
@@ -333,6 +420,7 @@ struct MultiTrackTrackConfiguration: Identifiable, Codable, Hashable {
         inputStartChannel: Int = 1,
         outputStartChannel: Int = 1,
         latencyClass: TrackLatencyClass = .realtime,
+        wavesTuneStrength: WavesTuneStrengthPreset = .standard,
         plugins: [PluginInsert] = [],
         isEnabled: Bool = true
     ) {
@@ -342,8 +430,35 @@ struct MultiTrackTrackConfiguration: Identifiable, Codable, Hashable {
         self.inputStartChannel = inputStartChannel
         self.outputStartChannel = outputStartChannel
         self.latencyClass = latencyClass
+        self.wavesTuneStrength = wavesTuneStrength
         self.plugins = plugins
         self.isEnabled = isEnabled
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        layout = try container.decode(TrackChannelLayout.self, forKey: .layout)
+        inputStartChannel = try container.decode(Int.self, forKey: .inputStartChannel)
+        outputStartChannel = try container.decode(Int.self, forKey: .outputStartChannel)
+        latencyClass = try container.decode(TrackLatencyClass.self, forKey: .latencyClass)
+        wavesTuneStrength = try container.decodeIfPresent(WavesTuneStrengthPreset.self, forKey: .wavesTuneStrength) ?? .standard
+        plugins = try container.decode([PluginInsert].self, forKey: .plugins)
+        isEnabled = try container.decode(Bool.self, forKey: .isEnabled)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(layout, forKey: .layout)
+        try container.encode(inputStartChannel, forKey: .inputStartChannel)
+        try container.encode(outputStartChannel, forKey: .outputStartChannel)
+        try container.encode(latencyClass, forKey: .latencyClass)
+        try container.encode(wavesTuneStrength, forKey: .wavesTuneStrength)
+        try container.encode(plugins, forKey: .plugins)
+        try container.encode(isEnabled, forKey: .isEnabled)
     }
 
     var channelCount: Int {

@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 
 private enum MultiTrackWorkspaceTab: String, CaseIterable, Identifiable {
+    case perform = "Perform"
     case rack = "Rack"
     case show = "Show"
     case setup = "Setup"
@@ -154,9 +155,7 @@ struct MultiTrackView: View {
 
             Spacer()
 
-            rackTabActions
-                .opacity(selectedTab == .rack ? 1 : 0)
-                .allowsHitTesting(selectedTab == .rack)
+            workspaceToolbarActions
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
@@ -220,6 +219,18 @@ struct MultiTrackView: View {
         }
     }
 
+    @ViewBuilder
+    private var workspaceToolbarActions: some View {
+        switch selectedTab {
+        case .perform:
+            startStopButton
+        case .rack:
+            rackTabActions
+        case .show, .setup:
+            EmptyView()
+        }
+    }
+
     private var startStopButton: some View {
         Group {
             if viewModel.isRunning {
@@ -262,12 +273,24 @@ struct MultiTrackView: View {
     @ViewBuilder
     private var workspaceBody: some View {
         switch selectedTab {
+        case .perform:
+            performWorkspace
         case .rack:
             rackWorkspace
         case .show:
             showWorkspace
         case .setup:
             setupWorkspace
+        }
+    }
+
+    private var performWorkspace: some View {
+        HSplitView {
+            performTrackBoard
+                .frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
+            performTuningPane
+                .frame(minWidth: 460, idealWidth: 560, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
     }
 
@@ -281,6 +304,99 @@ struct MultiTrackView: View {
                     .frame(minWidth: 460, idealWidth: 640, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
         }
+    }
+
+    private var performTrackBoard: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                if viewModel.performTracks.isEmpty {
+                    performEmptyState
+                } else {
+                    ForEach(viewModel.performTracks) { track in
+                        performTrackCard(track)
+                    }
+                }
+            }
+            .padding(.bottom, 8)
+        }
+    }
+
+    private var performEmptyState: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("No Waves Tune Tracks")
+                .font(.system(size: 16, weight: .semibold, design: .default))
+                .foregroundStyle(StudioTheme.strongText)
+
+            Text("Load Waves Tune Real-Time on a track in Rack to create a perform card here.")
+                .font(.system(size: 12, weight: .regular, design: .default))
+                .foregroundStyle(StudioTheme.mutedText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(StudioTheme.panelFill)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(StudioTheme.panelStroke, lineWidth: 1)
+        )
+    }
+
+    private func performTrackCard(_ track: MultiTrackTrackConfiguration) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text(track.name)
+                    .font(.system(size: 15, weight: .semibold, design: .default))
+                    .foregroundStyle(StudioTheme.strongText)
+                    .lineLimit(1)
+
+                Spacer(minLength: 0)
+
+                if !track.isEnabled {
+                    Text("Disabled")
+                        .font(.system(size: 10, weight: .medium, design: .default))
+                        .foregroundStyle(StudioTheme.warning)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                StudioFieldLabel("Tune Strength")
+                Picker(
+                    "Tune Strength",
+                    selection: Binding(
+                        get: { track.wavesTuneStrength },
+                        set: { viewModel.setWavesTuneStrength($0, for: track.id) }
+                    )
+                ) {
+                    ForEach(WavesTuneStrengthPreset.allCases) { preset in
+                        Text(preset.title).tag(preset)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                if let speed = track.wavesTuneStrength.speed,
+                   let noteTransition = track.wavesTuneStrength.noteTransition {
+                    Text("\(Int(speed)) speed, \(Int(noteTransition)) note transition")
+                        .font(.system(size: 11, weight: .regular, design: .default))
+                        .foregroundStyle(StudioTheme.mutedText)
+                } else {
+                    Text("Uses the current plugin speed and note transition values.")
+                        .font(.system(size: 11, weight: .regular, design: .default))
+                        .foregroundStyle(StudioTheme.mutedText)
+                }
+            }
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(StudioTheme.panelFill)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(StudioTheme.panelStroke, lineWidth: 1)
+        )
     }
 
     private var showWorkspace: some View {
@@ -396,6 +512,33 @@ struct MultiTrackView: View {
             }
 
             rackInspectorBody
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(StudioTheme.panelFill)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(StudioTheme.panelStroke, lineWidth: 1)
+        )
+    }
+
+    private var performTuningPane: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Waves Tune Control")
+                    .font(.system(size: 14, weight: .semibold, design: .default))
+                    .foregroundStyle(StudioTheme.strongText)
+
+                Text("Global key staging and setlist control for the current show.")
+                    .font(.system(size: 11, weight: .regular, design: .default))
+                    .foregroundStyle(StudioTheme.mutedText)
+                    .lineLimit(2)
+            }
+
+            tuningInspectorBody
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
         .padding(12)
