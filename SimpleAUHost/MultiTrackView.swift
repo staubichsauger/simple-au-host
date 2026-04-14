@@ -68,6 +68,7 @@ struct MultiTrackView: View {
         .task {
             viewModel.load()
             viewModel.applyStartupSessionPreferenceIfNeeded()
+            viewModel.applyStartupEnginePreferenceIfNeeded()
             configureCloseHandling()
             syncRackSelection()
             updateTelemetryPublishing()
@@ -752,26 +753,6 @@ struct MultiTrackView: View {
         )
     }
 
-    private var selectedPluginInfoForRack: AudioUnitPluginInfo? {
-        guard let pluginID = selectedPlugin?.pluginID else { return nil }
-        return viewModel.plugins.first(where: { $0.id == pluginID })
-    }
-
-    private func openSelectedPluginEditor() {
-        guard let track = selectedTrack else { return }
-        if let plugin = selectedPlugin {
-            viewModel.openPluginEditor(for: track.id, pluginID: plugin.id)
-        } else {
-            viewModel.openPluginEditor(for: track.id)
-        }
-    }
-
-    private func removeSelectedInsert() {
-        guard let track = selectedTrack, let plugin = selectedPlugin else { return }
-        viewModel.removePluginInsert(trackID: track.id, pluginID: plugin.id)
-        syncRackSelection()
-    }
-
     private func rackStrip(_ track: Binding<MultiTrackTrackConfiguration>) -> some View {
         let value = track.wrappedValue
         let isSelectedTrack = selectedTrack?.id == value.id
@@ -1316,6 +1297,15 @@ struct MultiTrackView: View {
                 )
                     .toggleStyle(.checkbox)
 
+                Toggle(
+                    "Start engine on launch",
+                    isOn: Binding(
+                        get: { viewModel.startsEngineOnLaunch },
+                        set: { viewModel.setStartsEngineOnLaunch($0) }
+                    )
+                )
+                .toggleStyle(.checkbox)
+
                 if viewModel.loadsSavedSessionOnStartup {
                     VStack(alignment: .leading, spacing: 12) {
                         VStack(alignment: .leading, spacing: 6) {
@@ -1736,11 +1726,6 @@ struct MultiTrackView: View {
     private var selectedPluginInfo: AudioUnitPluginInfo? {
         guard let pluginID = selectedPlugin?.pluginID else { return nil }
         return viewModel.plugins.first(where: { $0.id == pluginID })
-    }
-
-    private var canOpenSelectedPluginUI: Bool {
-        guard let plugin = selectedPlugin else { return false }
-        return viewModel.canOpenPluginEditor(for: plugin)
     }
 
     private func openPluginSelection(

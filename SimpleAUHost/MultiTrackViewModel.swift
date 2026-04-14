@@ -51,6 +51,7 @@ final class MultiTrackViewModel: ObservableObject {
     @Published private(set) var managedSessions: [ManagedSessionFile] = []
     @Published private(set) var hasUnsavedChanges = false
     @Published var loadsSavedSessionOnStartup = false
+    @Published var startsEngineOnLaunch = false
     @Published var startupSavedSessionSelection: StartupSavedSessionSelection = .lastSaved
     @Published var startupSpecificSessionURL: URL?
     @Published var opensStartupSpecificSessionAsTemplate = false
@@ -71,6 +72,7 @@ final class MultiTrackViewModel: ObservableObject {
     private var persistenceCancellables = Set<AnyCancellable>()
     private var isApplyingSessionState = false
     private var hasAppliedStartupSessionPreference = false
+    private var hasAppliedStartupEnginePreference = false
     private var isCurrentSessionStartupTemplate = false
 
     init(userDefaults: UserDefaults = .standard) {
@@ -353,6 +355,14 @@ final class MultiTrackViewModel: ObservableObject {
         }
     }
 
+    func applyStartupEnginePreferenceIfNeeded() {
+        guard !hasAppliedStartupEnginePreference else { return }
+        hasAppliedStartupEnginePreference = true
+
+        guard startsEngineOnLaunch else { return }
+        startEngine()
+    }
+
     func handleDeviceSelectionChange() {
         sanitizeTracks()
         updateSessionWarnings()
@@ -440,6 +450,11 @@ final class MultiTrackViewModel: ObservableObject {
 
     func setLoadsSavedSessionOnStartup(_ isEnabled: Bool) {
         loadsSavedSessionOnStartup = isEnabled
+        persistStartupPreferences()
+    }
+
+    func setStartsEngineOnLaunch(_ isEnabled: Bool) {
+        startsEngineOnLaunch = isEnabled
         persistStartupPreferences()
     }
 
@@ -992,17 +1007,14 @@ final class MultiTrackViewModel: ObservableObject {
 
     func toggleStartStop() {
         if isRunning {
-            clearEmbeddedPluginEditor()
-            audioDropoutMonitorTask?.cancel()
-            audioDropoutMonitorTask = nil
-            refreshPublishedTelemetry()
-            captureLivePluginStates()
-            controller.stop()
-            isRunning = false
-            statusMessage = "Stopped."
+            stopEngine()
             return
         }
 
+        startEngine()
+    }
+
+    private func startEngine() {
         guard canStart else {
             statusMessage = invalidTrackMessages.first ?? "Please complete the device and track configuration."
             return
@@ -1042,6 +1054,17 @@ final class MultiTrackViewModel: ObservableObject {
 
             self.isBusy = false
         }
+    }
+
+    private func stopEngine() {
+        clearEmbeddedPluginEditor()
+        audioDropoutMonitorTask?.cancel()
+        audioDropoutMonitorTask = nil
+        refreshPublishedTelemetry()
+        captureLivePluginStates()
+        controller.stop()
+        isRunning = false
+        statusMessage = "Stopped."
     }
 
     private func addTrack(layout: TrackChannelLayout) {
@@ -1652,6 +1675,7 @@ final class MultiTrackViewModel: ObservableObject {
 
     private func loadPersistedStartupPreferences() {
         loadsSavedSessionOnStartup = userDefaults.bool(forKey: Self.loadsSavedSessionOnStartupKey)
+        startsEngineOnLaunch = userDefaults.bool(forKey: Self.startsEngineOnLaunchKey)
 
         if let rawValue = userDefaults.string(forKey: Self.startupSavedSessionSelectionKey),
            let selection = StartupSavedSessionSelection(rawValue: rawValue) {
@@ -1665,6 +1689,7 @@ final class MultiTrackViewModel: ObservableObject {
 
     private func persistStartupPreferences() {
         userDefaults.set(loadsSavedSessionOnStartup, forKey: Self.loadsSavedSessionOnStartupKey)
+        userDefaults.set(startsEngineOnLaunch, forKey: Self.startsEngineOnLaunchKey)
         userDefaults.set(startupSavedSessionSelection.rawValue, forKey: Self.startupSavedSessionSelectionKey)
 
         if let startupSpecificSessionURL {
@@ -1878,6 +1903,7 @@ final class MultiTrackViewModel: ObservableObject {
         return formatter
     }()
     private static let loadsSavedSessionOnStartupKey = "startup.loadsSavedSessionOnStartup"
+    private static let startsEngineOnLaunchKey = "startup.startsEngineOnLaunch"
     private static let startupSavedSessionSelectionKey = "startup.savedSessionSelection"
     private static let startupSpecificSessionPathKey = "startup.specificSessionPath"
     private static let opensStartupSpecificSessionAsTemplateKey = "startup.opensSpecificSessionAsTemplate"
