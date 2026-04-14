@@ -149,6 +149,7 @@ struct StudioPanel<Content: View>: View {
 
             content
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(compact ? 12 : 14)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)

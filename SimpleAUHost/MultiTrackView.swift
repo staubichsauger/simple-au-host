@@ -279,7 +279,9 @@ struct MultiTrackView: View {
     private var performWorkspace: some View {
         HSplitView {
             performTrackBoard
+                .padding(.trailing, 6)
                 .frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .clipped()
 
             performTuningPane
                 .frame(minWidth: 460, idealWidth: 560, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -300,14 +302,26 @@ struct MultiTrackView: View {
 
     private var performTrackBoard: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 14) {
                 if viewModel.performTracks.isEmpty {
                     performEmptyState
                 } else {
-                    ForEach(viewModel.performTracks) { track in
-                        performTrackCard(track)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(alignment: .top, spacing: 8) {
+                            ForEach(viewModel.performTracks) { track in
+                                performTrackCard(track)
+                                    .frame(width: 280)
+                                    .clipped()
+                            }
+                        }
+                        .padding(.horizontal, 2)
                     }
                 }
+
+                Rectangle()
+                    .fill(Color.white.opacity(0.06))
+                    .frame(height: 1)
+                    .padding(.vertical, 2)
 
                 performSessionActionPanel
                 managedSessionsPanel
@@ -340,50 +354,51 @@ struct MultiTrackView: View {
     }
 
     private func performTrackCard(_ track: MultiTrackTrackConfiguration) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
                 Text(track.name)
-                    .font(.system(size: 15, weight: .semibold, design: .default))
+                    .font(.system(size: 13, weight: .semibold, design: .default))
                     .foregroundStyle(StudioTheme.strongText)
                     .lineLimit(1)
 
                 Spacer(minLength: 0)
 
                 if !track.isEnabled {
-                    Text("Disabled")
-                        .font(.system(size: 10, weight: .medium, design: .default))
+                    Text("Off")
+                        .font(.system(size: 9, weight: .medium, design: .default))
                         .foregroundStyle(StudioTheme.warning)
                 }
             }
 
-            VStack(alignment: .leading, spacing: 8) {
-                StudioFieldLabel("Tune Strength")
-                Picker(
-                    "Tune Strength",
-                    selection: Binding(
-                        get: { track.wavesTuneStrength },
-                        set: { viewModel.setWavesTuneStrength($0, for: track.id) }
-                    )
-                ) {
-                    ForEach(WavesTuneStrengthPreset.allCases) { preset in
-                        Text(preset.title).tag(preset)
-                    }
-                }
-                .pickerStyle(.segmented)
+            StudioFieldLabel("Tune Strength")
 
-                if let speed = track.wavesTuneStrength.speed,
-                   let noteTransition = track.wavesTuneStrength.noteTransition {
-                    Text("\(Int(speed)) speed, \(Int(noteTransition)) note transition")
-                        .font(.system(size: 11, weight: .regular, design: .default))
-                        .foregroundStyle(StudioTheme.mutedText)
-                } else {
-                    Text("Uses the current plugin speed and note transition values.")
-                        .font(.system(size: 11, weight: .regular, design: .default))
-                        .foregroundStyle(StudioTheme.mutedText)
+            Picker(
+                "Tune Strength",
+                selection: Binding(
+                    get: { track.wavesTuneStrength },
+                    set: { viewModel.setWavesTuneStrength($0, for: track.id) }
+                )
+            ) {
+                ForEach(WavesTuneStrengthPreset.allCases) { preset in
+                    Text(preset.title).tag(preset)
                 }
             }
+            .pickerStyle(.segmented)
+            .controlSize(.small)
+            .labelsHidden()
+
+            if let speed = track.wavesTuneStrength.speed,
+               let noteTransition = track.wavesTuneStrength.noteTransition {
+                Text("\(Int(speed)) spd \u{00B7} \(Int(noteTransition)) trans")
+                    .font(.system(size: 10, weight: .regular, design: .default))
+                    .foregroundStyle(StudioTheme.mutedText)
+            } else {
+                Text("Uses current plugin values")
+                    .font(.system(size: 10, weight: .regular, design: .default))
+                    .foregroundStyle(StudioTheme.mutedText)
+            }
         }
-        .padding(16)
+        .padding(10)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(StudioTheme.panelFill)
@@ -397,8 +412,7 @@ struct MultiTrackView: View {
     private var showWorkspace: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                showSessionActionPanel
-                managedSessionsPanel
+                showSessionAndListPanel
                 showStatusPanel
                 diagnosticsPanel
             }
@@ -406,12 +420,43 @@ struct MultiTrackView: View {
         }
     }
 
+    private var showSessionAndListPanel: some View {
+        StudioPanel("Show", subtitle: "Manage the session file and quick-load saved shows.") {
+            HStack(alignment: .top, spacing: 16) {
+                VStack(spacing: 8) {
+                    newShowButton
+                    openShowButton
+                    saveShowButton
+                    saveAsShowButton
+                }
+                .frame(width: 120)
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 8) {
+                    StudioFieldLabel("Managed Sessions", subtitle: "Newest first.")
+
+                    if viewModel.managedSessions.isEmpty {
+                        Text("No managed sessions have been saved yet.")
+                            .font(.caption)
+                            .foregroundStyle(StudioTheme.mutedText)
+                    } else {
+                        ForEach(viewModel.managedSessions) { session in
+                            managedSessionRow(session)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+        }
+    }
+
     private var setupWorkspace: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 sessionOverviewPanel
-                startupSettingsPanel
                 bufferingPanel
+                startupSettingsPanel
                 companionControlPanel
             }
             .padding(.bottom, 8)
@@ -1193,19 +1238,8 @@ struct MultiTrackView: View {
     }
 
     private var performSessionActionPanel: some View {
-        sessionActionPanel(subtitle: "Save, load, or start a new show without leaving Perform.")
-    }
-
-    private var showSessionActionPanel: some View {
-        sessionActionPanel(subtitle: "Manage the session file and core transport actions for this show.")
-    }
-
-    @ViewBuilder
-    private func sessionActionPanel(subtitle: String) -> some View {
-        StudioPanel("Show", subtitle: subtitle) {
-            VStack(alignment: .leading, spacing: 14) {
-                sessionFileActions
-            }
+        StudioPanel("Show", compact: true) {
+            sessionFileActions
         }
     }
 
@@ -1233,24 +1267,28 @@ struct MultiTrackView: View {
     }
 
     private var newShowButton: some View {
-        Button("New Show") {
+        Button {
             viewModel.createNewSession()
             syncRackSelection()
+        } label: {
+            Text("New Show").frame(maxWidth: .infinity)
         }
         .buttonStyle(StudioSecondaryButtonStyle())
         .disabled(viewModel.isRunning)
     }
 
     private var openShowButton: some View {
-        Button("Open Show") {
+        Button {
             openSessionPanel()
+        } label: {
+            Text("Open Show").frame(maxWidth: .infinity)
         }
         .buttonStyle(StudioSecondaryButtonStyle())
         .disabled(viewModel.isRunning)
     }
 
     private var saveShowButton: some View {
-        Button("Save") {
+        Button {
             do {
                 if viewModel.hasStoredSessionFile {
                     try viewModel.saveSession()
@@ -1260,13 +1298,17 @@ struct MultiTrackView: View {
             } catch {
                 viewModel.statusMessage = error.localizedDescription
             }
+        } label: {
+            Text("Save").frame(maxWidth: .infinity)
         }
         .buttonStyle(StudioPrimaryButtonStyle())
     }
 
     private var saveAsShowButton: some View {
-        Button("Save As") {
+        Button {
             saveSessionAs()
+        } label: {
+            Text("Save As").frame(maxWidth: .infinity)
         }
         .buttonStyle(StudioSecondaryButtonStyle())
     }
@@ -1343,7 +1385,7 @@ struct MultiTrackView: View {
         StudioPanel("I/O Setup", subtitle: "Global interfaces and hardware buffer shared by all tracks in the current show.") {
             VStack(alignment: .leading, spacing: 16) {
                 ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .top, spacing: 16) {
+                    HStack(alignment: .bottom, spacing: 16) {
                         setupDevicePicker(
                             title: "Input Interface",
                             selection: $viewModel.selectedInputDeviceID,
@@ -1359,6 +1401,11 @@ struct MultiTrackView: View {
                         ) {
                             viewModel.handleDeviceSelectionChange()
                         }
+
+                        Button("Refresh Devices") {
+                            viewModel.load()
+                        }
+                        .buttonStyle(StudioSecondaryButtonStyle())
                     }
 
                     VStack(alignment: .leading, spacing: 14) {
@@ -1377,16 +1424,15 @@ struct MultiTrackView: View {
                         ) {
                             viewModel.handleDeviceSelectionChange()
                         }
-                    }
-                }
 
-                HStack {
-                    Spacer()
-
-                    Button("Refresh Devices") {
-                        viewModel.load()
+                        HStack {
+                            Spacer()
+                            Button("Refresh Devices") {
+                                viewModel.load()
+                            }
+                            .buttonStyle(StudioSecondaryButtonStyle())
+                        }
                     }
-                    .buttonStyle(StudioSecondaryButtonStyle())
                 }
 
                 VStack(alignment: .leading, spacing: 12) {
@@ -1462,28 +1508,10 @@ struct MultiTrackView: View {
         StudioPanel("Settings", subtitle: "Choose what the app opens when it launches.") {
             VStack(alignment: .leading, spacing: 14) {
                 Toggle(
-                    "Open Perform tab at launch",
-                    isOn: Binding(
-                        get: { viewModel.launchesIntoPerformViewOnStartup },
-                        set: { viewModel.setLaunchesIntoPerformViewOnStartup($0) }
-                    )
-                )
-                .toggleStyle(.checkbox)
-
-                Toggle(
                     "Open a saved show at launch",
                     isOn: Binding(
                         get: { viewModel.loadsSavedSessionOnStartup },
                         set: { viewModel.setLoadsSavedSessionOnStartup($0) }
-                    )
-                )
-                    .toggleStyle(.checkbox)
-
-                Toggle(
-                    "Start engine on launch",
-                    isOn: Binding(
-                        get: { viewModel.startsEngineOnLaunch },
-                        set: { viewModel.setStartsEngineOnLaunch($0) }
                     )
                 )
                 .toggleStyle(.checkbox)
@@ -1581,6 +1609,24 @@ struct MultiTrackView: View {
                         .font(.caption)
                         .foregroundStyle(StudioTheme.mutedText)
                 }
+
+                Toggle(
+                    "Open Perform tab at launch",
+                    isOn: Binding(
+                        get: { viewModel.launchesIntoPerformViewOnStartup },
+                        set: { viewModel.setLaunchesIntoPerformViewOnStartup($0) }
+                    )
+                )
+                .toggleStyle(.checkbox)
+
+                Toggle(
+                    "Start engine on launch",
+                    isOn: Binding(
+                        get: { viewModel.startsEngineOnLaunch },
+                        set: { viewModel.setStartsEngineOnLaunch($0) }
+                    )
+                )
+                .toggleStyle(.checkbox)
             }
         }
     }
@@ -1639,7 +1685,7 @@ struct MultiTrackView: View {
         devices: [AudioDeviceInfo],
         onChange: @escaping () -> Void
     ) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 6) {
             StudioFieldLabel(title)
             Picker(title, selection: selection) {
                 ForEach(devices) { device in
@@ -1652,7 +1698,6 @@ struct MultiTrackView: View {
                 onChange()
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func latencyField(
