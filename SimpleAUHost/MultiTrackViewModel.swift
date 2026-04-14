@@ -66,6 +66,7 @@ final class MultiTrackViewModel: ObservableObject {
     private let userDefaults: UserDefaults
     private var latencyBufferSettings = MultiTrackLatencyBufferSettings(hardwareBufferSize: DefaultBufferSizes.hardwareFrames)
     private var audioDropoutMonitorTask: Task<Void, Never>?
+    private var startupDropoutResetTask: Task<Void, Never>?
     private var currentSessionURL: URL?
     private var telemetryPublishingEnabled = false
     private var copiedTrackProcessing: CopiedTrackProcessing?
@@ -84,6 +85,7 @@ final class MultiTrackViewModel: ObservableObject {
 
     deinit {
         audioDropoutMonitorTask?.cancel()
+        startupDropoutResetTask?.cancel()
         companionControlServer.stop()
         controller.stop()
     }
@@ -1083,10 +1085,13 @@ final class MultiTrackViewModel: ObservableObject {
                 self.isRunning = true
                 self.refreshPublishedTelemetry()
                 self.startAudioDropoutMonitoring()
+                self.scheduleStartupDropoutReset()
                 self.statusMessage = "Running."
             } catch {
                 self.audioDropoutMonitorTask?.cancel()
                 self.audioDropoutMonitorTask = nil
+                self.startupDropoutResetTask?.cancel()
+                self.startupDropoutResetTask = nil
                 self.refreshPublishedTelemetry()
                 self.clearEmbeddedPluginEditor()
                 self.controller.stop()
@@ -1102,6 +1107,8 @@ final class MultiTrackViewModel: ObservableObject {
         clearEmbeddedPluginEditor()
         audioDropoutMonitorTask?.cancel()
         audioDropoutMonitorTask = nil
+        startupDropoutResetTask?.cancel()
+        startupDropoutResetTask = nil
         refreshPublishedTelemetry()
         captureLivePluginStates()
         controller.stop()
@@ -1407,6 +1414,17 @@ final class MultiTrackViewModel: ObservableObject {
     func resetDropoutCounters() {
         controller.resetDropoutCounters()
         refreshPublishedTelemetry()
+    }
+
+    private func scheduleStartupDropoutReset() {
+        startupDropoutResetTask?.cancel()
+        startupDropoutResetTask = Task { [weak self] in
+            try? await Task.sleep(for: Self.startupDropoutGracePeriod)
+            guard !Task.isCancelled, let self, self.isRunning else { return }
+            self.controller.resetDropoutCounters()
+            self.refreshPublishedTelemetry()
+            self.startupDropoutResetTask = nil
+        }
     }
 
     func companionControlStateSnapshot() -> CompanionControlStateSnapshot {
@@ -1984,6 +2002,7 @@ final class MultiTrackViewModel: ObservableObject {
     private static let startupSpecificSessionPathKey = "startup.specificSessionPath"
     private static let opensStartupSpecificSessionAsTemplateKey = "startup.opensSpecificSessionAsTemplate"
     private static let lastSavedSessionPathKey = "startup.lastSavedSessionPath"
+    private static let startupDropoutGracePeriod: Duration = .seconds(1)
 
     private static func fileURL(fromStoredPath path: String?) -> URL? {
         guard let path, !path.isEmpty else { return nil }

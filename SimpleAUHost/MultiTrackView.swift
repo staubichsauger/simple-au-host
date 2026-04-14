@@ -309,6 +309,9 @@ struct MultiTrackView: View {
     private var performTrackBoard: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
+                performSessionActionPanel
+                managedSessionsPanel
+
                 if viewModel.performTracks.isEmpty {
                     performEmptyState
                 } else {
@@ -402,7 +405,7 @@ struct MultiTrackView: View {
     private var showWorkspace: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                sessionActionPanel
+                showSessionActionPanel
                 managedSessionsPanel
                 showStatusPanel
                 diagnosticsPanel
@@ -1197,57 +1200,126 @@ struct MultiTrackView: View {
         .buttonStyle(StudioSecondaryButtonStyle())
     }
 
-    private var sessionActionPanel: some View {
-        StudioPanel("Show", subtitle: "Manage the session file and core transport actions for this show.") {
+    private var performSessionActionPanel: some View {
+        sessionActionPanel(
+            subtitle: "Save, load, or start a new show without leaving Perform.",
+            showsTransportControls: false
+        )
+    }
+
+    private var showSessionActionPanel: some View {
+        sessionActionPanel(
+            subtitle: "Manage the session file and core transport actions for this show.",
+            showsTransportControls: true
+        )
+    }
+
+    @ViewBuilder
+    private func sessionActionPanel(
+        subtitle: String,
+        showsTransportControls: Bool
+    ) -> some View {
+        StudioPanel("Show", subtitle: subtitle) {
             VStack(alignment: .leading, spacing: 14) {
-                HStack(spacing: 12) {
-                    Button("New Show") {
-                        viewModel.createNewSession()
-                        syncRackSelection()
-                    }
-                    .buttonStyle(StudioSecondaryButtonStyle())
-                    .disabled(viewModel.isRunning)
+                sessionFileActions
 
-                    Button("Open Show") {
-                        openSessionPanel()
-                    }
-                    .buttonStyle(StudioSecondaryButtonStyle())
-                    .disabled(viewModel.isRunning)
-
-                    Button("Save") {
-                        do {
-                            if viewModel.hasStoredSessionFile {
-                                try viewModel.saveSession()
-                            } else {
-                                saveSessionAs()
-                            }
-                        } catch {
-                            viewModel.statusMessage = error.localizedDescription
-                        }
-                    }
-                    .buttonStyle(StudioPrimaryButtonStyle())
-
-                    Button("Save As") {
-                        saveSessionAs()
-                    }
-                    .buttonStyle(StudioSecondaryButtonStyle())
-                }
-
-                HStack(spacing: 12) {
-                    Button("Refresh Devices") {
-                        viewModel.load()
-                    }
-                    .buttonStyle(StudioSecondaryButtonStyle())
-                    .disabled(viewModel.isRunning)
-
-                    Button(viewModel.isRunning ? "Stop Engine" : "Start Engine") {
-                        viewModel.toggleStartStop()
-                    }
-                    .buttonStyle(StudioPrimaryButtonStyle())
-                    .disabled(!viewModel.canStart && !viewModel.isRunning)
+                if showsTransportControls {
+                    sessionTransportActions
                 }
             }
         }
+    }
+
+    private var sessionFileActions: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                newShowButton
+                openShowButton
+                saveShowButton
+                saveAsShowButton
+            }
+
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 12) {
+                    newShowButton
+                    openShowButton
+                }
+
+                HStack(spacing: 12) {
+                    saveShowButton
+                    saveAsShowButton
+                }
+            }
+        }
+    }
+
+    private var sessionTransportActions: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                refreshDevicesButton
+                engineToggleButton
+            }
+
+            VStack(alignment: .leading, spacing: 12) {
+                refreshDevicesButton
+                engineToggleButton
+            }
+        }
+    }
+
+    private var newShowButton: some View {
+        Button("New Show") {
+            viewModel.createNewSession()
+            syncRackSelection()
+        }
+        .buttonStyle(StudioSecondaryButtonStyle())
+        .disabled(viewModel.isRunning)
+    }
+
+    private var openShowButton: some View {
+        Button("Open Show") {
+            openSessionPanel()
+        }
+        .buttonStyle(StudioSecondaryButtonStyle())
+        .disabled(viewModel.isRunning)
+    }
+
+    private var saveShowButton: some View {
+        Button("Save") {
+            do {
+                if viewModel.hasStoredSessionFile {
+                    try viewModel.saveSession()
+                } else {
+                    saveSessionAs()
+                }
+            } catch {
+                viewModel.statusMessage = error.localizedDescription
+            }
+        }
+        .buttonStyle(StudioPrimaryButtonStyle())
+    }
+
+    private var saveAsShowButton: some View {
+        Button("Save As") {
+            saveSessionAs()
+        }
+        .buttonStyle(StudioSecondaryButtonStyle())
+    }
+
+    private var refreshDevicesButton: some View {
+        Button("Refresh Devices") {
+            viewModel.load()
+        }
+        .buttonStyle(StudioSecondaryButtonStyle())
+        .disabled(viewModel.isRunning)
+    }
+
+    private var engineToggleButton: some View {
+        Button(viewModel.isRunning ? "Stop Engine" : "Start Engine") {
+            viewModel.toggleStartStop()
+        }
+        .buttonStyle(StudioPrimaryButtonStyle())
+        .disabled(!viewModel.canStart && !viewModel.isRunning)
     }
 
     private var managedSessionsPanel: some View {

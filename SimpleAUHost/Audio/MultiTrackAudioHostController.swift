@@ -497,11 +497,6 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         func resetDropoutCounters() {
             SAHAtomicCounterReset(&audioDropoutCounter)
             SAHAtomicCounterReset(&droppedFrameCounter)
-            SAHAtomicCounterReset(&peakInputRingOccupancyFrames)
-            SAHAtomicCounterReset(&peakOutputRingOccupancyFrames)
-            SAHAtomicCounterReset(&peakRenderDurationNanoseconds)
-            SAHAtomicCounterReset(&totalRenderDurationNanoseconds)
-            SAHAtomicCounterReset(&renderPassCount)
         }
 
         var isRealtime: Bool {
@@ -1844,7 +1839,6 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
     func resetDropoutCounters() {
         SAHAtomicCounterReset(&audioDropoutCounter)
         SAHAtomicCounterReset(&droppedFrameCounter)
-        resetTelemetry()
         nextExpectedInputSampleTime = nil
         nextExpectedOutputSampleTime = nil
         for runtime in trackRuntimes {
