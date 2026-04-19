@@ -6,6 +6,7 @@ typealias AudioDeviceID = AudioObjectID
 
 struct AudioDeviceInfo: Identifiable, Hashable {
     let id: AudioDeviceID
+    let uid: String
     let name: String
     let inputChannelCount: Int
     let outputChannelCount: Int
@@ -97,6 +98,12 @@ final class AudioHostController: @unchecked Sendable {
                 scope: kAudioObjectPropertyScopeGlobal,
                 element: kAudioObjectPropertyElementMain
             )
+            let uid = try getCFStringProperty(
+                objectID: deviceID,
+                selector: kAudioDevicePropertyDeviceUID,
+                scope: kAudioObjectPropertyScopeGlobal,
+                element: kAudioObjectPropertyElementMain
+            )
             let inputChannels = try channelCount(deviceID: deviceID, scope: kAudioObjectPropertyScopeInput)
             let outputChannels = try channelCount(deviceID: deviceID, scope: kAudioObjectPropertyScopeOutput)
             let sampleRate: Float64 = try getAudioObjectScalarProperty(
@@ -120,6 +127,7 @@ final class AudioHostController: @unchecked Sendable {
 
             return AudioDeviceInfo(
                 id: deviceID,
+                uid: uid,
                 name: name,
                 inputChannelCount: inputChannels,
                 outputChannelCount: outputChannels,

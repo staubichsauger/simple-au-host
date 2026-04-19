@@ -1135,8 +1135,16 @@ final class MultiTrackViewModel: ObservableObject {
 
     private func applySession(_ session: MultiTrackSessionFile, sourceURL: URL?) {
         isApplyingSessionState = true
-        selectedInputDeviceID = session.inputDeviceID
-        selectedOutputDeviceID = session.outputDeviceID
+        selectedInputDeviceID = resolvedSessionDeviceID(
+            preferredUID: session.inputDeviceUID,
+            legacyID: session.inputDeviceID,
+            availableDevices: inputDevices
+        )
+        selectedOutputDeviceID = resolvedSessionDeviceID(
+            preferredUID: session.outputDeviceUID,
+            legacyID: session.outputDeviceID,
+            availableDevices: outputDevices
+        )
         selectedBufferSize = session.bufferSize
         customBufferSizeText = String(session.bufferSize)
         latencyBufferSettings = session.latencyBufferSettings
@@ -1172,6 +1180,19 @@ final class MultiTrackViewModel: ObservableObject {
         }
         customBufferSizeText = String(selectedBufferSize)
         updateSessionWarnings()
+    }
+
+    private func resolvedSessionDeviceID(
+        preferredUID: String?,
+        legacyID: AudioDeviceID?,
+        availableDevices: [AudioDeviceInfo]
+    ) -> AudioDeviceID? {
+        if let preferredUID,
+           let matchedDeviceID = availableDevices.first(where: { $0.uid == preferredUID })?.id {
+            return matchedDeviceID
+        }
+
+        return legacyID
     }
 
     private func sanitizeLatencyBufferSettings() {
@@ -1392,7 +1413,9 @@ final class MultiTrackViewModel: ObservableObject {
         return MultiTrackSessionFile(
             name: currentSessionURL.map(sessionDisplayName(for:)) ?? currentSessionName,
             inputDeviceID: selectedInputDeviceID,
+            inputDeviceUID: selectedInputDevice?.uid,
             outputDeviceID: selectedOutputDeviceID,
+            outputDeviceUID: selectedOutputDevice?.uid,
             bufferSize: selectedBufferSize,
             latencyBufferSettings: latencyBufferSettings,
             tracks: tracks.map(sanitizedTrack),

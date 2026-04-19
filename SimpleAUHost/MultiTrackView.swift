@@ -34,6 +34,9 @@ private struct RackPluginSelectionRequest: Identifiable {
 }
 
 struct MultiTrackView: View {
+    private let performTrackCardMinimumWidth: CGFloat = 280
+    private let performTrackCardMaximumWidth: CGFloat = 320
+
     @StateObject private var viewModel = MultiTrackViewModel()
     let closeCoordinator: AppCloseCoordinator
     @State private var selectedTab: MultiTrackWorkspaceTab = .rack
@@ -306,16 +309,13 @@ struct MultiTrackView: View {
                 if viewModel.performTracks.isEmpty {
                     performEmptyState
                 } else {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(alignment: .top, spacing: 8) {
-                            ForEach(viewModel.performTracks) { track in
-                                performTrackCard(track)
-                                    .frame(width: 280)
-                                    .clipped()
-                            }
+                    LazyVGrid(columns: performTrackGridColumns, alignment: .leading, spacing: 8) {
+                        ForEach(viewModel.performTracks) { track in
+                            performTrackCard(track)
                         }
-                        .padding(.horizontal, 2)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 2)
                 }
 
                 Rectangle()
@@ -351,6 +351,19 @@ struct MultiTrackView: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(StudioTheme.panelStroke, lineWidth: 1)
         )
+    }
+
+    private var performTrackGridColumns: [GridItem] {
+        [
+            GridItem(
+                .adaptive(
+                    minimum: performTrackCardMinimumWidth,
+                    maximum: performTrackCardMaximumWidth
+                ),
+                spacing: 8,
+                alignment: .top
+            )
+        ]
     }
 
     private func performTrackCard(_ track: MultiTrackTrackConfiguration) -> some View {
