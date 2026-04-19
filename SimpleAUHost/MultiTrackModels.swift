@@ -483,11 +483,9 @@ struct MultiTrackHostConfiguration {
 }
 
 struct MultiTrackSessionFile: Codable {
-    var formatVersion: Int = 2
+    var formatVersion: Int = 3
     var name: String
-    var inputDeviceID: AudioDeviceID?
     var inputDeviceUID: String?
-    var outputDeviceID: AudioDeviceID?
     var outputDeviceUID: String?
     var bufferSize: Int
     var latencyBufferSettings: MultiTrackLatencyBufferSettings

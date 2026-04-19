@@ -25,6 +25,16 @@ final class MultiTrackViewModel: ObservableObject {
         let inserts: [MultiTrackTrackConfiguration.PluginInsert]
     }
 
+    struct SessionDeviceResolutionAlert: Identifiable {
+        let id = UUID()
+        let message: String
+    }
+
+    private struct SessionReloadRetryContext {
+        let sessionURL: URL
+        let reopensAsTemplate: Bool
+    }
+
     @Published private(set) var inputDevices: [AudioDeviceInfo] = []
     @Published private(set) var outputDevices: [AudioDeviceInfo] = []
     @Published private(set) var plugins: [AudioUnitPluginInfo] = []
@@ -50,6 +60,7 @@ final class MultiTrackViewModel: ObservableObject {
     @Published private(set) var sessionWarnings: [String] = []
     @Published private(set) var managedSessions: [ManagedSessionFile] = []
     @Published private(set) var hasUnsavedChanges = false
+    @Published var sessionDeviceResolutionAlert: SessionDeviceResolutionAlert?
     @Published var launchesIntoPerformViewOnStartup = false
     @Published var loadsSavedSessionOnStartup = false
     @Published var startsEngineOnLaunch = false
@@ -76,6 +87,7 @@ final class MultiTrackViewModel: ObservableObject {
     private var hasAppliedStartupSessionPreference = false
     private var hasAppliedStartupEnginePreference = false
     private var isCurrentSessionStartupTemplate = false
+    private var sessionReloadRetryContext: SessionReloadRetryContext?
 
     init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
@@ -375,6 +387,23 @@ final class MultiTrackViewModel: ObservableObject {
         updateSessionWarnings()
     }
 
+    func retrySessionDeviceResolution() {
+        guard let retryContext = sessionReloadRetryContext else { return }
+
+        sessionDeviceResolutionAlert = nil
+        load()
+
+        do {
+            try loadSession(from: retryContext.sessionURL)
+            if retryContext.reopensAsTemplate {
+                openCurrentSessionAsTemplate()
+            }
+            startEngine()
+        } catch {
+            statusMessage = "Failed to reload \(sessionDisplayName(for: retryContext.sessionURL)): \(error.localizedDescription)"
+        }
+    }
+
     func createNewSession() {
         guard !isRunning else { return }
         isApplyingSessionState = true
@@ -390,6 +419,8 @@ final class MultiTrackViewModel: ObservableObject {
         wavesTuneState = MultiTrackWavesTuneState()
         currentSessionURL = nil
         isCurrentSessionStartupTemplate = false
+        sessionReloadRetryContext = nil
+        sessionDeviceResolutionAlert = nil
         currentSessionName = "Untitled Session"
         sessionWarnings = []
         statusMessage = "Ready."
@@ -423,6 +454,8 @@ final class MultiTrackViewModel: ObservableObject {
         try data.write(to: url, options: .atomic)
         currentSessionURL = url
         isCurrentSessionStartupTemplate = false
+        sessionReloadRetryContext = SessionReloadRetryContext(sessionURL: url, reopensAsTemplate: false)
+        sessionDeviceResolutionAlert = nil
         currentSessionName = sessionDisplayName(for: url)
         recordLastSavedSessionURL(url)
         hasUnsavedChanges = false
@@ -433,6 +466,7 @@ final class MultiTrackViewModel: ObservableObject {
     func rememberExportedSessionURL(_ url: URL) {
         currentSessionURL = url
         isCurrentSessionStartupTemplate = false
+        sessionReloadRetryContext = SessionReloadRetryContext(sessionURL: url, reopensAsTemplate: false)
         currentSessionName = sessionDisplayName(for: url)
         recordLastSavedSessionURL(url)
         statusMessage = "Saved \(currentSessionName)."
@@ -446,6 +480,7 @@ final class MultiTrackViewModel: ObservableObject {
         } catch {
             throw AudioHostError("Failed to read the multi-track session file.")
         }
+        sessionDeviceResolutionAlert = nil
         applySession(session, sourceURL: url)
         recordLastSavedSessionURL(url)
         try refreshManagedSessions()
@@ -1065,6 +1100,9 @@ final class MultiTrackViewModel: ObservableObject {
 
     private func startEngine() {
         guard canStart else {
+            if presentSessionDeviceResolutionAlertIfNeeded() {
+                return
+            }
             statusMessage = invalidTrackMessages.first ?? "Please complete the device and track configuration."
             return
         }
@@ -1135,14 +1173,13 @@ final class MultiTrackViewModel: ObservableObject {
 
     private func applySession(_ session: MultiTrackSessionFile, sourceURL: URL?) {
         isApplyingSessionState = true
+        sessionReloadRetryContext = sourceURL.map { SessionReloadRetryContext(sessionURL: $0, reopensAsTemplate: false) }
         selectedInputDeviceID = resolvedSessionDeviceID(
             preferredUID: session.inputDeviceUID,
-            legacyID: session.inputDeviceID,
             availableDevices: inputDevices
         )
         selectedOutputDeviceID = resolvedSessionDeviceID(
             preferredUID: session.outputDeviceUID,
-            legacyID: session.outputDeviceID,
             availableDevices: outputDevices
         )
         selectedBufferSize = session.bufferSize
@@ -1184,7 +1221,6 @@ final class MultiTrackViewModel: ObservableObject {
 
     private func resolvedSessionDeviceID(
         preferredUID: String?,
-        legacyID: AudioDeviceID?,
         availableDevices: [AudioDeviceInfo]
     ) -> AudioDeviceID? {
         if let preferredUID,
@@ -1192,7 +1228,7 @@ final class MultiTrackViewModel: ObservableObject {
             return matchedDeviceID
         }
 
-        return legacyID
+        return nil
     }
 
     private func sanitizeLatencyBufferSettings() {
@@ -1205,11 +1241,15 @@ final class MultiTrackViewModel: ObservableObject {
     private func updateSessionWarnings() {
         var warnings: [String] = []
 
-        if let selectedInputDeviceID, !inputDevices.contains(where: { $0.id == selectedInputDeviceID }) {
+        if sessionReloadRetryContext != nil, selectedInputDevice == nil {
+            warnings.append("Saved input device is not currently available. Reconnect it or choose another input before starting.")
+        } else if let selectedInputDeviceID, !inputDevices.contains(where: { $0.id == selectedInputDeviceID }) {
             warnings.append("Saved input device is not currently available. Reconnect it or choose another input before starting.")
         }
 
-        if let selectedOutputDeviceID, !outputDevices.contains(where: { $0.id == selectedOutputDeviceID }) {
+        if sessionReloadRetryContext != nil, selectedOutputDevice == nil {
+            warnings.append("Saved output device is not currently available. Reconnect it or choose another output before starting.")
+        } else if let selectedOutputDeviceID, !outputDevices.contains(where: { $0.id == selectedOutputDeviceID }) {
             warnings.append("Saved output device is not currently available. Reconnect it or choose another output before starting.")
         }
 
@@ -1412,9 +1452,7 @@ final class MultiTrackViewModel: ObservableObject {
         captureLivePluginStates()
         return MultiTrackSessionFile(
             name: currentSessionURL.map(sessionDisplayName(for:)) ?? currentSessionName,
-            inputDeviceID: selectedInputDeviceID,
             inputDeviceUID: selectedInputDevice?.uid,
-            outputDeviceID: selectedOutputDeviceID,
             outputDeviceUID: selectedOutputDevice?.uid,
             bufferSize: selectedBufferSize,
             latencyBufferSettings: latencyBufferSettings,
@@ -1734,8 +1772,34 @@ final class MultiTrackViewModel: ObservableObject {
     private func openCurrentSessionAsTemplate() {
         currentSessionURL = nil
         isCurrentSessionStartupTemplate = true
+        if let retryContext = sessionReloadRetryContext {
+            sessionReloadRetryContext = SessionReloadRetryContext(
+                sessionURL: retryContext.sessionURL,
+                reopensAsTemplate: true
+            )
+        }
         hasUnsavedChanges = false
         statusMessage = "Loaded \(currentSessionName) as a startup template."
+    }
+
+    private func presentSessionDeviceResolutionAlertIfNeeded() -> Bool {
+        guard sessionReloadRetryContext != nil else { return false }
+
+        var unavailableDevices: [String] = []
+        if selectedInputDevice == nil {
+            unavailableDevices.append("input")
+        }
+        if selectedOutputDevice == nil {
+            unavailableDevices.append("output")
+        }
+
+        guard !unavailableDevices.isEmpty else { return false }
+
+        let deviceSummary = unavailableDevices.joined(separator: " and ")
+        let message = "The saved session could not resolve its \(deviceSummary) device. Reconnect the interface, then retry to rescan devices and reload the session."
+        sessionDeviceResolutionAlert = SessionDeviceResolutionAlert(message: message)
+        statusMessage = message
+        return true
     }
 
     private func sessionDisplayName(for url: URL) -> String {

@@ -133,6 +133,27 @@ struct MultiTrackView: View {
         } message: {
             Text("Load \(pendingSessionLoadRequest?.sessionName ?? "this show") and discard the current unsaved changes?")
         }
+        .alert(
+            "Audio Device Unavailable",
+            isPresented: Binding(
+                get: { viewModel.sessionDeviceResolutionAlert != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        viewModel.sessionDeviceResolutionAlert = nil
+                    }
+                }
+            ),
+            presenting: viewModel.sessionDeviceResolutionAlert
+        ) { _ in
+            Button("Retry") {
+                viewModel.retrySessionDeviceResolution()
+            }
+            Button("Cancel", role: .cancel) {
+                viewModel.sessionDeviceResolutionAlert = nil
+            }
+        } message: { alert in
+            Text(alert.message)
+        }
         .sheet(isPresented: $showsAddWavesTuneSongSheet) {
             addWavesTuneSongSheet
         }
