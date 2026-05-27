@@ -1529,7 +1529,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
                 self?.workerLoop(affinityTag: affinityTag)
             }
             workerThread.name = "SimpleAUHost.TrackShard.\(latencyClass.rawValue).\(id)"
-            workerThread.qualityOfService = latencyClass == .broadcast ? .utility : .userInitiated
+            workerThread.qualityOfService = latencyClass == .broadcast ? .utility : .userInteractive
             self.workerThread = workerThread
             workerThread.start()
         }
@@ -1567,7 +1567,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
 
         private func workerLoop(affinityTag: Int32?) {
             guard processingFrames > 0 else { return }
-            promoteCurrentThreadToAudioWorkerQoS()
+            promoteCurrentThreadToAudioWorkerQoS(latencyClass == .broadcast ? QOS_CLASS_USER_INITIATED : QOS_CLASS_USER_INTERACTIVE)
             if let affinityTag {
                 bestEffortSetCurrentThreadAffinity(tag: affinityTag)
             }
@@ -1582,7 +1582,10 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
                     return
                 }
 
-                guard canProcessRound(frameCount: frames) else {
+                switch processReadiness(frameCount: frames) {
+                case .ready:
+                    break
+                case .waitingForInput:
                     wakeup.wait()
                     windowWakeups += 1
                     updateTimingWindow(
@@ -1591,6 +1594,9 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
                         windowWakeups: &windowWakeups,
                         windowActiveNanoseconds: &windowActive
                     )
+                    continue
+                case .waitingForOutputSpace:
+                    sched_yield()
                     continue
                 }
 
@@ -1617,12 +1623,20 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             }
         }
 
-        private func canProcessRound(frameCount: UInt32) -> Bool {
+        private enum ProcessReadiness {
+            case ready
+            case waitingForInput
+            case waitingForOutputSpace
+        }
+
+        private func processReadiness(frameCount: UInt32) -> ProcessReadiness {
             let hasInput = inputRings.indices.allSatisfy { index in
                 SAHFloatRingBufferAvailableRead(&inputRings[index]) >= frameCount
             }
+            guard hasInput else { return .waitingForInput }
+
             let hasOutputSpace = tracks.allSatisfy { $0.canAcceptBufferedInput(frames: processingFrames) }
-            return hasInput && hasOutputSpace
+            return hasOutputSpace ? .ready : .waitingForOutputSpace
         }
 
         private func stageInputRound(frameCount: UInt32) {

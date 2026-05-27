@@ -483,6 +483,6 @@ func allocatedFrameCapacity(actualMaximumFrames: Int, nominalBufferSize: Int) ->
     max(actualMaximumFrames, nominalBufferSize) + nominalBufferSize
 }
 
-func promoteCurrentThreadToAudioWorkerQoS() {
-    pthread_set_qos_class_self_np(QOS_CLASS_USER_INITIATED, 0)
+func promoteCurrentThreadToAudioWorkerQoS(_ qosClass: qos_class_t = QOS_CLASS_USER_INITIATED) {
+    pthread_set_qos_class_self_np(qosClass, 0)
 }
