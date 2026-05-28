@@ -141,6 +141,8 @@ I reviewed the app end to end without editing source. I also ran validation:
 
   **Comments:** templates should exist, but i think they are not visible in the ui right now
 
+  **Status:** Verified in checkpoint `feature-chain-template-ui-visible`; chain and parameter preset save/load controls are already exposed in the rack footer.
+
 
 - Add an "audio health" panel: clock drift warning, ring pressure trend, CPU per worker, last dropout reason.
 
