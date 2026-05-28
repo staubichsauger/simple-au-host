@@ -1226,15 +1226,22 @@ struct MultiTrackView: View {
     }
 
     private func rackModeControl(_ track: Binding<MultiTrackTrackConfiguration>) -> some View {
-        rackControlRow(title: "Mode") {
-            Picker("Mode", selection: track.latencyClass) {
-                ForEach(TrackLatencyClass.allCases) { latencyClass in
-                    Text(latencyClass.title).tag(latencyClass)
+        VStack(alignment: .leading, spacing: 4) {
+            rackControlRow(title: "Mode") {
+                Picker("Mode", selection: track.latencyClass) {
+                    ForEach(TrackLatencyClass.allCases) { latencyClass in
+                        Text(latencyClass.title).tag(latencyClass)
+                    }
                 }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .disabled(viewModel.isRunning)
             }
-            .labelsHidden()
-            .pickerStyle(.menu)
-            .disabled(viewModel.isRunning)
+
+            Text(viewModel.latencyReadout(for: track.wrappedValue))
+                .font(.system(size: 9, weight: .medium, design: .default))
+                .foregroundStyle(StudioTheme.mutedText)
+                .lineLimit(1)
         }
     }
 

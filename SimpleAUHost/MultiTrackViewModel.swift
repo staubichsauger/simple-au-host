@@ -1012,6 +1012,20 @@ final class MultiTrackViewModel: ObservableObject {
         return "\(track.latencyClass.title): \(internalFrames) internal frames"
     }
 
+    func latencyReadout(for track: MultiTrackTrackConfiguration) -> String {
+        let internalFrames = latencyBufferSettings.internalFrames(
+            for: track.latencyClass,
+            hardwareBufferSize: selectedBufferSize
+        )
+        let addedFrames = max(0, internalFrames - selectedBufferSize)
+        let sampleRate = selectedInputDevice?.nominalSampleRate ?? selectedOutputDevice?.nominalSampleRate ?? 0
+        guard sampleRate > 0 else {
+            return "Added latency: \(addedFrames) frames"
+        }
+        let milliseconds = Double(addedFrames) / sampleRate * 1_000
+        return "Added latency: \(addedFrames) frames / \(Self.latencyFormatter.string(from: NSNumber(value: milliseconds)) ?? "0.0") ms"
+    }
+
     func setWavesTuneEnabled(_ isEnabled: Bool) {
         wavesTuneState.isEnabled = isEnabled
 
@@ -2218,6 +2232,12 @@ final class MultiTrackViewModel: ObservableObject {
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+    private static let latencyFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.minimumFractionDigits = 1
+        formatter.maximumFractionDigits = 1
         return formatter
     }()
     private static let launchesIntoPerformViewOnStartupKey = "startup.launchesIntoPerformViewOnStartup"

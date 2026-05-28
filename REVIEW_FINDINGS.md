@@ -122,6 +122,8 @@ I reviewed the app end to end without editing source. I also ran validation:
 
   **Comments:** readout would be nice, but no need for compensation
 
+  **Status:** Implemented in checkpoint `feature-track-latency-readout`.
+
 
 - Add MIDI/OSC/keyboard mapping in addition to Companion.
 
