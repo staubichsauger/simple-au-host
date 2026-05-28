@@ -155,6 +155,8 @@ I reviewed the app end to end without editing source. I also ran validation:
 
   **Comments:** add unit tests where you see fit
 
+  **Status:** Implemented in checkpoint `tests-add-session-store-and-migration-coverage`.
+
 
 Overall: the app has a solid shape and an ambitious low-latency architecture, but I'd prioritize hardening the Companion HTTP server, unsaved-session handling, live Audio Unit synchronization, and plugin editor lifetime before adding bigger features.
 

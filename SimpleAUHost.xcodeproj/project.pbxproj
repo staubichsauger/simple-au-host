@@ -8,35 +8,47 @@
 
 /* Begin PBXBuildFile section */
 		14006CFBCD20618425A956AD /* AudioToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3C01A2877205B69CBC0C74A2 /* AudioToolbox.framework */; };
-		1A0E2509BEE54A349970E2E5 /* Network.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8B683620844F43D8B325A40A /* Network.framework */; };
-		2207AA13A762452AAEB6DC65 /* CompanionControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D83D21642394D308B8D77E4 /* CompanionControl.swift */; };
+		1A0731248AF3DC6EA4476DAB /* CompanionControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 968B457E902FCA9D5C48BB18 /* CompanionControl.swift */; };
 		26461A70B5DBAA27A0D0AE4D /* MultiTrackAudioHostController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 907616E833D51D8D6FE5502E /* MultiTrackAudioHostController.swift */; };
 		3978E929F9DE78777CAD7D70 /* CoreAudio.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5FABE4A3EC0C46930DFA1CFA /* CoreAudio.framework */; };
 		4B5F4C1E2F0EB5D5EE2CF762 /* MultiTrackViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51F587125760077EB7BA3750 /* MultiTrackViewModel.swift */; };
-		4C68234FA1D742C19A836A10 /* AppCloseCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73CE103B18264F3BA589D5FA /* AppCloseCoordinator.swift */; };
 		51D670A8169091E09AFDF4A9 /* MultiTrackModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68D2CC2F5749BB865FE1DE0F /* MultiTrackModels.swift */; };
 		5427799ABCA002A01D430C4B /* ManagedSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF1AF7EF2ABF9840F38873DA /* ManagedSessionStore.swift */; };
 		58E70733817514AA56B4B415 /* AudioHostController.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE3A1C4E2349E802C98811DE /* AudioHostController.swift */; };
 		845EF77A005A49F188AE31DE /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2B2D3D79507244C560BDD5E7 /* AVFoundation.framework */; };
+		9B9FA77775BE355D5EC2DD9A /* SessionStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 399F76F5435BA9B0D035D616 /* SessionStoreTests.swift */; };
+		A5AA4563A780E0960922A783 /* AppCloseCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A66BCE5A1B811CB9B105BA83 /* AppCloseCoordinator.swift */; };
 		A87382D5FB9A0BFD14CB62E9 /* MultiTrackView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6D62822C556D03150F26589 /* MultiTrackView.swift */; };
 		C4B4F755BA528A86B1C96C41 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D176FA9E19AB56C0F630983B /* Assets.xcassets */; };
+		D0B9538F4AACE415C4136764 /* Network.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = EF65396B429CEBE42785FCDC /* Network.framework */; };
 		DA88A40C2B49C756F57749EF /* FloatRingBuffer.c in Sources */ = {isa = PBXBuildFile; fileRef = 2B76015B39F45AB414C53372 /* FloatRingBuffer.c */; };
 		F01185DB34C3F70F201D81D7 /* SimpleAUHostApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0D8ECFE98AFE6D0D136AED4 /* SimpleAUHostApp.swift */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		4054A04D934F14B81B953DCA /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = DFF9E0B3F9DC0F5E27B77A4D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 60B51BDF5E2BD19F3D8BDB27;
+			remoteInfo = SimpleAUHost;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		18761B649069432C044D9E00 /* SimpleAUHost-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "SimpleAUHost-Bridging-Header.h"; sourceTree = "<group>"; };
 		2B2D3D79507244C560BDD5E7 /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
 		2B76015B39F45AB414C53372 /* FloatRingBuffer.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = FloatRingBuffer.c; sourceTree = "<group>"; };
+		399F76F5435BA9B0D035D616 /* SessionStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStoreTests.swift; sourceTree = "<group>"; };
 		3C01A2877205B69CBC0C74A2 /* AudioToolbox.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AudioToolbox.framework; path = System/Library/Frameworks/AudioToolbox.framework; sourceTree = SDKROOT; };
-		73CE103B18264F3BA589D5FA /* AppCloseCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCloseCoordinator.swift; sourceTree = "<group>"; };
 		51F587125760077EB7BA3750 /* MultiTrackViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiTrackViewModel.swift; sourceTree = "<group>"; };
 		5FABE4A3EC0C46930DFA1CFA /* CoreAudio.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreAudio.framework; path = System/Library/Frameworks/CoreAudio.framework; sourceTree = SDKROOT; };
 		68D2CC2F5749BB865FE1DE0F /* MultiTrackModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiTrackModels.swift; sourceTree = "<group>"; };
-		8B683620844F43D8B325A40A /* Network.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Network.framework; path = System/Library/Frameworks/Network.framework; sourceTree = SDKROOT; };
 		857E1CD656C39B36861AD772 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		907616E833D51D8D6FE5502E /* MultiTrackAudioHostController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiTrackAudioHostController.swift; sourceTree = "<group>"; };
-		9D83D21642394D308B8D77E4 /* CompanionControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionControl.swift; sourceTree = "<group>"; };
+		968B457E902FCA9D5C48BB18 /* CompanionControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionControl.swift; sourceTree = "<group>"; };
+		A66BCE5A1B811CB9B105BA83 /* AppCloseCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCloseCoordinator.swift; sourceTree = "<group>"; };
+		B64A84293CEFFAB45A362F0F /* SimpleAUHostTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SimpleAUHostTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		BBFBDFDA26FBF58E6FB8AEB4 /* FloatRingBuffer.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = FloatRingBuffer.h; sourceTree = "<group>"; };
 		BF1AF7EF2ABF9840F38873DA /* ManagedSessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagedSessionStore.swift; sourceTree = "<group>"; };
 		C6D62822C556D03150F26589 /* MultiTrackView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiTrackView.swift; sourceTree = "<group>"; };
@@ -44,6 +56,7 @@
 		D176FA9E19AB56C0F630983B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		E0D8ECFE98AFE6D0D136AED4 /* SimpleAUHostApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimpleAUHostApp.swift; sourceTree = "<group>"; };
 		E92E12B34A5D890A1D40102E /* SimpleAUHost.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SimpleAUHost.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		EF65396B429CEBE42785FCDC /* Network.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Network.framework; path = System/Library/Frameworks/Network.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -54,7 +67,7 @@
 				845EF77A005A49F188AE31DE /* AVFoundation.framework in Frameworks */,
 				14006CFBCD20618425A956AD /* AudioToolbox.framework in Frameworks */,
 				3978E929F9DE78777CAD7D70 /* CoreAudio.framework in Frameworks */,
-				1A0E2509BEE54A349970E2E5 /* Network.framework in Frameworks */,
+				D0B9538F4AACE415C4136764 /* Network.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -70,12 +83,20 @@
 			path = Audio;
 			sourceTree = "<group>";
 		};
+		33CC6ACA86642F0AA569B1A3 /* SimpleAUHostTests */ = {
+			isa = PBXGroup;
+			children = (
+				399F76F5435BA9B0D035D616 /* SessionStoreTests.swift */,
+			);
+			path = SimpleAUHostTests;
+			sourceTree = "<group>";
+		};
 		497ED8E634003558795000E1 /* SimpleAUHost */ = {
 			isa = PBXGroup;
 			children = (
+				A66BCE5A1B811CB9B105BA83 /* AppCloseCoordinator.swift */,
 				D176FA9E19AB56C0F630983B /* Assets.xcassets */,
-				73CE103B18264F3BA589D5FA /* AppCloseCoordinator.swift */,
-				9D83D21642394D308B8D77E4 /* CompanionControl.swift */,
+				968B457E902FCA9D5C48BB18 /* CompanionControl.swift */,
 				857E1CD656C39B36861AD772 /* Info.plist */,
 				BF1AF7EF2ABF9840F38873DA /* ManagedSessionStore.swift */,
 				68D2CC2F5749BB865FE1DE0F /* MultiTrackModels.swift */,
@@ -102,6 +123,7 @@
 			isa = PBXGroup;
 			children = (
 				497ED8E634003558795000E1 /* SimpleAUHost */,
+				33CC6ACA86642F0AA569B1A3 /* SimpleAUHostTests */,
 				F1709B050F98A2497B0EE04C /* Frameworks */,
 				C0FB93FFDDA4460A2C09004A /* Products */,
 			);
@@ -111,6 +133,7 @@
 			isa = PBXGroup;
 			children = (
 				E92E12B34A5D890A1D40102E /* SimpleAUHost.app */,
+				B64A84293CEFFAB45A362F0F /* SimpleAUHostTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -121,7 +144,7 @@
 				3C01A2877205B69CBC0C74A2 /* AudioToolbox.framework */,
 				2B2D3D79507244C560BDD5E7 /* AVFoundation.framework */,
 				5FABE4A3EC0C46930DFA1CFA /* CoreAudio.framework */,
-				8B683620844F43D8B325A40A /* Network.framework */,
+				EF65396B429CEBE42785FCDC /* Network.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -129,6 +152,24 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		116962E327A937DD7A65A3F0 /* SimpleAUHostTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 89AF6004A904D64DE4B4BEA2 /* Build configuration list for PBXNativeTarget "SimpleAUHostTests" */;
+			buildPhases = (
+				E17E0D4A4C42D11BF2C290AC /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				51277D46BC511471E981660E /* PBXTargetDependency */,
+			);
+			name = SimpleAUHostTests;
+			packageProductDependencies = (
+			);
+			productName = SimpleAUHostTests;
+			productReference = B64A84293CEFFAB45A362F0F /* SimpleAUHostTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		60B51BDF5E2BD19F3D8BDB27 /* SimpleAUHost */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 3C4B09B83565590643E61018 /* Build configuration list for PBXNativeTarget "SimpleAUHost" */;
@@ -157,6 +198,9 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					116962E327A937DD7A65A3F0 = {
+						ProvisioningStyle = Automatic;
+					};
 					60B51BDF5E2BD19F3D8BDB27 = {
 						ProvisioningStyle = Automatic;
 					};
@@ -177,6 +221,7 @@
 			projectRoot = "";
 			targets = (
 				60B51BDF5E2BD19F3D8BDB27 /* SimpleAUHost */,
+				116962E327A937DD7A65A3F0 /* SimpleAUHostTests */,
 			);
 		};
 /* End PBXProject section */
@@ -197,9 +242,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A5AA4563A780E0960922A783 /* AppCloseCoordinator.swift in Sources */,
 				58E70733817514AA56B4B415 /* AudioHostController.swift in Sources */,
-				4C68234FA1D742C19A836A10 /* AppCloseCoordinator.swift in Sources */,
-				2207AA13A762452AAEB6DC65 /* CompanionControl.swift in Sources */,
+				1A0731248AF3DC6EA4476DAB /* CompanionControl.swift in Sources */,
 				DA88A40C2B49C756F57749EF /* FloatRingBuffer.c in Sources */,
 				5427799ABCA002A01D430C4B /* ManagedSessionStore.swift in Sources */,
 				26461A70B5DBAA27A0D0AE4D /* MultiTrackAudioHostController.swift in Sources */,
@@ -210,9 +255,41 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		E17E0D4A4C42D11BF2C290AC /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9B9FA77775BE355D5EC2DD9A /* SessionStoreTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		51277D46BC511471E981660E /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 60B51BDF5E2BD19F3D8BDB27 /* SimpleAUHost */;
+			targetProxy = 4054A04D934F14B81B953DCA /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		09B8874A6380B2BD628C340D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.staubichsauger.SimpleAUHostTests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SimpleAUHost.app/Contents/MacOS/SimpleAUHost";
+			};
+			name = Release;
+		};
 		18DDC4B5D70EFE6640C582C8 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -357,6 +434,22 @@
 			};
 			name = Debug;
 		};
+		DC8EE96269ACFCB0D34A63B6 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.staubichsauger.SimpleAUHostTests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SimpleAUHost.app/Contents/MacOS/SimpleAUHost";
+			};
+			name = Debug;
+		};
 		FEC2FEB29FE8C4A85D552694 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -391,6 +484,15 @@
 			buildConfigurations = (
 				BB2DBAE8C9D0358B1BB80817 /* Debug */,
 				FEC2FEB29FE8C4A85D552694 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		89AF6004A904D64DE4B4BEA2 /* Build configuration list for PBXNativeTarget "SimpleAUHostTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DC8EE96269ACFCB0D34A63B6 /* Debug */,
+				09B8874A6380B2BD628C340D /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

@@ -27,3 +27,13 @@ targets:
       - sdk: AudioToolbox.framework
       - sdk: CoreAudio.framework
       - sdk: Network.framework
+  SimpleAUHostTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: SimpleAUHostTests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.staubichsauger.SimpleAUHostTests
+    dependencies:
+      - target: SimpleAUHost
