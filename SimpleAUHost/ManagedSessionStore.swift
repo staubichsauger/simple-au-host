@@ -34,6 +34,7 @@ enum SAHManagedSessionStore {
     private static let sessionsFolderName = "Sessions"
     private static let chainPresetsFolderName = "Chain Presets"
     private static let parameterPresetsFolderName = "Parameter Presets"
+    private static let sessionFileExtension = "sahsession"
 
     static func ensureDirectories(fileManager: FileManager = .default) throws -> SAHManagedStorageDirectories {
         let musicDirectory = try musicDirectoryURL(fileManager: fileManager)
@@ -67,6 +68,9 @@ enum SAHManagedSessionStore {
         return try fileURLs.compactMap { url in
             let resourceValues = try url.resourceValues(forKeys: resourceKeys)
             guard resourceValues.isRegularFile == true else {
+                return nil
+            }
+            guard url.pathExtension.caseInsensitiveCompare(sessionFileExtension) == .orderedSame else {
                 return nil
             }
             return ManagedSessionFile(

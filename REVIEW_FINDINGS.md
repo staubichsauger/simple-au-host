@@ -96,6 +96,8 @@ I reviewed the app end to end without editing source. I also ran validation:
 
   **Comments:** fix this
 
+  **Status:** Implemented in checkpoint `ux-filter-managed-session-files`.
+
 
 - Startup/open/save work is mostly synchronous on the main actor, including plugin discovery and file reads/writes. This can freeze the UI with many plugins or large session state.
 
