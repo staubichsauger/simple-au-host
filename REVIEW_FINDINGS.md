@@ -37,11 +37,15 @@ I reviewed the app end to end without editing source. I also ran validation:
 
    **Comments:** leave it for, we will discuss later
 
+   **Status:** Discussed; keeping current live behavior for now because live plugin control, especially Waves Tune, is required. Future changes should distinguish lightweight live parameter control from bulk plugin state save/load/copy operations.
+
 
 5. **Plugin editor request block lifetime looks unsafe.**  
    [MultiTrackAudioHostController.swift](SimpleAUHost/Audio/MultiTrackAudioHostController.swift:1082) passes an unretained callback object and only keeps it alive for the synchronous `AudioUnitSetProperty` call. If a plugin calls back asynchronously, this can hang or crash. Add a timeout and retain the callback until completion.
 
-   **Comments:** leave it for, we will discuss later
+   **Comments:** fix this now; no editor failures have been seen yet, but hardening the callback lifetime and timeout is worth doing proactively.
+
+   **Status:** Implemented in checkpoint `plugin-editor-request-lifetime-hardening`.
 
 
 6. **Capture buffer capacity can diverge from the runtime callback safety limit.**  
@@ -65,10 +69,14 @@ I reviewed the app end to end without editing source. I also ran validation:
 
   **Comments:** leave it for, we will discuss later
 
+  **Status:** Discussed; keeping current behavior. SimpleAUHost should own the selected device buffer size rather than restoring the previous system setting on stop.
+
 
 - Worker shards spin with `sched_yield()` when output rings are full at [MultiTrackAudioHostController.swift](SimpleAUHost/Audio/MultiTrackAudioHostController.swift:1598), which can waste CPU under backpressure.
 
   **Comments:** leave it for, we will discuss later
+
+  **Status:** Discussed; keep current yield strategy for low-latency safety. Revisit only if diagnostics show sustained ring-full pressure.
 
 
 - Plugin catalog is cached forever at [AudioHostController.swift](SimpleAUHost/Audio/AudioHostController.swift:142), so installed/removed plugins are not reflected until app restart.

@@ -354,6 +354,54 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
     }
 
     private final class TrackRuntime: @unchecked Sendable {
+        @MainActor
+        private final class NativeEditorRequest {
+            typealias RequestViewControllerBlock = @convention(block) (NSViewController?) -> Void
+
+            let id = UUID()
+            private var continuation: CheckedContinuation<NSViewController?, Error>?
+            private var timeoutTask: Task<Void, Never>?
+            private(set) var callbackObject: AnyObject?
+
+            init(continuation: CheckedContinuation<NSViewController?, Error>) {
+                self.continuation = continuation
+            }
+
+            func installCallback(_ callback: @escaping RequestViewControllerBlock) {
+                callbackObject = unsafeBitCast(callback, to: AnyObject.self)
+            }
+
+            func startTimeout(seconds: Double) {
+                timeoutTask = Task { [id] in
+                    let nanoseconds = UInt64(seconds * 1_000_000_000)
+                    try? await Task.sleep(nanoseconds: nanoseconds)
+                    await MainActor.run {
+                        TrackRuntime.completeNativeEditorRequest(
+                            id,
+                            result: .failure(AudioHostError("Timed out while waiting for the plugin editor."))
+                        )
+                    }
+                }
+            }
+
+            func complete(result: Result<NSViewController?, Error>) {
+                guard let continuation else { return }
+                self.continuation = nil
+                timeoutTask?.cancel()
+                timeoutTask = nil
+                callbackObject = nil
+
+                switch result {
+                case .success(let viewController):
+                    continuation.resume(returning: viewController)
+                case .failure(let error):
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+
+        @MainActor private static var pendingNativeEditorRequests: [UUID: NativeEditorRequest] = [:]
+
         private struct PluginRuntime {
             let insert: MultiTrackTrackConfiguration.PluginInsert
             let plugin: AudioUnitPluginInfo
@@ -1080,12 +1128,24 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         @MainActor
         private static func requestNativeViewController(for effectUnit: AudioUnit) async throws -> NSViewController? {
             try await withCheckedThrowingContinuation { continuation in
-                typealias RequestViewControllerBlock = @convention(block) (NSViewController?) -> Void
+                let request = NativeEditorRequest(continuation: continuation)
+                pendingNativeEditorRequests[request.id] = request
 
-                let callback: RequestViewControllerBlock = { viewController in
-                    continuation.resume(returning: viewController)
+                let requestID = request.id
+                let callback: NativeEditorRequest.RequestViewControllerBlock = { viewController in
+                    Task { @MainActor in
+                        completeNativeEditorRequest(requestID, result: .success(viewController))
+                    }
                 }
-                let callbackObject = unsafeBitCast(callback, to: AnyObject.self)
+                request.installCallback(callback)
+                guard let callbackObject = request.callbackObject else {
+                    completeNativeEditorRequest(
+                        requestID,
+                        result: .failure(AudioHostError("Failed to prepare the plugin editor callback."))
+                    )
+                    return
+                }
+                request.startTimeout(seconds: 5)
                 var unmanagedCallbackObject = Unmanaged.passUnretained(callbackObject)
 
                 let status = withExtendedLifetime(callbackObject) {
@@ -1101,12 +1161,24 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
 
                 if status != noErr {
                     if status == kAudioUnitErr_InvalidProperty {
-                        continuation.resume(returning: nil)
+                        completeNativeEditorRequest(requestID, result: .success(nil))
                     } else {
-                        continuation.resume(throwing: AudioHostError("Failed to request the plugin editor (\(describe(status: status)))."))
+                        completeNativeEditorRequest(
+                            requestID,
+                            result: .failure(AudioHostError("Failed to request the plugin editor (\(describe(status: status)))."))
+                        )
                     }
                 }
             }
+        }
+
+        @MainActor
+        private static func completeNativeEditorRequest(
+            _ id: UUID,
+            result: Result<NSViewController?, Error>
+        ) {
+            guard let request = pendingNativeEditorRequests.removeValue(forKey: id) else { return }
+            request.complete(result: result)
         }
 
         @MainActor
