@@ -1150,7 +1150,8 @@ struct MultiTrackView: View {
     private func rackInputControl(_ track: Binding<MultiTrackTrackConfiguration>) -> some View {
         let value = track.wrappedValue
         let channels = viewModel.availableInputStartChannels(for: value)
-        return rackControlRow(title: "Input") {
+        let isInvalid = !viewModel.inputRoutingIsValid(for: value)
+        return rackControlRow(title: "Input", isInvalid: isInvalid) {
             Picker("Input", selection: track.inputStartChannel) {
                 ForEach(channels, id: \.self) { channel in
                     Text(channelLabel(startChannel: channel, layout: value.layout)).tag(channel)
@@ -1158,6 +1159,7 @@ struct MultiTrackView: View {
             }
             .labelsHidden()
             .pickerStyle(.menu)
+            .tint(isInvalid ? StudioTheme.warning : StudioTheme.strongText)
             .disabled(viewModel.isRunning || channels.isEmpty)
         }
     }
@@ -1165,7 +1167,8 @@ struct MultiTrackView: View {
     private func rackOutputControl(_ track: Binding<MultiTrackTrackConfiguration>) -> some View {
         let value = track.wrappedValue
         let channels = viewModel.availableOutputStartChannels(for: value)
-        return rackControlRow(title: "Output") {
+        let isInvalid = !viewModel.outputRoutingIsValid(for: value)
+        return rackControlRow(title: "Output", isInvalid: isInvalid) {
             Picker("Output", selection: track.outputStartChannel) {
                 ForEach(channels, id: \.self) { channel in
                     Text(channelLabel(startChannel: channel, layout: value.layout)).tag(channel)
@@ -1173,6 +1176,7 @@ struct MultiTrackView: View {
             }
             .labelsHidden()
             .pickerStyle(.menu)
+            .tint(isInvalid ? StudioTheme.warning : StudioTheme.strongText)
             .disabled(viewModel.isRunning || channels.isEmpty)
         }
     }
@@ -1770,16 +1774,34 @@ struct MultiTrackView: View {
         }
     }
 
-    private func rackControlRow<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
+    private func rackControlRow<Content: View>(
+        title: String,
+        isInvalid: Bool = false,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
         HStack(alignment: .center, spacing: 6) {
             Text(title.uppercased())
                 .font(.system(size: 9, weight: .medium, design: .default))
                 .tracking(0.8)
-                .foregroundStyle(StudioTheme.mutedText)
+                .foregroundStyle(isInvalid ? StudioTheme.warning : StudioTheme.mutedText)
                 .frame(width: 48, alignment: .leading)
 
             content()
                 .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+        .padding(.vertical, isInvalid ? 2 : 0)
+        .padding(.horizontal, isInvalid ? 4 : 0)
+        .background {
+            if isInvalid {
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(StudioTheme.warning.opacity(0.10))
+            }
+        }
+        .overlay {
+            if isInvalid {
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .stroke(StudioTheme.warning.opacity(0.55), lineWidth: 1)
+            }
         }
     }
 

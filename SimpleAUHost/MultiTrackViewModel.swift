@@ -317,7 +317,7 @@ final class MultiTrackViewModel: ObservableObject {
                 addTrack(layout: .mono)
             }
 
-            sanitizeTracks()
+            sanitizeTracks(clampTrackRouting: false)
             sanitizeLatencyBufferSettings()
             wavesTuneState.normalize()
             updateSessionWarnings()
@@ -383,7 +383,7 @@ final class MultiTrackViewModel: ObservableObject {
     }
 
     func handleDeviceSelectionChange() {
-        sanitizeTracks()
+        sanitizeTracks(clampTrackRouting: false)
         updateSessionWarnings()
     }
 
@@ -864,18 +864,34 @@ final class MultiTrackViewModel: ObservableObject {
     func availableInputStartChannels(for track: MultiTrackTrackConfiguration) -> [Int] {
         guard let selectedInputDevice else { return [] }
         let maxStart = max(1, selectedInputDevice.inputChannelCount - track.channelCount + 1)
-        return Array(1...maxStart)
+        return Array(Set(Array(1...maxStart) + [track.inputStartChannel])).sorted()
     }
 
     func availableOutputStartChannels(for track: MultiTrackTrackConfiguration) -> [Int] {
         guard let selectedOutputDevice else { return [] }
         let maxStart = max(1, selectedOutputDevice.outputChannelCount - track.channelCount + 1)
-        return Array(1...maxStart).filter { candidate in
+        let availableChannels = Array(1...maxStart).filter { candidate in
             outputChannelsAreAvailable(
                 for: sanitizedTrack(track),
                 proposedStartChannel: candidate
             )
         }
+        return Array(Set(availableChannels + [track.outputStartChannel])).sorted()
+    }
+
+    func inputRoutingIsValid(for track: MultiTrackTrackConfiguration) -> Bool {
+        guard let selectedInputDevice else { return false }
+        return track.inputStartChannel >= 1 &&
+            track.inputStartChannel + track.channelCount - 1 <= selectedInputDevice.inputChannelCount
+    }
+
+    func outputRoutingIsValid(for track: MultiTrackTrackConfiguration) -> Bool {
+        guard let selectedOutputDevice else { return false }
+        guard track.outputStartChannel >= 1,
+              track.outputStartChannel + track.channelCount - 1 <= selectedOutputDevice.outputChannelCount else {
+            return false
+        }
+        return outputChannelsAreAvailable(for: track, proposedStartChannel: track.outputStartChannel)
     }
 
     func internalBufferDescription(for track: MultiTrackTrackConfiguration) -> String {
@@ -1196,7 +1212,7 @@ final class MultiTrackViewModel: ObservableObject {
         wavesTuneState = session.wavesTuneState ?? MultiTrackWavesTuneState()
         wavesTuneState.normalize()
 
-        sanitizeTracks()
+        sanitizeTracks(clampTrackRouting: false)
         sanitizeLatencyBufferSettings()
         updateSessionWarnings()
 
@@ -1205,9 +1221,11 @@ final class MultiTrackViewModel: ObservableObject {
         statusMessage = "Loaded \(currentSessionName)."
     }
 
-    private func sanitizeTracks() {
-        for index in tracks.indices {
-            tracks[index] = sanitizedTrack(tracks[index])
+    private func sanitizeTracks(clampTrackRouting: Bool = true) {
+        if clampTrackRouting {
+            for index in tracks.indices {
+                tracks[index] = sanitizedTrack(tracks[index])
+            }
         }
         if tracks.isEmpty {
             tracks = [MultiTrackTrackConfiguration(name: "Track 1", layout: .mono)]
@@ -1421,9 +1439,7 @@ final class MultiTrackViewModel: ObservableObject {
             throw AudioHostError("Select both an input and an output interface before starting.")
         }
 
-        let sanitizedTracks = tracks
-            .map(sanitizedTrack)
-            .filter(\.isEnabled)
+        let sanitizedTracks = tracks.filter(\.isEnabled)
 
         guard !sanitizedTracks.isEmpty else {
             throw AudioHostError("Enable at least one track before starting.")
@@ -1456,7 +1472,7 @@ final class MultiTrackViewModel: ObservableObject {
             outputDeviceUID: selectedOutputDevice?.uid,
             bufferSize: selectedBufferSize,
             latencyBufferSettings: latencyBufferSettings,
-            tracks: tracks.map(sanitizedTrack),
+            tracks: tracks,
             wavesTuneState: wavesTuneState.normalized
         )
     }
