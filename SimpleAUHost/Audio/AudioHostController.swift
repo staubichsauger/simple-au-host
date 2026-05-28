@@ -91,50 +91,55 @@ final class AudioHostController: @unchecked Sendable {
             element: kAudioObjectPropertyElementMain
         )
 
-        return try devices.compactMap { deviceID in
-            let name = try getCFStringProperty(
-                objectID: deviceID,
-                selector: kAudioObjectPropertyName,
-                scope: kAudioObjectPropertyScopeGlobal,
-                element: kAudioObjectPropertyElementMain
-            )
-            let uid = try getCFStringProperty(
-                objectID: deviceID,
-                selector: kAudioDevicePropertyDeviceUID,
-                scope: kAudioObjectPropertyScopeGlobal,
-                element: kAudioObjectPropertyElementMain
-            )
-            let inputChannels = try channelCount(deviceID: deviceID, scope: kAudioObjectPropertyScopeInput)
-            let outputChannels = try channelCount(deviceID: deviceID, scope: kAudioObjectPropertyScopeOutput)
-            let sampleRate: Float64 = try getAudioObjectScalarProperty(
-                objectID: deviceID,
-                selector: kAudioDevicePropertyNominalSampleRate,
-                scope: kAudioObjectPropertyScopeGlobal,
-                element: kAudioObjectPropertyElementMain
-            )
-            let currentBufferSize: UInt32 = try getAudioObjectScalarProperty(
-                objectID: deviceID,
-                selector: kAudioDevicePropertyBufferFrameSize,
-                scope: kAudioObjectPropertyScopeGlobal,
-                element: kAudioObjectPropertyElementMain
-            )
-            let range: AudioValueRange = try getAudioObjectScalarProperty(
-                objectID: deviceID,
-                selector: kAudioDevicePropertyBufferFrameSizeRange,
-                scope: kAudioObjectPropertyScopeGlobal,
-                element: kAudioObjectPropertyElementMain
-            )
+        return devices.compactMap { deviceID in
+            do {
+                let name = try getCFStringProperty(
+                    objectID: deviceID,
+                    selector: kAudioObjectPropertyName,
+                    scope: kAudioObjectPropertyScopeGlobal,
+                    element: kAudioObjectPropertyElementMain
+                )
+                let uid = try getCFStringProperty(
+                    objectID: deviceID,
+                    selector: kAudioDevicePropertyDeviceUID,
+                    scope: kAudioObjectPropertyScopeGlobal,
+                    element: kAudioObjectPropertyElementMain
+                )
+                let inputChannels = try channelCount(deviceID: deviceID, scope: kAudioObjectPropertyScopeInput)
+                let outputChannels = try channelCount(deviceID: deviceID, scope: kAudioObjectPropertyScopeOutput)
+                let sampleRate: Float64 = try getAudioObjectScalarProperty(
+                    objectID: deviceID,
+                    selector: kAudioDevicePropertyNominalSampleRate,
+                    scope: kAudioObjectPropertyScopeGlobal,
+                    element: kAudioObjectPropertyElementMain
+                )
+                let currentBufferSize: UInt32 = try getAudioObjectScalarProperty(
+                    objectID: deviceID,
+                    selector: kAudioDevicePropertyBufferFrameSize,
+                    scope: kAudioObjectPropertyScopeGlobal,
+                    element: kAudioObjectPropertyElementMain
+                )
+                let range: AudioValueRange = try getAudioObjectScalarProperty(
+                    objectID: deviceID,
+                    selector: kAudioDevicePropertyBufferFrameSizeRange,
+                    scope: kAudioObjectPropertyScopeGlobal,
+                    element: kAudioObjectPropertyElementMain
+                )
 
-            return AudioDeviceInfo(
-                id: deviceID,
-                uid: uid,
-                name: name,
-                inputChannelCount: inputChannels,
-                outputChannelCount: outputChannels,
-                nominalSampleRate: sampleRate,
-                currentBufferSize: Int(currentBufferSize),
-                bufferSizeRange: Int(range.mMinimum)...Int(range.mMaximum)
-            )
+                return AudioDeviceInfo(
+                    id: deviceID,
+                    uid: uid,
+                    name: name,
+                    inputChannelCount: inputChannels,
+                    outputChannelCount: outputChannels,
+                    nominalSampleRate: sampleRate,
+                    currentBufferSize: Int(currentBufferSize),
+                    bufferSizeRange: Int(range.mMinimum)...Int(range.mMaximum)
+                )
+            } catch {
+                NSLog("Skipping unavailable Core Audio device \(deviceID): \(error.localizedDescription)")
+                return nil
+            }
         }
         .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }

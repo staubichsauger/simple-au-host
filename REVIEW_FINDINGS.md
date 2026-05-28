@@ -80,6 +80,8 @@ I reviewed the app end to end without editing source. I also ran validation:
 
   **Comments:** fix this
 
+  **Status:** Implemented in checkpoint `audio-skip-bad-core-audio-devices`.
+
 
 ## UX/Product Gaps
 
