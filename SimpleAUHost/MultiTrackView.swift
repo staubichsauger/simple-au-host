@@ -72,8 +72,8 @@ struct MultiTrackView: View {
         }
         .task {
             selectedTab = viewModel.launchesIntoPerformViewOnStartup ? .perform : .rack
-            viewModel.load()
-            viewModel.applyStartupSessionPreferenceIfNeeded()
+            await viewModel.loadAsync()
+            await viewModel.applyStartupSessionPreferenceIfNeededAsync()
             viewModel.applyStartupEnginePreferenceIfNeeded()
             configureCloseHandling()
             syncRackSelection()
@@ -1370,14 +1370,16 @@ struct MultiTrackView: View {
 
     private var saveShowButton: some View {
         Button {
-            do {
+            Task {
                 if viewModel.hasStoredSessionFile {
-                    try viewModel.saveSession()
+                    do {
+                        try await viewModel.saveSessionAsync()
+                    } catch {
+                        viewModel.statusMessage = error.localizedDescription
+                    }
                 } else {
                     saveSessionAs()
                 }
-            } catch {
-                viewModel.statusMessage = error.localizedDescription
             }
         } label: {
             Text("Save").frame(maxWidth: .infinity)
@@ -2311,11 +2313,13 @@ struct MultiTrackView: View {
     }
 
     private func performSessionLoad(from url: URL) {
-        do {
-            try viewModel.loadSession(from: url)
-            syncRackSelection()
-        } catch {
-            viewModel.statusMessage = error.localizedDescription
+        Task {
+            do {
+                try await viewModel.loadSessionAsync(from: url)
+                syncRackSelection()
+            } catch {
+                viewModel.statusMessage = error.localizedDescription
+            }
         }
     }
 

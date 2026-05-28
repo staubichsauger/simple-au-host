@@ -103,6 +103,8 @@ I reviewed the app end to end without editing source. I also ran validation:
 
   **Comments:** adjust this
 
+  **Status:** Implemented in checkpoint `ux-async-session-and-startup-io`.
+
 
 - `formatVersion` exists, but there is no migration/compatibility layer; older session files can fail hard if required fields are missing.
 

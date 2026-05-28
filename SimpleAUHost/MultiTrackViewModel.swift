@@ -303,15 +303,31 @@ final class MultiTrackViewModel: ObservableObject {
     }
 
     func load() {
+        Task {
+            await loadAsync()
+        }
+    }
+
+    func loadAsync() async {
+        let existingHasUnsavedChanges = hasUnsavedChanges
+        isBusy = true
+        defer { isBusy = false }
+
         do {
-            let existingHasUnsavedChanges = hasUnsavedChanges
+            let (allDevices, availablePlugins, sessions) = try await Task.detached(priority: .userInitiated) { [catalog] in
+                _ = try SAHManagedSessionStore.ensureDirectories()
+                return (
+                    try catalog.availableDevices(),
+                    try catalog.availablePlugins(),
+                    try SAHManagedSessionStore.managedSessions()
+                )
+            }.value
+
             isApplyingSessionState = true
-            _ = try SAHManagedSessionStore.ensureDirectories()
-            let allDevices = try catalog.availableDevices()
             let duplexDevices = allDevices.filter { $0.inputChannelCount > 0 && $0.outputChannelCount > 0 }
             inputDevices = duplexDevices
             outputDevices = duplexDevices
-            plugins = try catalog.availablePlugins()
+            plugins = availablePlugins
 
             if selectedInputDeviceID == nil {
                 let defaultInputID = try? catalog.defaultInputDeviceID()
@@ -331,7 +347,7 @@ final class MultiTrackViewModel: ObservableObject {
             sanitizeLatencyBufferSettings()
             wavesTuneState.normalize()
             updateSessionWarnings()
-            try refreshManagedSessions()
+            managedSessions = sessions
             updateSessionNameIfNeeded()
             if !isRunning {
                 audioDropoutCount = 0
@@ -376,6 +392,39 @@ final class MultiTrackViewModel: ObservableObject {
 
         do {
             try loadSession(from: startupURL)
+            if startupSavedSessionSelection == .specific && opensStartupSpecificSessionAsTemplate {
+                openCurrentSessionAsTemplate()
+            }
+        } catch {
+            statusMessage = "Failed to load startup show \(sessionDisplayName(for: startupURL)): \(error.localizedDescription)"
+        }
+    }
+
+    func applyStartupSessionPreferenceIfNeededAsync() async {
+        guard !hasAppliedStartupSessionPreference else { return }
+        hasAppliedStartupSessionPreference = true
+
+        guard loadsSavedSessionOnStartup else { return }
+        let startupURL: URL?
+        switch startupSavedSessionSelection {
+        case .lastSaved:
+            startupURL = lastSavedSessionURL
+        case .specific:
+            startupURL = startupSpecificSessionURL
+        }
+
+        guard let startupURL else {
+            statusMessage = "Choose a startup show before enabling automatic show loading."
+            return
+        }
+
+        guard FileManager.default.fileExists(atPath: startupURL.path) else {
+            statusMessage = "Startup show \(sessionDisplayName(for: startupURL)) is unavailable."
+            return
+        }
+
+        do {
+            try await loadSessionAsync(from: startupURL)
             if startupSavedSessionSelection == .specific && opensStartupSpecificSessionAsTemplate {
                 openCurrentSessionAsTemplate()
             }
@@ -473,6 +522,36 @@ final class MultiTrackViewModel: ObservableObject {
         statusMessage = "Saved \(currentSessionName)."
     }
 
+    func saveSessionAsync() async throws {
+        guard let currentSessionURL else {
+            throw AudioHostError("Choose Save As to create a session file first.")
+        }
+        try await saveSessionAsync(to: currentSessionURL)
+    }
+
+    func saveSessionAsync(to url: URL) async throws {
+        captureLivePluginStates()
+        let sessionFile = makeSessionFile()
+        try await Task.detached(priority: .userInitiated) {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(sessionFile)
+            try data.write(to: url, options: .atomic)
+        }.value
+
+        currentSessionURL = url
+        isCurrentSessionStartupTemplate = false
+        sessionReloadRetryContext = SessionReloadRetryContext(sessionURL: url, reopensAsTemplate: false)
+        sessionDeviceResolutionAlert = nil
+        currentSessionName = sessionDisplayName(for: url)
+        recordLastSavedSessionURL(url)
+        hasUnsavedChanges = false
+        managedSessions = try await Task.detached(priority: .userInitiated) {
+            try SAHManagedSessionStore.managedSessions()
+        }.value
+        statusMessage = "Saved \(currentSessionName)."
+    }
+
     func rememberExportedSessionURL(_ url: URL) {
         currentSessionURL = url
         isCurrentSessionStartupTemplate = false
@@ -494,6 +573,27 @@ final class MultiTrackViewModel: ObservableObject {
         applySession(session, sourceURL: url)
         recordLastSavedSessionURL(url)
         try refreshManagedSessions()
+    }
+
+    func loadSessionAsync(from url: URL) async throws {
+        let (session, sessions) = try await Task.detached(priority: .userInitiated) {
+            let data = try Data(contentsOf: url)
+            let decodedSession: MultiTrackSessionFile
+            do {
+                decodedSession = try JSONDecoder().decode(MultiTrackSessionFile.self, from: data)
+            } catch {
+                throw AudioHostError("Failed to read the multi-track session file.")
+            }
+            return (
+                decodedSession,
+                try SAHManagedSessionStore.managedSessions()
+            )
+        }.value
+
+        sessionDeviceResolutionAlert = nil
+        applySession(session, sourceURL: url)
+        recordLastSavedSessionURL(url)
+        managedSessions = sessions
     }
 
     func refreshManagedSessions() throws {
