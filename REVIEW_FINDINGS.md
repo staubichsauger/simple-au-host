@@ -21,6 +21,8 @@ I reviewed the app end to end without editing source. I also ran validation:
 
    **Comments:** make it localhost only
 
+   **Status:** Implemented in checkpoint `point-2-localhost-companion-listener`.
+
 
 3. **"New Show" discards unsaved work with no confirmation.**  
    Loading and closing prompt, but [MultiTrackView.swift](SimpleAUHost/MultiTrackView.swift:1308) calls `createNewSession()` directly. This is the clearest user-facing data-loss path.
