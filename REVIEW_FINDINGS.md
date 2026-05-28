@@ -29,6 +29,8 @@ I reviewed the app end to end without editing source. I also ran validation:
 
    **Comments:** add a confirmation prompt
 
+   **Status:** Implemented in checkpoint `point-3-new-show-confirmation`.
+
 
 4. **Plugin state reads/writes happen while live audio may still be rendering.**  
    Saving, stopping, copying FX, and parameter preset loading call `serializedPluginStates()` / `applyPluginStates()` against live Audio Units, e.g. [MultiTrackViewModel.swift](SimpleAUHost/MultiTrackViewModel.swift:1480) and [MultiTrackAudioHostController.swift](SimpleAUHost/Audio/MultiTrackAudioHostController.swift:1919). `kAudioUnitProperty_ClassInfo` is not something I'd trust concurrently with render callbacks.

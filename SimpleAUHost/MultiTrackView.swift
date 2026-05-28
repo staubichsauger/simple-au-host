@@ -47,6 +47,7 @@ struct MultiTrackView: View {
     @State private var selectedRackTrackID: UUID?
     @State private var selectedRackPluginID: UUID?
     @State private var pendingSessionLoadRequest: PendingSessionLoadRequest?
+    @State private var showsNewSessionConfirmation = false
     @State private var rackPluginSelectionRequest: RackPluginSelectionRequest?
     @State private var draftWavesTuneSongTitle = ""
     @State private var draftWavesTuneSongKey = WavesTuneKeySelection()
@@ -132,6 +133,14 @@ struct MultiTrackView: View {
             }
         } message: {
             Text("Load \(pendingSessionLoadRequest?.sessionName ?? "this show") and discard the current unsaved changes?")
+        }
+        .alert("Discard Unsaved Changes?", isPresented: $showsNewSessionConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("New Show", role: .destructive) {
+                performCreateNewSession()
+            }
+        } message: {
+            Text("Create a new show and discard the current unsaved changes?")
         }
         .alert(
             "Audio Device Unavailable",
@@ -1306,8 +1315,7 @@ struct MultiTrackView: View {
 
     private var newShowButton: some View {
         Button {
-            viewModel.createNewSession()
-            syncRackSelection()
+            requestCreateNewSession()
         } label: {
             Text("New Show").frame(maxWidth: .infinity)
         }
@@ -2267,6 +2275,20 @@ struct MultiTrackView: View {
         }
 
         performSessionLoad(from: url)
+    }
+
+    private func requestCreateNewSession() {
+        if viewModel.hasUnsavedChanges {
+            showsNewSessionConfirmation = true
+            return
+        }
+
+        performCreateNewSession()
+    }
+
+    private func performCreateNewSession() {
+        viewModel.createNewSession()
+        syncRackSelection()
     }
 
     private func performSessionLoad(from url: URL) {
