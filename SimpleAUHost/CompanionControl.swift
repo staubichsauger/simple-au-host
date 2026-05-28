@@ -207,16 +207,22 @@ final class CompanionControlServer: @unchecked Sendable {
 private enum ParsedCompanionControlRequest {
     case incomplete
     case malformed(String)
+    case tooLarge(String)
     case complete(CompanionControlHTTPRequest)
 }
 
 private final class ConnectionSession: @unchecked Sendable {
+    private static let maximumHeaderBytes = 16 * 1024
+    private static let maximumBodyBytes = 256 * 1024
+    private static let requestTimeout: DispatchTimeInterval = .seconds(5)
+
     private let connection: NWConnection
     private let queue: DispatchQueue
     private let requestHandler: CompanionControlServer.RequestHandler
     private let onClose: @Sendable (ConnectionSession) -> Void
     private var buffer = Data()
     private var hasClosed = false
+    private var timeoutWorkItem: DispatchWorkItem?
 
     init(
         connection: NWConnection,
@@ -232,12 +238,14 @@ private final class ConnectionSession: @unchecked Sendable {
 
     func start() {
         connection.start(queue: queue)
+        scheduleTimeout()
         receiveNextChunk()
     }
 
     private func receiveNextChunk() {
         connection.receive(minimumIncompleteLength: 1, maximumLength: 65_536) { [weak self] data, _, isComplete, error in
             guard let self else { return }
+            guard !self.hasClosed else { return }
 
             if let data, !data.isEmpty {
                 self.buffer.append(data)
@@ -281,7 +289,18 @@ private final class ConnectionSession: @unchecked Sendable {
                         )
                     )
                 )
+            case .tooLarge(let message):
+                self.send(
+                    .json(
+                        statusCode: 413,
+                        value: CompanionControlBasicErrorResponse(
+                            ok: false,
+                            message: message
+                        )
+                    )
+                )
             case .complete(let request):
+                self.cancelTimeout()
                 let requestHandler = self.requestHandler
                 let queue = self.queue
                 Task {
@@ -297,7 +316,14 @@ private final class ConnectionSession: @unchecked Sendable {
     private func parseRequest() -> ParsedCompanionControlRequest {
         let delimiter = Data([13, 10, 13, 10])
         guard let headerRange = buffer.range(of: delimiter) else {
+            if buffer.count > Self.maximumHeaderBytes {
+                return .tooLarge("Request headers are too large.")
+            }
             return .incomplete
+        }
+
+        guard headerRange.lowerBound <= Self.maximumHeaderBytes else {
+            return .tooLarge("Request headers are too large.")
         }
 
         let headerData = buffer.subdata(in: 0..<headerRange.lowerBound)
@@ -328,8 +354,25 @@ private final class ConnectionSession: @unchecked Sendable {
         }
 
         let bodyOffset = headerRange.upperBound
-        let contentLength = Int(headers["content-length"] ?? "") ?? 0
+        let contentLength: Int
+        if let rawContentLength = headers["content-length"] {
+            guard let parsedContentLength = Int(rawContentLength), parsedContentLength >= 0 else {
+                return .malformed("Content-Length must be a non-negative integer.")
+            }
+            contentLength = parsedContentLength
+        } else {
+            contentLength = 0
+        }
+
+        guard contentLength <= Self.maximumBodyBytes else {
+            return .tooLarge("Request body is too large.")
+        }
+
         let totalLength = bodyOffset + contentLength
+        guard totalLength <= Self.maximumHeaderBytes + Self.maximumBodyBytes else {
+            return .tooLarge("Request is too large.")
+        }
+
         guard buffer.count >= totalLength else {
             return .incomplete
         }
@@ -346,6 +389,7 @@ private final class ConnectionSession: @unchecked Sendable {
     }
 
     private func send(_ response: CompanionControlHTTPResponse) {
+        guard !hasClosed else { return }
         var headerLines = [
             "HTTP/1.1 \(response.statusCode) \(reasonPhrase(for: response.statusCode))",
             "Content-Length: \(response.body.count)",
@@ -368,14 +412,39 @@ private final class ConnectionSession: @unchecked Sendable {
     private func finish() {
         guard !hasClosed else { return }
         hasClosed = true
+        cancelTimeout()
         connection.cancel()
         onClose(self)
+    }
+
+    private func scheduleTimeout() {
+        let timeoutWorkItem = DispatchWorkItem { [weak self] in
+            guard let self, !self.hasClosed else { return }
+            self.send(
+                .json(
+                    statusCode: 408,
+                    value: CompanionControlBasicErrorResponse(
+                        ok: false,
+                        message: "Request timed out."
+                    )
+                )
+            )
+        }
+        self.timeoutWorkItem = timeoutWorkItem
+        queue.asyncAfter(deadline: .now() + Self.requestTimeout, execute: timeoutWorkItem)
+    }
+
+    private func cancelTimeout() {
+        timeoutWorkItem?.cancel()
+        timeoutWorkItem = nil
     }
 
     private func reasonPhrase(for statusCode: Int) -> String {
         switch statusCode {
         case 200: "OK"
         case 400: "Bad Request"
+        case 408: "Request Timeout"
+        case 413: "Content Too Large"
         case 404: "Not Found"
         case 405: "Method Not Allowed"
         case 500: "Internal Server Error"
