@@ -113,6 +113,14 @@ final class MultiTrackViewModel: ObservableObject {
         return outputDevices.first { $0.id == selectedOutputDeviceID }
     }
 
+    var selectedAudioDeviceID: AudioDeviceID? {
+        get { selectedInputDeviceID }
+        set {
+            selectedInputDeviceID = newValue
+            selectedOutputDeviceID = newValue
+        }
+    }
+
     var hasStoredSessionFile: Bool {
         currentSessionURL != nil
     }
@@ -300,18 +308,20 @@ final class MultiTrackViewModel: ObservableObject {
             isApplyingSessionState = true
             _ = try SAHManagedSessionStore.ensureDirectories()
             let allDevices = try catalog.availableDevices()
-            inputDevices = allDevices.filter { $0.inputChannelCount > 0 }
-            outputDevices = allDevices.filter { $0.outputChannelCount > 0 }
+            let duplexDevices = allDevices.filter { $0.inputChannelCount > 0 && $0.outputChannelCount > 0 }
+            inputDevices = duplexDevices
+            outputDevices = duplexDevices
             plugins = try catalog.availablePlugins()
 
             if selectedInputDeviceID == nil {
-                let defaultInputID = try catalog.defaultInputDeviceID()
-                selectedInputDeviceID = inputDevices.first(where: { $0.id == defaultInputID })?.id ?? inputDevices.first?.id
+                let defaultInputID = try? catalog.defaultInputDeviceID()
+                let defaultOutputID = try? catalog.defaultOutputDeviceID()
+                selectedAudioDeviceID =
+                    inputDevices.first(where: { $0.id == defaultInputID })?.id ??
+                    inputDevices.first(where: { $0.id == defaultOutputID })?.id ??
+                    inputDevices.first?.id
             }
-            if selectedOutputDeviceID == nil {
-                let defaultOutputID = try catalog.defaultOutputDeviceID()
-                selectedOutputDeviceID = outputDevices.first(where: { $0.id == defaultOutputID })?.id ?? outputDevices.first?.id
-            }
+            selectedOutputDeviceID = selectedInputDeviceID
 
             if tracks.isEmpty {
                 addTrack(layout: .mono)
@@ -383,6 +393,7 @@ final class MultiTrackViewModel: ObservableObject {
     }
 
     func handleDeviceSelectionChange() {
+        selectedOutputDeviceID = selectedInputDeviceID
         sanitizeTracks(clampTrackRouting: false)
         updateSessionWarnings()
     }
@@ -407,8 +418,7 @@ final class MultiTrackViewModel: ObservableObject {
     func createNewSession() {
         guard !isRunning else { return }
         isApplyingSessionState = true
-        selectedInputDeviceID = inputDevices.first?.id
-        selectedOutputDeviceID = outputDevices.first?.id
+        selectedAudioDeviceID = inputDevices.first?.id
         selectedBufferSize = DefaultBufferSizes.preferredHardwareBufferSize(from: availableBufferSizes) ?? DefaultBufferSizes.hardwareFrames
         customBufferSizeText = String(selectedBufferSize)
         latencyBufferSettings = MultiTrackLatencyBufferSettings(hardwareBufferSize: selectedBufferSize)
@@ -1194,10 +1204,13 @@ final class MultiTrackViewModel: ObservableObject {
             preferredUID: session.inputDeviceUID,
             availableDevices: inputDevices
         )
-        selectedOutputDeviceID = resolvedSessionDeviceID(
-            preferredUID: session.outputDeviceUID,
-            availableDevices: outputDevices
-        )
+        if selectedInputDeviceID == nil {
+            selectedInputDeviceID = resolvedSessionDeviceID(
+                preferredUID: session.outputDeviceUID,
+                availableDevices: inputDevices
+            )
+        }
+        selectedOutputDeviceID = selectedInputDeviceID
         selectedBufferSize = session.bufferSize
         customBufferSizeText = String(session.bufferSize)
         latencyBufferSettings = session.latencyBufferSettings

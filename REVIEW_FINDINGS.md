@@ -58,6 +58,8 @@ I reviewed the app end to end without editing source. I also ran validation:
 
   **Comments:** switch to selecting only a single device for input and output
 
+  **Status:** Implemented in checkpoint `audio-single-duplex-interface`.
+
 
 - Hardware buffer size is changed at [MultiTrackAudioHostController.swift](SimpleAUHost/Audio/MultiTrackAudioHostController.swift:1769) but never restored on stop/failure.
 

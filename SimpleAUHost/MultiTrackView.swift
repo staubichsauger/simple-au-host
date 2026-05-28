@@ -1433,17 +1433,9 @@ struct MultiTrackView: View {
                 ViewThatFits(in: .horizontal) {
                     HStack(alignment: .bottom, spacing: 16) {
                         setupDevicePicker(
-                            title: "Input Interface",
-                            selection: $viewModel.selectedInputDeviceID,
+                            title: "Audio Interface",
+                            selection: $viewModel.selectedAudioDeviceID,
                             devices: viewModel.inputDevices
-                        ) {
-                            viewModel.handleDeviceSelectionChange()
-                        }
-
-                        setupDevicePicker(
-                            title: "Output Interface",
-                            selection: $viewModel.selectedOutputDeviceID,
-                            devices: viewModel.outputDevices
                         ) {
                             viewModel.handleDeviceSelectionChange()
                         }
@@ -1456,17 +1448,9 @@ struct MultiTrackView: View {
 
                     VStack(alignment: .leading, spacing: 14) {
                         setupDevicePicker(
-                            title: "Input Interface",
-                            selection: $viewModel.selectedInputDeviceID,
+                            title: "Audio Interface",
+                            selection: $viewModel.selectedAudioDeviceID,
                             devices: viewModel.inputDevices
-                        ) {
-                            viewModel.handleDeviceSelectionChange()
-                        }
-
-                        setupDevicePicker(
-                            title: "Output Interface",
-                            selection: $viewModel.selectedOutputDeviceID,
-                            devices: viewModel.outputDevices
                         ) {
                             viewModel.handleDeviceSelectionChange()
                         }
