@@ -255,15 +255,33 @@ struct WavesTuneSongEntry: Identifiable, Codable, Hashable {
     let id: UUID
     var title: String
     var key: WavesTuneKeySelection
+    var notes: String
 
     init(
         id: UUID = UUID(),
         title: String,
-        key: WavesTuneKeySelection = WavesTuneKeySelection()
+        key: WavesTuneKeySelection = WavesTuneKeySelection(),
+        notes: String = ""
     ) {
         self.id = id
         self.title = title
         self.key = key
+        self.notes = notes
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case title
+        case key
+        case notes
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        title = try container.decode(String.self, forKey: .title)
+        key = try container.decode(WavesTuneKeySelection.self, forKey: .key)
+        notes = try container.decodeIfPresent(String.self, forKey: .notes) ?? ""
     }
 
     var normalized: WavesTuneSongEntry {

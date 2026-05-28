@@ -1897,57 +1897,77 @@ struct MultiTrackView: View {
     private func wavesTuneSongRow(_ song: WavesTuneSongEntry, index: Int) -> some View {
         let isSelected = viewModel.wavesTuneState.selectedSongID == song.id
 
-        return HStack(spacing: 6) {
-            Button {
-                viewModel.selectWavesTuneSong(song.id)
-            } label: {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "play.circle")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(isSelected ? StudioTheme.accent : StudioTheme.mutedText)
-            }
-            .buttonStyle(.plain)
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Button {
+                    viewModel.selectWavesTuneSong(song.id)
+                } label: {
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "play.circle")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(isSelected ? StudioTheme.accent : StudioTheme.mutedText)
+                }
+                .buttonStyle(.plain)
 
-            Text("\(index + 1)")
+                Text("\(index + 1)")
+                    .font(.system(size: 10, weight: .medium, design: .default))
+                    .foregroundStyle(StudioTheme.mutedText)
+                    .frame(width: 16)
+
+                TextField(
+                    "Song \(index + 1)",
+                    text: Binding(
+                        get: { song.title },
+                        set: { viewModel.updateWavesTuneSongTitle(song.id, title: $0) }
+                    )
+                )
+                .textFieldStyle(.plain)
+                .font(.system(size: 12, weight: .medium, design: .default))
+                .foregroundStyle(StudioTheme.strongText)
+
+                Button(song.key.title) {
+                    viewModel.selectWavesTuneSong(song.id)
+                }
+                .buttonStyle(.plain)
                 .font(.system(size: 10, weight: .medium, design: .default))
-                .foregroundStyle(StudioTheme.mutedText)
-                .frame(width: 16)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(isSelected ? StudioTheme.accent.opacity(0.15) : Color.white.opacity(0.04))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .stroke(isSelected ? StudioTheme.accent.opacity(0.50) : Color.white.opacity(0.06), lineWidth: 1)
+                )
+                .foregroundStyle(isSelected ? StudioTheme.accent : StudioTheme.strongText)
+
+                songIconButton(systemName: "chevron.up", help: "Move song up") {
+                    viewModel.moveWavesTuneSong(song.id, direction: -1)
+                }
+                .disabled(index == 0)
+                songIconButton(systemName: "chevron.down", help: "Move song down") {
+                    viewModel.moveWavesTuneSong(song.id, direction: 1)
+                }
+                .disabled(index >= viewModel.wavesTuneSongs.count - 1)
+                songIconButton(systemName: "plus.square.on.square", help: "Duplicate song") {
+                    viewModel.duplicateWavesTuneSong(song.id)
+                }
+                songIconButton(systemName: "trash", help: "Remove song") {
+                    viewModel.removeWavesTuneSong(song.id)
+                }
+                .foregroundStyle(StudioTheme.warning)
+            }
 
             TextField(
-                "Song \(index + 1)",
+                "Notes",
                 text: Binding(
-                    get: { song.title },
-                    set: { viewModel.updateWavesTuneSongTitle(song.id, title: $0) }
+                    get: { song.notes },
+                    set: { viewModel.updateWavesTuneSongNotes(song.id, notes: $0) }
                 )
             )
             .textFieldStyle(.plain)
-            .font(.system(size: 12, weight: .medium, design: .default))
-            .foregroundStyle(StudioTheme.strongText)
-
-            Button(song.key.title) {
-                viewModel.selectWavesTuneSong(song.id)
-            }
-            .buttonStyle(.plain)
-            .font(.system(size: 10, weight: .medium, design: .default))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .fill(isSelected ? StudioTheme.accent.opacity(0.15) : Color.white.opacity(0.04))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .stroke(isSelected ? StudioTheme.accent.opacity(0.50) : Color.white.opacity(0.06), lineWidth: 1)
-            )
-            .foregroundStyle(isSelected ? StudioTheme.accent : StudioTheme.strongText)
-
-            Button {
-                viewModel.removeWavesTuneSong(song.id)
-            } label: {
-                Image(systemName: "trash")
-                    .font(.system(size: 10))
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(StudioTheme.warning)
+            .font(.system(size: 10, weight: .regular, design: .default))
+            .foregroundStyle(StudioTheme.mutedText)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
@@ -1959,6 +1979,21 @@ struct MultiTrackView: View {
             RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .stroke(isSelected ? StudioTheme.accent.opacity(0.30) : Color.white.opacity(0.05), lineWidth: 1)
         )
+    }
+
+    private func songIconButton(
+        systemName: String,
+        help: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 10, weight: .medium))
+                .frame(width: 14, height: 14)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(StudioTheme.mutedText)
+        .help(help)
     }
 
     private var selectedWavesTuneSongSummary: String {
@@ -2589,46 +2624,62 @@ private struct TuningPopoutView: View {
     private func songRow(_ song: WavesTuneSongEntry, index: Int) -> some View {
         let isSelected = viewModel.wavesTuneState.selectedSongID == song.id
 
-        return HStack(spacing: 6) {
-            Button {
-                viewModel.selectWavesTuneSong(song.id)
-            } label: {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "play.circle")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(isSelected ? StudioTheme.accent : StudioTheme.mutedText)
+        return VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 6) {
+                Button {
+                    viewModel.selectWavesTuneSong(song.id)
+                } label: {
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "play.circle")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(isSelected ? StudioTheme.accent : StudioTheme.mutedText)
+                }
+                .buttonStyle(.plain)
+
+                Text("\(index + 1)")
+                    .font(.system(size: 10, weight: .medium, design: .default))
+                    .foregroundStyle(StudioTheme.mutedText)
+                    .frame(width: 16)
+
+                Text(song.title)
+                    .font(.system(size: 12, weight: .medium, design: .default))
+                    .foregroundStyle(StudioTheme.strongText)
+                    .lineLimit(1)
+
+                Spacer(minLength: 0)
+
+                Text(song.key.title)
+                    .font(.system(size: 10, weight: .medium, design: .default))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(isSelected ? StudioTheme.accent.opacity(0.15) : Color.white.opacity(0.04))
+                    )
+                    .foregroundStyle(isSelected ? StudioTheme.accent : StudioTheme.strongText)
+
+                songIconButton(systemName: "chevron.up", help: "Move song up") {
+                    viewModel.moveWavesTuneSong(song.id, direction: -1)
+                }
+                .disabled(index == 0)
+                songIconButton(systemName: "chevron.down", help: "Move song down") {
+                    viewModel.moveWavesTuneSong(song.id, direction: 1)
+                }
+                .disabled(index >= viewModel.wavesTuneSongs.count - 1)
+                songIconButton(systemName: "plus.square.on.square", help: "Duplicate song") {
+                    viewModel.duplicateWavesTuneSong(song.id)
+                }
+                songIconButton(systemName: "trash", help: "Remove song") {
+                    viewModel.removeWavesTuneSong(song.id)
+                }
+                .foregroundStyle(StudioTheme.warning)
             }
-            .buttonStyle(.plain)
 
-            Text("\(index + 1)")
-                .font(.system(size: 10, weight: .medium, design: .default))
-                .foregroundStyle(StudioTheme.mutedText)
-                .frame(width: 16)
-
-            Text(song.title)
-                .font(.system(size: 12, weight: .medium, design: .default))
-                .foregroundStyle(StudioTheme.strongText)
-                .lineLimit(1)
-
-            Spacer(minLength: 0)
-
-            Text(song.key.title)
-                .font(.system(size: 10, weight: .medium, design: .default))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(isSelected ? StudioTheme.accent.opacity(0.15) : Color.white.opacity(0.04))
-                )
-                .foregroundStyle(isSelected ? StudioTheme.accent : StudioTheme.strongText)
-
-            Button {
-                viewModel.removeWavesTuneSong(song.id)
-            } label: {
-                Image(systemName: "trash")
-                    .font(.system(size: 10))
+            if !song.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text(song.notes)
+                    .font(.system(size: 10, weight: .regular, design: .default))
+                    .foregroundStyle(StudioTheme.mutedText)
+                    .lineLimit(2)
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(StudioTheme.warning)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
@@ -2636,6 +2687,21 @@ private struct TuningPopoutView: View {
             RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .fill(isSelected ? StudioTheme.accent.opacity(0.08) : Color.white.opacity(0.025))
         )
+    }
+
+    private func songIconButton(
+        systemName: String,
+        help: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 10, weight: .medium))
+                .frame(width: 14, height: 14)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(StudioTheme.mutedText)
+        .help(help)
     }
 
     private func metricCard(title: String, value: String, tint: Color = StudioTheme.strongText) -> some View {

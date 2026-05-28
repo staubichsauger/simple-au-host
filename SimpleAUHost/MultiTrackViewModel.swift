@@ -1139,6 +1139,35 @@ final class MultiTrackViewModel: ObservableObject {
         wavesTuneState.songs[index].title = title
     }
 
+    func updateWavesTuneSongNotes(_ id: UUID, notes: String) {
+        guard let index = wavesTuneState.songs.firstIndex(where: { $0.id == id }) else { return }
+        wavesTuneState.songs[index].notes = notes
+    }
+
+    func moveWavesTuneSong(_ id: UUID, direction: Int) {
+        guard direction != 0 else { return }
+        guard let index = wavesTuneState.songs.firstIndex(where: { $0.id == id }) else { return }
+        let targetIndex = index + direction
+        guard wavesTuneState.songs.indices.contains(targetIndex) else { return }
+        let song = wavesTuneState.songs.remove(at: index)
+        wavesTuneState.songs.insert(song, at: targetIndex)
+        wavesTuneState.selectedSongID = song.id
+        statusMessage = "Moved \(wavesTuneSongDisplayTitle(for: song, index: targetIndex))."
+    }
+
+    func duplicateWavesTuneSong(_ id: UUID) {
+        guard let index = wavesTuneState.songs.firstIndex(where: { $0.id == id }) else { return }
+        let source = wavesTuneState.songs[index]
+        let duplicate = WavesTuneSongEntry(
+            title: "\(source.title) Copy",
+            key: source.key.normalized,
+            notes: source.notes
+        )
+        let targetIndex = index + 1
+        wavesTuneState.songs.insert(duplicate, at: targetIndex)
+        activateWavesTuneSong(at: targetIndex, action: "Duplicated")
+    }
+
     func selectWavesTuneSong(_ id: UUID) {
         guard let index = wavesTuneState.songs.firstIndex(where: { $0.id == id }) else { return }
         activateWavesTuneSong(at: index, action: "Selected")

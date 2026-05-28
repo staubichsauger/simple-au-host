@@ -134,6 +134,8 @@ I reviewed the app end to end without editing source. I also ran validation:
 
   **Comments:** add reorder, duplicate and notes
 
+  **Status:** Implemented in checkpoint `feature-setlist-reorder-duplicate-notes`.
+
 
 - Add plugin search tags/favorites and chain templates.
 
