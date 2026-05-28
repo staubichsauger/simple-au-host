@@ -1778,11 +1778,6 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             )
             maxFramesPerSlice = UInt32(suggestedMaximumFramesPerSlice(for: maxInternalFrames, nominalBufferSize: configuration.bufferSize))
 
-            try prepareCaptureBuffers(
-                inputChannelCount: configuration.inputDevice.inputChannelCount,
-                ringCapacityFrames: maxInternalFrames
-            )
-
             let availablePlugins = try AudioHostController().availablePlugins()
 
             trackRuntimes = try configuration.tracks.map { track in
@@ -1816,6 +1811,10 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             callbackFrameCapacity = allocatedFrameCapacity(
                 actualMaximumFrames: max(actualInputMaxFrames, actualOutputMaxFrames),
                 nominalBufferSize: configuration.bufferSize
+            )
+            try prepareCaptureBuffers(
+                inputChannelCount: configuration.inputDevice.inputChannelCount,
+                frameCapacity: callbackFrameCapacity
             )
             try prepareStagedOutputBuffers(outputChannelCount: configuration.outputDevice.outputChannelCount)
             installDeviceObservers(for: configuration)
@@ -2088,7 +2087,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         return "\(trackID.uuidString)::first"
     }
 
-    private func prepareCaptureBuffers(inputChannelCount: Int, ringCapacityFrames: Int) throws {
+    private func prepareCaptureBuffers(inputChannelCount: Int, frameCapacity: Int) throws {
         captureBufferList?.unsafeMutablePointer.deallocate()
         captureBufferList = nil
         for pointer in captureChannelBuffers {
@@ -2096,20 +2095,18 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         }
         captureChannelBuffers.removeAll()
 
-        guard let configuration else { return }
+        guard frameCapacity > 0 else {
+            throw AudioHostError("Failed to determine the input capture buffer capacity.")
+        }
 
         captureBufferList = AudioBufferList.allocate(maximumBuffers: inputChannelCount)
         captureBufferList?.count = inputChannelCount
 
         for channelIndex in 0..<inputChannelCount {
-            let captureFrameCapacity = allocatedFrameCapacity(
-                actualMaximumFrames: Int(maxFramesPerSlice),
-                nominalBufferSize: configuration.bufferSize
-            )
-            let pointer = UnsafeMutablePointer<Float>.allocate(capacity: captureFrameCapacity)
+            let pointer = UnsafeMutablePointer<Float>.allocate(capacity: frameCapacity)
             captureChannelBuffers.append(pointer)
             captureBufferList?[channelIndex].mNumberChannels = 1
-            captureBufferList?[channelIndex].mDataByteSize = UInt32(captureFrameCapacity * MemoryLayout<Float>.size)
+            captureBufferList?[channelIndex].mDataByteSize = UInt32(frameCapacity * MemoryLayout<Float>.size)
             captureBufferList?[channelIndex].mData = UnsafeMutableRawPointer(pointer)
         }
     }

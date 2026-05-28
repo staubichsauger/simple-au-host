@@ -49,6 +49,8 @@ I reviewed the app end to end without editing source. I also ran validation:
 
    **Comments:** fix this
 
+   **Status:** Implemented in checkpoint `point-6-capture-buffer-capacity`.
+
 
 ## Audio/Realtime Concerns
 
