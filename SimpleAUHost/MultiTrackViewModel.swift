@@ -862,13 +862,13 @@ final class MultiTrackViewModel: ObservableObject {
     }
 
     func availableInputStartChannels(for track: MultiTrackTrackConfiguration) -> [Int] {
-        guard let selectedInputDevice else { return [] }
+        guard let selectedInputDevice else { return [track.inputStartChannel] }
         let maxStart = max(1, selectedInputDevice.inputChannelCount - track.channelCount + 1)
         return Array(Set(Array(1...maxStart) + [track.inputStartChannel])).sorted()
     }
 
     func availableOutputStartChannels(for track: MultiTrackTrackConfiguration) -> [Int] {
-        guard let selectedOutputDevice else { return [] }
+        guard let selectedOutputDevice else { return [track.outputStartChannel] }
         let maxStart = max(1, selectedOutputDevice.outputChannelCount - track.channelCount + 1)
         let availableChannels = Array(1...maxStart).filter { candidate in
             outputChannelsAreAvailable(
