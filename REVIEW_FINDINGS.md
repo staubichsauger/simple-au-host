@@ -148,6 +148,8 @@ I reviewed the app end to end without editing source. I also ran validation:
 
   **Comments:** do it but without adding to performance pressure - we moved it away since collections are expensive
 
+  **Status:** Verified in checkpoint `feature-audio-health-diagnostics-visible`; the Diagnostics panel already uses aggregate counters/summaries without collection-heavy history.
+
 
 - Add a test target focused on filename/session migration, routing validation, Companion parsing, and the C ring buffer.
 
