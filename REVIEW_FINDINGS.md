@@ -89,6 +89,8 @@ I reviewed the app end to end without editing source. I also ran validation:
 
   **Comments:** add the missing UI
 
+  **Status:** Implemented in checkpoint `ux-rack-insert-management-ui`.
+
 
 - Managed session listing accepts every regular file in the Sessions folder, not just `.sahsession`, at [ManagedSessionStore.swift](SimpleAUHost/ManagedSessionStore.swift:58).
 

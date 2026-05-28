@@ -1066,6 +1066,8 @@ struct MultiTrackView: View {
         index: Int
     ) -> some View {
         let isSelected = selectedRackTrackID == trackID && selectedRackPluginID == plugin.wrappedValue.id
+        let pluginID = plugin.wrappedValue.id
+        let insertCount = viewModel.tracks.first(where: { $0.id == trackID })?.plugins.count ?? 0
 
         return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 4) {
@@ -1076,17 +1078,35 @@ struct MultiTrackView: View {
                     .font(.system(size: 9, weight: .medium, design: .default))
                     .foregroundStyle(isSelected ? StudioTheme.accent : StudioTheme.mutedText)
                 Spacer()
+                rackInsertIconButton(systemName: "chevron.up", help: "Move insert up") {
+                    viewModel.movePluginInsert(trackID: trackID, pluginID: pluginID, direction: -1)
+                    selectedRackTrackID = trackID
+                    selectedRackPluginID = pluginID
+                }
+                .disabled(viewModel.isRunning || index == 0)
+                rackInsertIconButton(systemName: "chevron.down", help: "Move insert down") {
+                    viewModel.movePluginInsert(trackID: trackID, pluginID: pluginID, direction: 1)
+                    selectedRackTrackID = trackID
+                    selectedRackPluginID = pluginID
+                }
+                .disabled(viewModel.isRunning || index >= insertCount - 1)
                 if plugin.wrappedValue.pluginID != nil {
-                    Button {
+                    rackInsertIconButton(systemName: "arrow.up.right.square", help: "Open plugin editor") {
                         viewModel.openPluginEditor(for: trackID, pluginID: plugin.wrappedValue.id)
-                    } label: {
-                        Image(systemName: "arrow.up.right.square")
-                            .font(.system(size: 10, weight: .medium))
                     }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(StudioTheme.mutedText)
                     .disabled(!viewModel.canOpenPluginEditor(for: plugin.wrappedValue))
                 }
+                rackInsertIconButton(systemName: "trash", help: "Remove insert") {
+                    viewModel.removePluginInsert(trackID: trackID, pluginID: pluginID)
+                    selectedRackTrackID = trackID
+                    let remainingPlugins = viewModel.tracks.first(where: { $0.id == trackID })?.plugins ?? []
+                    if remainingPlugins.isEmpty {
+                        selectedRackPluginID = nil
+                    } else {
+                        selectedRackPluginID = remainingPlugins[min(index, remainingPlugins.count - 1)].id
+                    }
+                }
+                .disabled(viewModel.isRunning)
             }
 
             pluginSelectionButton(
@@ -1116,6 +1136,21 @@ struct MultiTrackView: View {
             selectedRackTrackID = trackID
             selectedRackPluginID = plugin.wrappedValue.id
         }
+    }
+
+    private func rackInsertIconButton(
+        systemName: String,
+        help: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 10, weight: .medium))
+                .frame(width: 14, height: 14)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(StudioTheme.mutedText)
+        .help(help)
     }
 
     private func rackStripHeader(
