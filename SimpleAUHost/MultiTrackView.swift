@@ -1514,16 +1514,19 @@ struct MultiTrackView: View {
 
                 VStack(alignment: .leading, spacing: 12) {
                     StudioFieldLabel("Hardware Buffer")
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        Picker("Hardware buffer size", selection: $viewModel.selectedBufferSize) {
-                            ForEach(viewModel.availableBufferSizes, id: \.self) { size in
-                                Text("\(size) frames").tag(size)
+                    if !viewModel.availableBufferSizes.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            Picker("Hardware buffer size", selection: $viewModel.selectedBufferSize) {
+                                ForEach(viewModel.availableBufferSizes, id: \.self) { size in
+                                    Text("\(size) frames").tag(size)
+                                }
                             }
-                        }
-                        .pickerStyle(.segmented)
-                        .frame(minWidth: 780)
-                        .onChange(of: viewModel.selectedBufferSize) { _, newValue in
-                            viewModel.customBufferSizeText = String(newValue)
+                            .labelsHidden()
+                            .pickerStyle(.segmented)
+                            .frame(minWidth: 780)
+                            .onChange(of: viewModel.selectedBufferSize) { _, newValue in
+                                viewModel.customBufferSizeText = String(newValue)
+                            }
                         }
                     }
 
@@ -1554,9 +1557,8 @@ struct MultiTrackView: View {
     private var bufferingPanel: some View {
         StudioPanel("Latency Setup", subtitle: "Buffered and broadcast tracks use larger internal blocks than the hardware buffer.") {
             VStack(alignment: .leading, spacing: 14) {
-                HStack {
+                HStack(spacing: 10) {
                     StudioFieldLabel("Realtime")
-                    Spacer()
                     Text("\(viewModel.selectedBufferSize) frames")
                         .font(.system(.body, design: .monospaced).weight(.semibold))
                         .foregroundStyle(StudioTheme.accent)
@@ -1566,16 +1568,9 @@ struct MultiTrackView: View {
                     .font(.caption)
                     .foregroundStyle(StudioTheme.mutedText)
 
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .top, spacing: 16) {
-                        latencyField(title: "Buffered", text: $viewModel.bufferedInternalBufferText, action: viewModel.applyBufferedInternalBufferSize)
-                        latencyField(title: "Broadcast/Post", text: $viewModel.broadcastInternalBufferText, action: viewModel.applyBroadcastInternalBufferSize)
-                    }
-
-                    VStack(alignment: .leading, spacing: 14) {
-                        latencyField(title: "Buffered", text: $viewModel.bufferedInternalBufferText, action: viewModel.applyBufferedInternalBufferSize)
-                        latencyField(title: "Broadcast/Post", text: $viewModel.broadcastInternalBufferText, action: viewModel.applyBroadcastInternalBufferSize)
-                    }
+                VStack(alignment: .leading, spacing: 14) {
+                    latencyField(title: "Buffered", text: $viewModel.bufferedInternalBufferText, action: viewModel.applyBufferedInternalBufferSize)
+                    latencyField(title: "Broadcast/Post", text: $viewModel.broadcastInternalBufferText, action: viewModel.applyBroadcastInternalBufferSize)
                 }
             }
         }
