@@ -12,7 +12,7 @@ Multi-track mode is the larger live rack workflow:
 - per-track input and output routing
 - per-track insert chains
 - per-track latency class selection
-- summed output through one shared hardware output device
+- summed output through one shared hardware I/O device
 - embedded plugin editor support
 - diagnostics for dropouts, callback timing, ring usage, and worker utilization
 
@@ -63,11 +63,11 @@ The Companion module scaffold for this API lives in `companion/simple-au-host/`.
 
 - macOS only
 - microphone permission required before starting audio
-- selected input and output devices must already share the same nominal sample rate
+- input and output channels must come from the same selected hardware I/O device
 - no built-in sample-rate conversion path
 
 ## Project State
 
-- no Xcode test target yet
+- `SimpleAUHostTests` provides current unit coverage for managed session listing and session-model compatibility
 - no dedicated lint setup yet
-- build validation currently relies on successful debug/release builds
+- validation should include a debug build and unit tests

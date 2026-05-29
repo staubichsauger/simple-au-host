@@ -1,78 +1,115 @@
 # SimpleAUHost
 
-SimpleAUHost is a macOS app for hosting Audio Unit effects on live input signals without building a full DAW-style environment.
+SimpleAUHost is a macOS app for running Audio Unit effects on live audio without opening a full DAW.
 
-It is aimed at direct live-routing workflows:
+Use it when you want a simple live rack: choose one audio I/O device, create one or more tracks, add Audio Unit effects, and route the processed sound back out.
 
-- multi-track input/output routing with per-track processing
-- local Bitfocus Companion control for Waves Tune show operations
+## Download
 
-## What is in this repo
+Download the latest app from:
 
-- `SimpleAUHost/` — the macOS SwiftUI app and audio engine
-- `companion/simple-au-host/` — Bitfocus Companion module scaffold for the local control API
-- `project.yml` — XcodeGen project definition
-- `Makefile` — build, bundle, package, and run helpers
-- `AGENTS.md` — repository-specific guidance for coding agents
+https://github.com/staubichsauger/simple-au-host/releases/latest
 
-## Current feature set
+On the release page, download the `SimpleAUHost-Release.zip` file, unzip it, and move `SimpleAUHost.app` to your Applications folder.
 
-- **Multi-track mode** for mono/stereo tracks with routing, insert chains, and latency classes
-- Managed session and preset storage under `~/Music/SAH`
-- Unsaved-session protection on close in multi-track workflows
-- Local Companion control API on `127.0.0.1:52719`
+SimpleAUHost is not signed yet, so macOS may block it the first time you open it. Only bypass this warning if you trust the downloaded copy.
 
-For a more detailed feature breakdown, see `FEATURES.md`.
+To allow it from System Settings:
+
+1. Try opening `SimpleAUHost.app`.
+2. When macOS blocks it, open **System Settings > Privacy & Security**.
+3. Scroll to the Security section.
+4. Click **Open Anyway** for SimpleAUHost.
+5. Confirm by clicking **Open**.
+
+You can also allow the app from Terminal:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/SimpleAUHost.app
+open /Applications/SimpleAUHost.app
+```
+
+If you keep the app somewhere other than Applications, replace `/Applications/SimpleAUHost.app` with the actual app path.
 
 ## Requirements
 
-- macOS 14 or newer
-- Xcode with the macOS SDK
-- microphone permission granted at runtime
+- macOS 14 Sonoma or newer
+- An audio device with the input and output channels you want to use
+- Audio Unit effects installed on your Mac, if you want to use plugins
+- Microphone permission for SimpleAUHost
 
-## Build
+SimpleAUHost uses one device for both input and output. Choose an interface that exposes the inputs and outputs you need.
 
-Preferred commands:
+## First Run
 
-- `make build` — build the release app
-- `make run` — build and launch the app
-- `make bundle` — copy the built app into `dist/SimpleAUHost.app`
-- `make package` — create `dist/SimpleAUHost-Release.zip`
-- `make clean` — remove build and distribution artifacts
+1. Open `SimpleAUHost.app`.
+2. Allow microphone access when macOS asks.
+3. Choose your audio I/O device.
+4. Confirm the device exposes the input and output channels you want to use.
+5. Add or enable a track.
+6. Choose the track input channels and output channels.
+7. Add Audio Unit effects to the track.
+8. Start the engine.
 
-Direct Xcode build:
+Keep your volume low the first time you test a route. Live audio routing can create loud feedback if an output is physically feeding back into an input.
 
-```bash
-xcodebuild -project SimpleAUHost.xcodeproj -scheme SimpleAUHost -configuration Debug build
-```
+## What It Does
 
-## Validation
+- Runs mono or stereo live tracks
+- Routes each track from chosen input channels to chosen output channels
+- Hosts Audio Unit effects as insert chains
+- Saves and loads sessions
+- Saves chain presets and parameter presets
+- Protects unsaved session changes when closing the app
+- Provides local Bitfocus Companion control for Waves Tune show workflows
 
-There is currently no Xcode test target and no dedicated lint setup.
+Managed files are stored in your Music folder:
 
-The main validation path is a clean debug build:
+- `~/Music/SAH/Sessions`
+- `~/Music/SAH/Chain Presets`
+- `~/Music/SAH/Parameter Presets`
 
-```bash
-xcodebuild -project SimpleAUHost.xcodeproj -scheme SimpleAUHost -configuration Debug build
-```
+## Sessions and Presets
 
-To validate the Companion module scaffold:
+Use sessions when you want to save the whole setup: device choice, tracks, routes, latency choices, and plugin chains.
 
-```bash
-cd companion/simple-au-host
-npm install
-npm run build
-```
+Use chain presets when you want to reuse a complete plugin chain on another track.
 
-## Notes
+Use parameter presets when you want to reuse settings for a compatible chain without replacing the whole session.
 
-- The app hosts Core Audio devices directly through AUHAL rather than `AVAudioEngine`.
-- Input and output devices must already share the same nominal sample rate.
-- The Companion API is local-only and intended for use on the same Mac as the app.
+## Waves Tune and Companion
 
-## Development
+SimpleAUHost includes a local control API for Bitfocus Companion and similar control tools. It is intended for the same Mac as the app and defaults to:
 
-If you are changing project structure or build settings, check both:
+`http://127.0.0.1:52719`
 
-- `project.yml`
-- `SimpleAUHost.xcodeproj/project.pbxproj`
+The included Companion module scaffold lives in `companion/simple-au-host/`. It supports Waves Tune on/off control, staged key changes, applying staged keys, panic, and next/previous song actions.
+
+You only need this if you use Companion or Waves Tune Real-Time in a show control setup.
+
+## Troubleshooting
+
+**The engine will not start**
+
+Check that macOS microphone permission is enabled for SimpleAUHost in **System Settings > Privacy & Security > Microphone**.
+
+**Device or channel error**
+
+Open **Audio MIDI Setup** and confirm your selected device is available and has the input and output channels you are trying to use.
+
+**I do not see a plugin**
+
+Confirm the plugin is installed as an Audio Unit and restart SimpleAUHost after installing or removing plugins.
+
+**No sound**
+
+Check the selected input channels, output channels, plugin bypass states, and your macOS device levels. Start with one enabled track and no plugins to confirm the route.
+
+**Feedback or very loud sound**
+
+Stop the engine, lower your output volume, and check that speakers are not feeding into live microphones.
+
+## More Information
+
+- See `FEATURES.md` for a fuller feature list.
+- See `DEVELOP.md` for build, test, and architecture notes.
