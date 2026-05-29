@@ -1240,9 +1240,10 @@ struct MultiTrackView: View {
             }
 
             Text(viewModel.latencyReadout(for: track.wrappedValue))
-                .font(.system(size: 9, weight: .medium, design: .default))
+                .font(.system(size: 9, weight: .semibold, design: .monospaced))
                 .foregroundStyle(StudioTheme.mutedText)
                 .lineLimit(1)
+                .minimumScaleFactor(0.8)
         }
     }
 

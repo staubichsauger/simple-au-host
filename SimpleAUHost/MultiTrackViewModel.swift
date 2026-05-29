@@ -1031,10 +1031,10 @@ final class MultiTrackViewModel: ObservableObject {
         let addedFrames = max(0, internalFrames - selectedBufferSize)
         let sampleRate = selectedInputDevice?.nominalSampleRate ?? selectedOutputDevice?.nominalSampleRate ?? 0
         guard sampleRate > 0 else {
-            return "Added latency: \(addedFrames) frames"
+            return "+\(addedFrames) fr"
         }
         let milliseconds = Double(addedFrames) / sampleRate * 1_000
-        return "Added latency: \(addedFrames) frames / \(Self.latencyFormatter.string(from: NSNumber(value: milliseconds)) ?? "0.0") ms"
+        return "+\(addedFrames) fr / \(Self.latencyFormatter.string(from: NSNumber(value: milliseconds)) ?? "0.0") ms"
     }
 
     func setWavesTuneEnabled(_ isEnabled: Bool) {
