@@ -153,12 +153,7 @@ final class CompanionControlServer: @unchecked Sendable {
         guard let listenerPort else {
             throw AudioHostError("The Companion control port is invalid.")
         }
-        guard let loopbackAddress = IPv4Address(CompanionControlDefaults.host) else {
-            throw AudioHostError("The Companion control host is invalid.")
-        }
-
         let parameters = NWParameters.tcp
-        parameters.requiredLocalEndpoint = .hostPort(host: .ipv4(loopbackAddress), port: listenerPort)
 
         let listener = try NWListener(using: parameters, on: listenerPort)
         self.listener = listener
@@ -181,6 +176,11 @@ final class CompanionControlServer: @unchecked Sendable {
         }
 
         listener.newConnectionHandler = { [weak self] connection in
+            guard CompanionControlServer.isLoopbackConnection(connection) else {
+                connection.cancel()
+                return
+            }
+
             guard let self, let requestHandler = self.requestHandler else {
                 connection.cancel()
                 return
@@ -206,6 +206,25 @@ final class CompanionControlServer: @unchecked Sendable {
         listener?.cancel()
         listener = nil
         stateHandler?(.stopped)
+    }
+
+    private static func isLoopbackConnection(_ connection: NWConnection) -> Bool {
+        guard case .hostPort(let host, _) = connection.endpoint else {
+            return false
+        }
+
+        switch host {
+        case .ipv4(let address):
+            return address.rawValue.first == 127
+        case .ipv6(let address):
+            return address.rawValue == Data(repeating: 0, count: 15) + Data([1])
+        case .name(let name, _):
+            return name.caseInsensitiveCompare("localhost") == .orderedSame
+                || name == CompanionControlDefaults.host
+                || name == "::1"
+        @unknown default:
+            return false
+        }
     }
 }
 
