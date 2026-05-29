@@ -30,6 +30,15 @@ final class MultiTrackViewModel: ObservableObject {
         let message: String
     }
 
+    struct StartFailureAlert: Identifiable {
+        let id = UUID()
+        let messages: [String]
+
+        var message: String {
+            messages.joined(separator: "\n")
+        }
+    }
+
     private struct SessionReloadRetryContext {
         let sessionURL: URL
         let reopensAsTemplate: Bool
@@ -61,6 +70,7 @@ final class MultiTrackViewModel: ObservableObject {
     @Published private(set) var managedSessions: [ManagedSessionFile] = []
     @Published private(set) var hasUnsavedChanges = false
     @Published var sessionDeviceResolutionAlert: SessionDeviceResolutionAlert?
+    @Published var startFailureAlert: StartFailureAlert?
     @Published var launchesIntoPerformViewOnStartup = false
     @Published var loadsSavedSessionOnStartup = false
     @Published var startsEngineOnLaunch = false
@@ -480,6 +490,7 @@ final class MultiTrackViewModel: ObservableObject {
         isCurrentSessionStartupTemplate = false
         sessionReloadRetryContext = nil
         sessionDeviceResolutionAlert = nil
+        startFailureAlert = nil
         currentSessionName = "Untitled Session"
         sessionWarnings = []
         statusMessage = "Ready."
@@ -1272,7 +1283,7 @@ final class MultiTrackViewModel: ObservableObject {
             if presentSessionDeviceResolutionAlertIfNeeded() {
                 return
             }
-            statusMessage = invalidTrackMessages.first ?? "Please complete the device and track configuration."
+            presentStartFailureAlert(messages: startValidationFailureMessages())
             return
         }
 
@@ -1285,7 +1296,7 @@ final class MultiTrackViewModel: ObservableObject {
             let granted = await self.requestMicrophoneAccessIfNeeded()
             guard granted else {
                 self.isBusy = false
-                self.statusMessage = "Microphone access was not granted."
+                self.presentStartFailureAlert(messages: ["Microphone access was not granted."])
                 return
             }
 
@@ -1309,11 +1320,46 @@ final class MultiTrackViewModel: ObservableObject {
                 self.clearEmbeddedPluginEditor()
                 self.controller.stop()
                 self.isRunning = false
-                self.statusMessage = error.localizedDescription
+                self.presentStartFailureAlert(messages: [error.localizedDescription])
             }
 
             self.isBusy = false
         }
+    }
+
+    private func presentStartFailureAlert(messages: [String]) {
+        let normalizedMessages = messages
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let displayMessages = normalizedMessages.isEmpty
+            ? ["Please complete the device and track configuration."]
+            : normalizedMessages
+
+        startFailureAlert = StartFailureAlert(messages: displayMessages)
+        statusMessage = displayMessages.first ?? "Engine failed to start."
+    }
+
+    private func startValidationFailureMessages() -> [String] {
+        var messages: [String] = []
+
+        if selectedInputDevice == nil {
+            messages.append("Select an input interface.")
+        }
+        if selectedOutputDevice == nil {
+            messages.append("Select an output interface.")
+        }
+        if !isSelectedBufferSizeValid {
+            messages.append(bufferSizeHelpText)
+        }
+
+        messages.append(contentsOf: latencyBufferValidationMessages)
+
+        if !tracks.contains(where: \.isEnabled) {
+            messages.append("Enable at least one track.")
+        }
+
+        messages.append(contentsOf: invalidTrackMessages)
+        return messages
     }
 
     private func stopEngine() {
