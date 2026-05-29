@@ -1147,7 +1147,8 @@ struct MultiTrackView: View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(.system(size: 10, weight: .medium))
-                .frame(width: 14, height: 14)
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .foregroundStyle(StudioTheme.mutedText)
@@ -1991,7 +1992,8 @@ struct MultiTrackView: View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(.system(size: 10, weight: .medium))
-                .frame(width: 14, height: 14)
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .foregroundStyle(StudioTheme.mutedText)
@@ -2724,7 +2726,8 @@ private struct TuningPopoutView: View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(.system(size: 10, weight: .medium))
-                .frame(width: 14, height: 14)
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .foregroundStyle(StudioTheme.mutedText)
