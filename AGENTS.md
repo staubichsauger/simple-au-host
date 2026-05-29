@@ -13,13 +13,17 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 - `xcodebuild -list -project SimpleAUHost.xcodeproj` — shows the single app target/scheme and available configurations.
 
 ## Tests and linting
-- There is currently **no test target** in `SimpleAUHost.xcodeproj`; `xcodebuild -list` shows only the `SimpleAUHost` app target and scheme.
+- `SimpleAUHostTests` is the unit test target in `SimpleAUHost.xcodeproj`.
 - There is currently **no dedicated lint command** or SwiftLint configuration in the repository.
-- For validation today, use a clean debug or release build and treat compiler warnings as the primary signal:
+- For validation, run a debug build and the unit tests:
   - `xcodebuild -project SimpleAUHost.xcodeproj -scheme SimpleAUHost -configuration Debug build`
-- If a test target is added later, the standard Xcode commands to document are:
-  - all tests: `xcodebuild test -project SimpleAUHost.xcodeproj -scheme <TestScheme> -destination 'platform=macOS'`
-  - single test: `xcodebuild test -project SimpleAUHost.xcodeproj -scheme <TestScheme> -destination 'platform=macOS' -only-testing:<Target>/<TestClass>/<testMethod>`
+  - `xcodebuild test -project SimpleAUHost.xcodeproj -scheme SimpleAUHost -destination 'platform=macOS'`
+- To keep build outputs local to the repo during agent work, prefer:
+  - `xcodebuild -project SimpleAUHost.xcodeproj -scheme SimpleAUHost -configuration Debug -derivedDataPath build/ReviewDerivedData build`
+  - `xcodebuild test -project SimpleAUHost.xcodeproj -scheme SimpleAUHost -destination 'platform=macOS' -derivedDataPath build/ReviewDerivedData`
+- Single test example:
+  - `xcodebuild test -project SimpleAUHost.xcodeproj -scheme SimpleAUHost -destination 'platform=macOS' -only-testing:SimpleAUHostTests/SessionStoreTests/testManagedSessionsOnlyListsSessionFiles`
+- Current unit coverage focuses on managed session listing and session-model compatibility. Add tests here for future persistence, migration, routing validation, Companion parsing, and ring-buffer changes.
 
 ## Project structure
 - `SimpleAUHostApp.swift` starts the SwiftUI app and opens `MultiTrackView`.
