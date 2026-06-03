@@ -878,6 +878,15 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
 
             currentInputSource1 = nil
             currentInputSource2 = nil
+            if destination1 != outputScratch1 {
+                outputScratch1.update(from: destination1, count: frameCount)
+            }
+            if configuration.channelCount == 2,
+               let destination2,
+               let outputScratch2,
+               destination2 != outputScratch2 {
+                outputScratch2.update(from: destination2, count: frameCount)
+            }
             renderSampleTime += Double(frameCount)
             return true
         }
