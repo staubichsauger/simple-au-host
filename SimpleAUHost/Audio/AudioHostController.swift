@@ -107,6 +107,11 @@ struct AudioEngineTelemetrySnapshot {
     )
 }
 
+struct TrackPluginLatencySnapshot: Hashable {
+    let trackID: UUID
+    let pluginLatencyFrames: Int
+}
+
 final class AudioHostController: @unchecked Sendable {
     private static let pluginCatalogLock = NSLock()
     private nonisolated(unsafe) static var cachedPlugins: [AudioUnitPluginInfo]?

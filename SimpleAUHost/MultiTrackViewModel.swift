@@ -84,6 +84,7 @@ final class MultiTrackViewModel: ObservableObject {
     @Published private(set) var companionControlEndpointURLString = CompanionControlDefaults.baseURLString
     @Published private(set) var companionControlStatus = "Starting local Companion control API..."
     @Published var wavesTuneState = MultiTrackWavesTuneState()
+    @Published private var trackPluginLatencyFrames: [UUID: Int] = [:]
 
     private let catalog = AudioHostController()
     private let controller = MultiTrackAudioHostController()
@@ -1031,7 +1032,9 @@ final class MultiTrackViewModel: ObservableObject {
             for: track.latencyClass,
             hardwareBufferSize: selectedBufferSize
         )
-        let addedFrames = max(0, internalFrames - selectedBufferSize)
+        let latencyClassFrames = max(0, internalFrames - selectedBufferSize)
+        let pluginLatencyFrames = trackPluginLatencyFrames[track.id] ?? 0
+        let addedFrames = latencyClassFrames + pluginLatencyFrames
         let sampleRate = selectedInputDevice?.nominalSampleRate ?? selectedOutputDevice?.nominalSampleRate ?? 0
         guard sampleRate > 0 else {
             return "+\(addedFrames) fr"
@@ -1310,6 +1313,7 @@ final class MultiTrackViewModel: ObservableObject {
                 _ = try self.controller.applyWavesTuneRealtimeKeySelection(self.wavesTuneState.appliedKey.normalized)
                 self.syncWavesTuneStrengthSelectionsFromRunningEngine()
                 self.isRunning = true
+                self.refreshTrackPluginLatencyFrames()
                 self.refreshPublishedTelemetry()
                 self.startAudioDropoutMonitoring()
                 self.scheduleStartupDropoutReset()
@@ -1323,6 +1327,7 @@ final class MultiTrackViewModel: ObservableObject {
                 self.clearEmbeddedPluginEditor()
                 self.controller.stop()
                 self.isRunning = false
+                self.trackPluginLatencyFrames = [:]
                 self.presentStartFailureAlert(messages: [error.localizedDescription])
             }
 
@@ -1375,6 +1380,7 @@ final class MultiTrackViewModel: ObservableObject {
         captureLivePluginStates()
         controller.stop()
         isRunning = false
+        trackPluginLatencyFrames = [:]
         statusMessage = "Stopped."
     }
 
@@ -1881,6 +1887,7 @@ final class MultiTrackViewModel: ObservableObject {
                         )
                         controller.stop()
                         self.isRunning = false
+                        self.trackPluginLatencyFrames = [:]
                         self.statusMessage = runtimeStatus
                     }
                     return
@@ -1901,10 +1908,24 @@ final class MultiTrackViewModel: ObservableObject {
     }
 
     private func refreshPublishedTelemetry() {
+        refreshTrackPluginLatencyFrames()
         applyTelemetrySnapshot(
             dropoutCount: controller.audioDropoutCount(),
             droppedFrameCount: controller.droppedFrameCount(),
             telemetry: controller.telemetrySnapshot()
+        )
+    }
+
+    private func refreshTrackPluginLatencyFrames() {
+        guard isRunning else {
+            trackPluginLatencyFrames = [:]
+            return
+        }
+
+        trackPluginLatencyFrames = Dictionary(
+            uniqueKeysWithValues: controller.trackPluginLatencySnapshot().map { snapshot in
+                (snapshot.trackID, snapshot.pluginLatencyFrames)
+            }
         )
     }
 

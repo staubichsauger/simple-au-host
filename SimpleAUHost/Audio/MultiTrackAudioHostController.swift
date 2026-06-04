@@ -511,6 +511,12 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             SAHAtomicCounterLoad(&droppedFrameCounter)
         }
 
+        func pluginLatencyFrames() -> Int {
+            plugins.reduce(0) { total, pluginRuntime in
+                total + Self.latencyFrames(for: pluginRuntime.unit, sampleRate: sampleRate)
+            }
+        }
+
         func peakInputRingOccupancy() -> UInt64 {
             SAHAtomicCounterLoad(&peakInputRingOccupancyFrames)
         }
@@ -1416,6 +1422,22 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             return createdUnit
         }
 
+        private static func latencyFrames(for unit: AudioUnit, sampleRate: Double) -> Int {
+            guard sampleRate > 0 else { return 0 }
+            var latencySeconds = Float64(0)
+            var size = UInt32(MemoryLayout<Float64>.size)
+            let status = AudioUnitGetProperty(
+                unit,
+                kAudioUnitProperty_Latency,
+                kAudioUnitScope_Global,
+                0,
+                &latencySeconds,
+                &size
+            )
+            guard status == noErr, latencySeconds > 0 else { return 0 }
+            return Int(ceil(latencySeconds * sampleRate))
+        }
+
         private static func ensurePlugin(
             _ unit: AudioUnit,
             supports channelCount: Int,
@@ -2020,6 +2042,15 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             let states = runtime.serializedPluginStates()
             return states.isEmpty ? nil : (runtime.configuration.id, states)
         })
+    }
+
+    func trackPluginLatencySnapshot() -> [TrackPluginLatencySnapshot] {
+        trackRuntimes.map { runtime in
+            TrackPluginLatencySnapshot(
+                trackID: runtime.configuration.id,
+                pluginLatencyFrames: runtime.pluginLatencyFrames()
+            )
+        }
     }
 
     func applyPluginStates(
