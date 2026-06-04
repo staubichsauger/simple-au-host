@@ -1744,6 +1744,9 @@ struct MultiTrackView: View {
                         StudioMetricTile("Callbacks", value: trimmedTelemetry(viewModel.telemetrySummary, prefix: "Callbacks in/out: "))
                         StudioMetricTile("Ring", value: trimmedTelemetry(viewModel.ringTelemetrySummary, prefix: "Peak ring occupancy in/out: "))
                         StudioMetricTile("Workers", value: trimmedTelemetry(viewModel.workerTelemetrySummary, prefix: "Workers: "))
+                        StudioMetricTile("Realtime", value: trimmedTelemetry(viewModel.realtimeTelemetrySummary, prefix: "Realtime: "))
+                        StudioMetricTile("Buffered", value: trimmedTelemetry(viewModel.bufferedTelemetrySummary, prefix: "Buffered: "))
+                        StudioMetricTile("Broadcast", value: trimmedTelemetry(viewModel.broadcastTelemetrySummary, prefix: "Broadcast: "))
                         StudioMetricTile("Engine", value: viewModel.statusMessage)
                     }
                 }

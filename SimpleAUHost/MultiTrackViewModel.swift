@@ -65,6 +65,9 @@ final class MultiTrackViewModel: ObservableObject {
     @Published private(set) var telemetrySummary = "Callbacks in/out: 0 / 0 frames"
     @Published private(set) var ringTelemetrySummary = "Peak ring occupancy in/out: 0 / 0 frames"
     @Published private(set) var workerTelemetrySummary = "Workers: 0 shards, track/shard render: 0 / 0 us, util: 0%, wakeups: 0/s"
+    @Published private(set) var realtimeTelemetrySummary = "Realtime: 0 tracks, render avg/peak 0 / 0 us"
+    @Published private(set) var bufferedTelemetrySummary = "Buffered: 0 tracks, 0 shards, track/shard avg 0 / 0 us, peak 0 / 0 us, util 0%, wakeups 0/s"
+    @Published private(set) var broadcastTelemetrySummary = "Broadcast: 0 tracks, 0 shards, track/shard avg 0 / 0 us, peak 0 / 0 us, util 0%, wakeups 0/s"
     @Published private(set) var currentSessionName = "Untitled Session"
     @Published private(set) var sessionWarnings: [String] = []
     @Published private(set) var managedSessions: [ManagedSessionFile] = []
@@ -1915,6 +1918,20 @@ final class MultiTrackViewModel: ObservableObject {
         telemetrySummary = "Callbacks in/out: \(telemetry.peakInputCallbackFrames) / \(telemetry.peakOutputCallbackFrames) frames"
         ringTelemetrySummary = "Peak ring occupancy in/out: \(telemetryOccupancyString(telemetry.peakInputRingOccupancyFrames, capacity: telemetry.inputRingCapacityFrames)) / \(telemetryOccupancyString(telemetry.peakOutputRingOccupancyFrames, capacity: telemetry.outputRingCapacityFrames))"
         workerTelemetrySummary = "Workers: \(telemetry.workerShardCount) shards, track/shard render avg \(telemetry.averageTrackRenderDurationMicros) / \(telemetry.averageShardRenderDurationMicros) us, peak \(telemetry.peakTrackRenderDurationMicros) / \(telemetry.peakShardRenderDurationMicros) us, util \(telemetry.peakShardUtilizationPercent)%, wakeups \(telemetry.peakWorkerWakeupsPerSecond)/s"
+        realtimeTelemetrySummary = realtimeTelemetryString(telemetry.realtime)
+        bufferedTelemetrySummary = bufferedTelemetryString(label: "Buffered", telemetry.buffered)
+        broadcastTelemetrySummary = bufferedTelemetryString(label: "Broadcast", telemetry.broadcast)
+    }
+
+    private func realtimeTelemetryString(_ telemetry: LatencyClassTelemetrySnapshot) -> String {
+        "Realtime: \(telemetry.trackCount) tracks, render avg/peak \(telemetry.averageTrackRenderDurationMicros) / \(telemetry.peakTrackRenderDurationMicros) us"
+    }
+
+    private func bufferedTelemetryString(
+        label: String,
+        _ telemetry: LatencyClassTelemetrySnapshot
+    ) -> String {
+        "\(label): \(telemetry.trackCount) tracks, \(telemetry.workerShardCount) shards, track/shard avg \(telemetry.averageTrackRenderDurationMicros) / \(telemetry.averageShardRenderDurationMicros) us, peak \(telemetry.peakTrackRenderDurationMicros) / \(telemetry.peakShardRenderDurationMicros) us, util \(telemetry.peakShardUtilizationPercent)%, wakeups \(telemetry.peakWorkerWakeupsPerSecond)/s"
     }
 
     private func telemetryOccupancyString(_ frames: UInt64, capacity: Int) -> String {

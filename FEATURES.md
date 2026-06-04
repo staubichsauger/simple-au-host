@@ -12,7 +12,7 @@ Multi-track mode is the larger live rack workflow:
 - per-track input and output routing
 - per-track insert chains
 - per-track latency class selection
-- summed output through one shared hardware I/O device
+- exclusive output-channel routing through one shared hardware I/O device
 - embedded plugin editor support
 - diagnostics for dropouts, callback timing, ring usage, and worker utilization
 

@@ -410,6 +410,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
 
         let configuration: MultiTrackTrackConfiguration
         let processingFrames: Int
+        let renderFrameCapacity: Int
         let sampleRate: Double
 
         private var plugins: [PluginRuntime] = []
@@ -441,13 +442,15 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             plugins: [(MultiTrackTrackConfiguration.PluginInsert, AudioUnitPluginInfo)],
             sampleRate: Double,
             hardwareBufferSize: Int,
-            internalBufferFrames: Int
+            internalBufferFrames: Int,
+            maximumRenderFrames: Int
         ) throws {
             self.configuration = configuration
             self.sampleRate = sampleRate
             self.processingFrames = configuration.latencyClass == .realtime
                 ? hardwareBufferSize
                 : max(hardwareBufferSize, internalBufferFrames)
+            self.renderFrameCapacity = max(self.processingFrames, maximumRenderFrames)
             SAHAtomicCounterReset(&audioDropoutCounter)
             SAHAtomicCounterReset(&droppedFrameCounter)
             SAHAtomicCounterReset(&peakInputRingOccupancyFrames)
@@ -464,7 +467,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
                     plugin: plugin,
                     sampleRate: sampleRate,
                     channelCount: configuration.channelCount,
-                    maximumFrames: processingFrames,
+                    maximumFrames: renderFrameCapacity,
                     owner: self
                 )
                 createdPlugins.append(PluginRuntime(insert: insert, plugin: plugin, unit: unit))
@@ -679,7 +682,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             let ringCapacity = UInt32(max(processingFrames * 32, 4096))
 
             if configuration.latencyClass == .realtime {
-                let inputRingCapacity = UInt32(max(hardwareBufferSize * 32, 4096))
+                let inputRingCapacity = UInt32(max(renderFrameCapacity * 32, 4096))
                 guard SAHFloatRingBufferInit(&realtimeInputRing1, inputRingCapacity) else {
                     throw AudioHostError("Failed to allocate multi-track realtime input buffer.")
                 }
@@ -699,26 +702,26 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
                 }
             }
 
-            inputScratch1 = UnsafeMutablePointer<Float>.allocate(capacity: processingFrames)
-            outputScratch1 = UnsafeMutablePointer<Float>.allocate(capacity: processingFrames)
-            intermediateScratch1 = UnsafeMutablePointer<Float>.allocate(capacity: processingFrames)
+            inputScratch1 = UnsafeMutablePointer<Float>.allocate(capacity: renderFrameCapacity)
+            outputScratch1 = UnsafeMutablePointer<Float>.allocate(capacity: renderFrameCapacity)
+            intermediateScratch1 = UnsafeMutablePointer<Float>.allocate(capacity: renderFrameCapacity)
 
             if configuration.channelCount == 2 {
-                inputScratch2 = UnsafeMutablePointer<Float>.allocate(capacity: processingFrames)
-                outputScratch2 = UnsafeMutablePointer<Float>.allocate(capacity: processingFrames)
-                intermediateScratch2 = UnsafeMutablePointer<Float>.allocate(capacity: processingFrames)
+                inputScratch2 = UnsafeMutablePointer<Float>.allocate(capacity: renderFrameCapacity)
+                outputScratch2 = UnsafeMutablePointer<Float>.allocate(capacity: renderFrameCapacity)
+                intermediateScratch2 = UnsafeMutablePointer<Float>.allocate(capacity: renderFrameCapacity)
             }
 
             wetBufferList = AudioBufferList.allocate(maximumBuffers: configuration.channelCount)
             wetBufferList?.count = configuration.channelCount
 
             wetBufferList?[0].mNumberChannels = 1
-            wetBufferList?[0].mDataByteSize = UInt32(processingFrames * MemoryLayout<Float>.size)
+            wetBufferList?[0].mDataByteSize = UInt32(renderFrameCapacity * MemoryLayout<Float>.size)
             wetBufferList?[0].mData = UnsafeMutableRawPointer(outputScratch1)
 
             if configuration.channelCount == 2 {
                 wetBufferList?[1].mNumberChannels = 1
-                wetBufferList?[1].mDataByteSize = UInt32(processingFrames * MemoryLayout<Float>.size)
+                wetBufferList?[1].mDataByteSize = UInt32(renderFrameCapacity * MemoryLayout<Float>.size)
                 wetBufferList?[1].mData = UnsafeMutableRawPointer(outputScratch2)
             }
         }
@@ -1858,6 +1861,10 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
                 max(configuration.latencyBufferSettings.bufferedFrames, configuration.latencyBufferSettings.broadcastFrames)
             )
             maxFramesPerSlice = UInt32(suggestedMaximumFramesPerSlice(for: maxInternalFrames, nominalBufferSize: configuration.bufferSize))
+            let maximumRenderFrames = allocatedFrameCapacity(
+                actualMaximumFrames: Int(maxFramesPerSlice),
+                nominalBufferSize: configuration.bufferSize
+            )
 
             let availablePlugins = try AudioHostController().availablePlugins()
 
@@ -1875,7 +1882,8 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
                     internalBufferFrames: configuration.latencyBufferSettings.internalFrames(
                         for: track.latencyClass,
                         hardwareBufferSize: configuration.bufferSize
-                    )
+                    ),
+                    maximumRenderFrames: maximumRenderFrames
                 )
             }
             bufferedTrackRuntimes = trackRuntimes.filter { $0.configuration.latencyClass == .buffered }
@@ -1889,9 +1897,12 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             try createAndConfigureIOUnits(for: configuration)
             let actualInputMaxFrames = try actualMaximumFramesPerSlice(for: inputUnit)
             let actualOutputMaxFrames = try actualMaximumFramesPerSlice(for: outputUnit)
-            callbackFrameCapacity = allocatedFrameCapacity(
-                actualMaximumFrames: max(actualInputMaxFrames, actualOutputMaxFrames),
-                nominalBufferSize: configuration.bufferSize
+            callbackFrameCapacity = min(
+                maximumRenderFrames,
+                allocatedFrameCapacity(
+                    actualMaximumFrames: max(actualInputMaxFrames, actualOutputMaxFrames),
+                    nominalBufferSize: configuration.bufferSize
+                )
             )
             try prepareCaptureBuffers(
                 inputChannelCount: configuration.inputDevice.inputChannelCount,
@@ -1947,6 +1958,18 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
     }
 
     func telemetrySnapshot() -> AudioEngineTelemetrySnapshot {
+        let realtimeTelemetry = latencyTelemetrySnapshot(
+            tracks: realtimeTrackRuntimes,
+            shards: []
+        )
+        let bufferedTelemetry = latencyTelemetrySnapshot(
+            tracks: bufferedTrackRuntimes,
+            shards: bufferedWorkerShards.filter { $0.latencyClass == .buffered }
+        )
+        let broadcastTelemetry = latencyTelemetrySnapshot(
+            tracks: broadcastTrackRuntimes,
+            shards: bufferedWorkerShards.filter { $0.latencyClass == .broadcast }
+        )
         let peakTrackOutputOccupancy = trackRuntimes.reduce(UInt64(0)) { partialResult, runtime in
             max(partialResult, runtime.peakOutputRingOccupancy())
         }
@@ -1985,7 +2008,10 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             averageShardRenderDurationMicros: averageShardRenderDuration,
             peakShardUtilizationPercent: bufferedWorkerShards.reduce(0) { max($0, $1.peakUtilization()) },
             peakWorkerWakeupsPerSecond: bufferedWorkerShards.reduce(0) { max($0, $1.peakWakeups()) },
-            workerShardCount: bufferedWorkerShards.count
+            workerShardCount: bufferedWorkerShards.count,
+            realtime: realtimeTelemetry,
+            buffered: bufferedTelemetry,
+            broadcast: broadcastTelemetry
         )
     }
 
@@ -2712,6 +2738,32 @@ private extension MultiTrackAudioHostController {
     func averageMicros(totals: [UInt64], count: Int) -> UInt64 {
         guard count > 0 else { return 0 }
         return totals.reduce(0, +) / UInt64(count)
+    }
+
+    private func latencyTelemetrySnapshot(
+        tracks: [TrackRuntime],
+        shards: [BufferedTrackWorkerShard]
+    ) -> LatencyClassTelemetrySnapshot {
+        LatencyClassTelemetrySnapshot(
+            trackCount: tracks.count,
+            workerShardCount: shards.count,
+            peakTrackRenderDurationMicros: tracks.reduce(UInt64(0)) { partialResult, runtime in
+                max(partialResult, runtime.peakRenderDurationMicros())
+            },
+            averageTrackRenderDurationMicros: averageMicros(
+                totals: tracks.map { $0.averageRenderDurationMicros() },
+                count: tracks.count
+            ),
+            peakShardRenderDurationMicros: shards.reduce(UInt64(0)) { partialResult, shard in
+                max(partialResult, shard.peakRenderDurationMicros())
+            },
+            averageShardRenderDurationMicros: averageMicros(
+                totals: shards.map { $0.averageRenderDurationMicros() },
+                count: shards.count
+            ),
+            peakShardUtilizationPercent: shards.reduce(0) { max($0, $1.peakUtilization()) },
+            peakWorkerWakeupsPerSecond: shards.reduce(0) { max($0, $1.peakWakeups()) }
+        )
     }
 
     @MainActor

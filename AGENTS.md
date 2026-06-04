@@ -61,7 +61,7 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
   - `realtime`: process directly on the hardware callback cadence.
   - `buffered` / `broadcast`: process on a background worker using larger internal blocks and output preroll.
 - The multi-track input callback captures **all** hardware input channels into per-channel buffers, then each track runtime reads only the configured channel span.
-- The multi-track output callback asks every track runtime to mix into the shared hardware output buffers, so track outputs are summed together at the final render stage.
+- Enabled tracks must use exclusive output channels. The view model validates output routing before the engine starts, so each track writes only to its configured hardware output span and no final-stage track summing is expected.
 - Stereo support in multi-track mode is per-track. Plugin compatibility for mono vs stereo tracks is checked when each track runtime creates its Audio Unit instance.
 - Multi-track sessions can be saved, loaded, and tracked for unsaved changes; closing the main window or quitting the app routes through `AppCloseCoordinator` so the user can save or discard changes.
 - The multi-track flow also exposes a local Companion control API at `http://127.0.0.1:52719` for Waves Tune key staging/apply actions.

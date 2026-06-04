@@ -45,6 +45,28 @@ struct AudioHostError: LocalizedError {
     }
 }
 
+struct LatencyClassTelemetrySnapshot {
+    let trackCount: Int
+    let workerShardCount: Int
+    let peakTrackRenderDurationMicros: UInt64
+    let averageTrackRenderDurationMicros: UInt64
+    let peakShardRenderDurationMicros: UInt64
+    let averageShardRenderDurationMicros: UInt64
+    let peakShardUtilizationPercent: UInt64
+    let peakWorkerWakeupsPerSecond: UInt64
+
+    static let zero = LatencyClassTelemetrySnapshot(
+        trackCount: 0,
+        workerShardCount: 0,
+        peakTrackRenderDurationMicros: 0,
+        averageTrackRenderDurationMicros: 0,
+        peakShardRenderDurationMicros: 0,
+        averageShardRenderDurationMicros: 0,
+        peakShardUtilizationPercent: 0,
+        peakWorkerWakeupsPerSecond: 0
+    )
+}
+
 struct AudioEngineTelemetrySnapshot {
     let peakInputCallbackFrames: UInt64
     let peakOutputCallbackFrames: UInt64
@@ -60,6 +82,9 @@ struct AudioEngineTelemetrySnapshot {
     let peakShardUtilizationPercent: UInt64
     let peakWorkerWakeupsPerSecond: UInt64
     let workerShardCount: Int
+    let realtime: LatencyClassTelemetrySnapshot
+    let buffered: LatencyClassTelemetrySnapshot
+    let broadcast: LatencyClassTelemetrySnapshot
 
     static let zero = AudioEngineTelemetrySnapshot(
         peakInputCallbackFrames: 0,
@@ -75,7 +100,10 @@ struct AudioEngineTelemetrySnapshot {
         averageShardRenderDurationMicros: 0,
         peakShardUtilizationPercent: 0,
         peakWorkerWakeupsPerSecond: 0,
-        workerShardCount: 0
+        workerShardCount: 0,
+        realtime: .zero,
+        buffered: .zero,
+        broadcast: .zero
     )
 }
 

@@ -57,6 +57,7 @@ Keep your volume low the first time you test a route. Live audio routing can cre
 
 - Runs mono or stereo live tracks
 - Routes each track from chosen input channels to chosen output channels
+- Keeps enabled track output channels exclusive; two tracks cannot target the same output channel at the same time
 - Hosts Audio Unit effects as insert chains
 - Saves and loads sessions
 - Saves chain presets and parameter presets

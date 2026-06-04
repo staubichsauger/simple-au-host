@@ -126,7 +126,7 @@ Track latency class changes execution strategy:
 
 The multi-track input callback captures all hardware input channels into per-channel buffers, then each track runtime reads only the configured channel span.
 
-The multi-track output callback asks every track runtime to mix into the shared hardware output buffers, so track outputs are summed together at the final render stage.
+Enabled tracks must use exclusive output channels. The view model validates output routing before the engine starts, so each track writes only to its configured hardware output span and no final-stage track summing is expected.
 
 Stereo support in multi-track mode is per-track. Plugin compatibility for mono versus stereo tracks is checked when each track runtime creates its Audio Unit instance.
 
