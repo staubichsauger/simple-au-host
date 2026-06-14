@@ -1571,9 +1571,31 @@ struct MultiTrackView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     latencyField(title: "Buffered", text: $viewModel.bufferedInternalBufferText, action: viewModel.applyBufferedInternalBufferSize)
                     latencyField(title: "Broadcast/Post", text: $viewModel.broadcastInternalBufferText, action: viewModel.applyBroadcastInternalBufferSize)
+                    broadcastPrerollPicker
                 }
             }
         }
+    }
+
+    private var broadcastPrerollPicker: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            StudioFieldLabel("Broadcast safety preroll")
+            Picker(
+                "Broadcast safety preroll",
+                selection: Binding(
+                    get: { viewModel.broadcastPrerollMultiplier },
+                    set: { viewModel.setBroadcastPrerollMultiplier($0) }
+                )
+            ) {
+                Text("1x").tag(1)
+                Text("2x").tag(2)
+                Text("3x").tag(3)
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 220)
+            .disabled(viewModel.isBusy || viewModel.isRunning)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var startupSettingsPanel: some View {

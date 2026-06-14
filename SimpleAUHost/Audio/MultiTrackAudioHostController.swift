@@ -411,6 +411,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         let configuration: MultiTrackTrackConfiguration
         let processingFrames: Int
         let renderFrameCapacity: Int
+        let broadcastPrerollMultiplier: Int
         let sampleRate: Double
 
         private var plugins: [PluginRuntime] = []
@@ -443,6 +444,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             sampleRate: Double,
             hardwareBufferSize: Int,
             internalBufferFrames: Int,
+            broadcastPrerollMultiplier: Int,
             maximumRenderFrames: Int
         ) throws {
             self.configuration = configuration
@@ -451,6 +453,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
                 ? hardwareBufferSize
                 : max(hardwareBufferSize, internalBufferFrames)
             self.renderFrameCapacity = max(self.processingFrames, maximumRenderFrames)
+            self.broadcastPrerollMultiplier = max(1, broadcastPrerollMultiplier)
             SAHAtomicCounterReset(&audioDropoutCounter)
             SAHAtomicCounterReset(&droppedFrameCounter)
             SAHAtomicCounterReset(&peakInputRingOccupancyFrames)
@@ -537,7 +540,9 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
 
         func hasBufferedOutput(frames: Int) -> Bool {
             guard configuration.latencyClass != .realtime else { return false }
-            let requestedFrames = UInt32(frames)
+            let requestedFrames = bufferedOutputPrimed
+                ? UInt32(frames)
+                : bufferedOutputPrerollFrames(stagingFrames: frames)
             let available1 = SAHFloatRingBufferAvailableRead(&bufferedOutputRing1)
             let available2 = configuration.channelCount == 1 ? available1 : SAHFloatRingBufferAvailableRead(&bufferedOutputRing2)
             return available1 >= requestedFrames && available2 >= requestedFrames
@@ -767,11 +772,12 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
 
         private func drainBufferedOutput(frames: Int) {
             guard let outputScratch1 else { return }
-            let prerollFrames = UInt32(max(processingFrames, frames * 2))
+            let prerollFrames = bufferedOutputPrerollFrames(stagingFrames: frames)
             let availableFrames1 = SAHFloatRingBufferAvailableRead(&bufferedOutputRing1)
             let availableFrames2 = configuration.channelCount == 1
                 ? availableFrames1
                 : SAHFloatRingBufferAvailableRead(&bufferedOutputRing2)
+            let availableFrames = min(availableFrames1, availableFrames2)
 
             if !bufferedOutputPrimed {
                 guard availableFrames1 >= prerollFrames, availableFrames2 >= prerollFrames else {
@@ -781,6 +787,13 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
                 bufferedOutputPrimed = true
             }
             let requestedFrames = UInt32(frames)
+            guard availableFrames >= requestedFrames else {
+                bufferedOutputPrimed = false
+                fillBufferedOutputScratchWithSilence(frames: frames)
+                recordDroppedFrames(requestedFrames - availableFrames)
+                return
+            }
+
             let receivedFrames1 = SAHFloatRingBufferRead(&bufferedOutputRing1, outputScratch1, requestedFrames)
             var droppedFrames = requestedFrames - receivedFrames1
             if Int(receivedFrames1) < frames {
@@ -799,6 +812,13 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
                 bufferedOutputPrimed = false
                 recordDroppedFrames(droppedFrames)
             }
+        }
+
+        private func bufferedOutputPrerollFrames(stagingFrames: Int) -> UInt32 {
+            let processingPrerollFrames = configuration.latencyClass == .broadcast
+                ? processingFrames * broadcastPrerollMultiplier
+                : processingFrames
+            return UInt32(max(processingPrerollFrames, stagingFrames * 2))
         }
 
         private func fillBufferedOutputScratchWithSilence(frames: Int) {
@@ -1504,6 +1524,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         private let inputChannelOffsets: [Int]
         private let channelIndexMap: [Int: Int]
         private let recordDroppedFrames: @Sendable (UInt32) -> Void
+        private let signalStagedOutput: @Sendable () -> Void
         private let runtimeStatusMessage: @Sendable () -> String?
 
         private var inputRings: [SAHFloatRingBuffer]
@@ -1526,12 +1547,14 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             latencyClass: TrackLatencyClass,
             tracks: [TrackRuntime],
             recordDroppedFrames: @escaping @Sendable (UInt32) -> Void,
+            signalStagedOutput: @escaping @Sendable () -> Void,
             runtimeStatusMessage: @escaping @Sendable () -> String?
         ) throws {
             self.id = id
             self.latencyClass = latencyClass
             self.tracks = tracks
             self.recordDroppedFrames = recordDroppedFrames
+            self.signalStagedOutput = signalStagedOutput
             self.runtimeStatusMessage = runtimeStatusMessage
             self.processingFrames = tracks.first?.processingFrames ?? 0
 
@@ -1635,7 +1658,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
                 self?.workerLoop(affinityTag: affinityTag)
             }
             workerThread.name = "SimpleAUHost.TrackShard.\(latencyClass.rawValue).\(id)"
-            workerThread.qualityOfService = latencyClass == .broadcast ? .utility : .userInteractive
+            workerThread.qualityOfService = .userInteractive
             self.workerThread = workerThread
             workerThread.start()
         }
@@ -1673,7 +1696,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
 
         private func workerLoop(affinityTag: Int32?) {
             guard processingFrames > 0 else { return }
-            promoteCurrentThreadToAudioWorkerQoS(latencyClass == .broadcast ? QOS_CLASS_USER_INITIATED : QOS_CLASS_USER_INTERACTIVE)
+            promoteCurrentThreadToAudioWorkerQoS(QOS_CLASS_USER_INTERACTIVE)
             if let affinityTag {
                 bestEffortSetCurrentThreadAffinity(tag: affinityTag)
             }
@@ -1715,6 +1738,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
                         : nil
                     runtime.renderBufferedOutput(input1: input1, input2: input2)
                 }
+                signalStagedOutput()
                 let roundDuration = currentUptimeNanoseconds() - roundStart
                 SAHAtomicCounterStoreMax(&peakRenderDurationNanoseconds, roundDuration)
                 SAHAtomicCounterAdd(&totalRenderDurationNanoseconds, roundDuration)
@@ -1846,6 +1870,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
     private var stagedOutputThread: Thread?
     private var shouldRunStagedOutputWorker = false
     private var stagedOutputPrimed = false
+    private var stagedOutputPrerollFrames = 0
     private var inputRingCapacityFrames = 0
     private var peakTrackOutputRingCapacityFrames = 0
     private var stagedOutputRingCapacityFrames = 0
@@ -1905,6 +1930,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
                         for: track.latencyClass,
                         hardwareBufferSize: configuration.bufferSize
                     ),
+                    broadcastPrerollMultiplier: configuration.latencyBufferSettings.broadcastPrerollMultiplier,
                     maximumRenderFrames: maximumRenderFrames
                 )
             }
@@ -2159,6 +2185,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         configuration = nil
         maxFramesPerSlice = 0
         callbackFrameCapacity = 0
+        stagedOutputPrerollFrames = 0
         inputRingCapacityFrames = 0
         peakTrackOutputRingCapacityFrames = 0
         stagedOutputRingCapacityFrames = 0
@@ -2256,12 +2283,26 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         stagedOutputScratchBuffers.removeAll()
         sharedStagedOutputBuffers.removeAll()
         stagedOutputPrimed = false
+        stagedOutputPrerollFrames = 0
+        stagedOutputRingCapacityFrames = 0
 
         guard let configuration else { return }
-        let ringCapacity = UInt32(max(configuration.bufferSize * 32, 4096))
+        let maxProcessingFrames = maxNonRealtimeProcessingFrames()
+        let processingPrerollFrames = broadcastTrackRuntimes.isEmpty
+            ? maxProcessingFrames
+            : maxProcessingFrames * max(1, configuration.latencyBufferSettings.broadcastPrerollMultiplier)
+        stagedOutputPrerollFrames = max(
+            configuration.bufferSize * 2,
+            processingPrerollFrames
+        )
+        let ringCapacityFrames = max(
+            4096,
+            max(configuration.bufferSize * 32, stagedOutputPrerollFrames * 2)
+        )
+        let ringCapacity = UInt32(min(ringCapacityFrames, Int(UInt32.max)))
 
         for _ in 0..<outputChannelCount {
-                let buffer = SharedOutputChannelBuffer()
+            let buffer = SharedOutputChannelBuffer()
             guard SAHFloatRingBufferInit(&buffer.ring, ringCapacity) else {
                 throw AudioHostError("Failed to allocate staged output buffer.")
             }
@@ -2553,6 +2594,7 @@ private extension MultiTrackAudioHostController {
                 latencyClass: latencyClass,
                 tracks: runtimes,
                 recordDroppedFrames: { [weak self] in self?.recordDroppedFrames($0) },
+                signalStagedOutput: { [weak self] in self?.stagedOutputWakeup.signal() },
                 runtimeStatusMessage: { [weak self] in self?.runtimeStatusMessage() }
             )
         }
@@ -2590,7 +2632,7 @@ private extension MultiTrackAudioHostController {
             self?.stagedOutputWorkerLoop()
         }
         stagedOutputThread.name = "SimpleAUHost.MultiTrackStagedOutput"
-        stagedOutputThread.qualityOfService = .userInitiated
+        stagedOutputThread.qualityOfService = .userInteractive
         self.stagedOutputThread = stagedOutputThread
         stagedOutputThread.start()
     }
@@ -2616,7 +2658,7 @@ private extension MultiTrackAudioHostController {
 
     func stagedOutputWorkerLoop() {
         guard let configuration, !(bufferedTrackRuntimes.isEmpty && broadcastTrackRuntimes.isEmpty) else { return }
-        promoteCurrentThreadToAudioWorkerQoS()
+        promoteCurrentThreadToAudioWorkerQoS(QOS_CLASS_USER_INTERACTIVE)
         let frames = configuration.bufferSize
 
         while shouldStagedOutputWorkerContinue() && !Thread.current.isCancelled {
@@ -2627,9 +2669,7 @@ private extension MultiTrackAudioHostController {
             let hasRingSpace = sharedStagedOutputBuffers.allSatisfy {
                 SAHFloatRingBufferAvailableWrite(&$0.ring) >= UInt32(frames)
             }
-            let hasTrackOutput = (bufferedTrackRuntimes + broadcastTrackRuntimes).contains { runtime in
-                runtime.hasBufferedOutput(frames: frames)
-            }
+            let hasTrackOutput = canStageNonRealtimeOutput(frames: frames)
 
             guard hasRingSpace, hasTrackOutput else {
                 stagedOutputWakeup.wait()
@@ -2640,9 +2680,7 @@ private extension MultiTrackAudioHostController {
                 clearAudioBuffer(pointer, frameCount: frames)
             }
 
-            for runtime in bufferedTrackRuntimes + broadcastTrackRuntimes {
-                runtime.stageBufferedOutput(into: stagedOutputScratchBuffers, frames: frames)
-            }
+            stageNonRealtimeOutput(into: stagedOutputScratchBuffers, frames: frames)
 
             for (index, buffer) in sharedStagedOutputBuffers.enumerated() {
                 let writtenFrames = SAHFloatRingBufferWrite(&buffer.ring, stagedOutputScratchBuffers[index], UInt32(frames))
@@ -2658,7 +2696,7 @@ private extension MultiTrackAudioHostController {
     func drainStagedOutput(into outputBuffers: UnsafeMutableAudioBufferListPointer, frameCount: Int) {
         guard !sharedStagedOutputBuffers.isEmpty else { return }
         let requestedFrames = UInt32(frameCount)
-        let prerollFrames = UInt32(max(configuration?.bufferSize ?? frameCount, frameCount * 2))
+        let prerollFrames = UInt32(max(stagedOutputPrerollFrames, frameCount * 2))
         let minAvailable = sharedStagedOutputBuffers.reduce(UInt32.max) { partialResult, buffer in
             min(partialResult, SAHFloatRingBufferAvailableRead(&buffer.ring))
         }
@@ -2668,6 +2706,12 @@ private extension MultiTrackAudioHostController {
                 return
             }
             stagedOutputPrimed = true
+        }
+
+        guard minAvailable >= requestedFrames else {
+            stagedOutputPrimed = false
+            recordDroppedFrames(requestedFrames - minAvailable)
+            return
         }
 
         var droppedFrames: UInt32 = 0
@@ -2686,6 +2730,39 @@ private extension MultiTrackAudioHostController {
         if droppedFrames > 0 {
             stagedOutputPrimed = false
             recordDroppedFrames(droppedFrames)
+        }
+    }
+
+    func maxNonRealtimeProcessingFrames() -> Int {
+        var maxFrames = 0
+        for runtime in bufferedTrackRuntimes {
+            maxFrames = max(maxFrames, runtime.processingFrames)
+        }
+        for runtime in broadcastTrackRuntimes {
+            maxFrames = max(maxFrames, runtime.processingFrames)
+        }
+        return maxFrames
+    }
+
+    func canStageNonRealtimeOutput(frames: Int) -> Bool {
+        for runtime in bufferedTrackRuntimes where !runtime.hasBufferedOutput(frames: frames) {
+            return false
+        }
+        for runtime in broadcastTrackRuntimes where !runtime.hasBufferedOutput(frames: frames) {
+            return false
+        }
+        return !bufferedTrackRuntimes.isEmpty || !broadcastTrackRuntimes.isEmpty
+    }
+
+    func stageNonRealtimeOutput(
+        into stagedOutputBuffers: [UnsafeMutablePointer<Float>],
+        frames: Int
+    ) {
+        for runtime in bufferedTrackRuntimes {
+            runtime.stageBufferedOutput(into: stagedOutputBuffers, frames: frames)
+        }
+        for runtime in broadcastTrackRuntimes {
+            runtime.stageBufferedOutput(into: stagedOutputBuffers, frames: frames)
         }
     }
 

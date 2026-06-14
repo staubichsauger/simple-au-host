@@ -45,4 +45,19 @@ final class SessionStoreTests: XCTestCase {
         XCTAssertEqual(song.key.title, "C Major")
     }
 
+    func testLatencyBufferSettingsDecodeBroadcastPrerollAsOneForOlderFiles() throws {
+        let json = """
+        {
+          "bufferedFrames": 128,
+          "broadcastFrames": 512
+        }
+        """
+
+        let settings = try JSONDecoder().decode(MultiTrackLatencyBufferSettings.self, from: Data(json.utf8))
+
+        XCTAssertEqual(settings.bufferedFrames, 128)
+        XCTAssertEqual(settings.broadcastFrames, 512)
+        XCTAssertEqual(settings.broadcastPrerollMultiplier, 1)
+    }
+
 }

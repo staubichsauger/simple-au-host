@@ -53,6 +53,7 @@ final class MultiTrackViewModel: ObservableObject {
     @Published var customBufferSizeText = String(DefaultBufferSizes.hardwareFrames)
     @Published var bufferedInternalBufferText = String(DefaultBufferSizes.bufferedFrames)
     @Published var broadcastInternalBufferText = String(DefaultBufferSizes.broadcastFrames)
+    @Published var broadcastPrerollMultiplier = DefaultBufferSizes.broadcastPrerollMultiplier
     @Published var tracks: [MultiTrackTrackConfiguration] = []
     @Published var isRunning = false
     @Published var isBusy = false
@@ -487,6 +488,7 @@ final class MultiTrackViewModel: ObservableObject {
         latencyBufferSettings = MultiTrackLatencyBufferSettings(hardwareBufferSize: selectedBufferSize)
         bufferedInternalBufferText = String(latencyBufferSettings.bufferedFrames)
         broadcastInternalBufferText = String(latencyBufferSettings.broadcastFrames)
+        broadcastPrerollMultiplier = latencyBufferSettings.broadcastPrerollMultiplier
         tracks = []
         addTrack(layout: .mono)
         wavesTuneState = MultiTrackWavesTuneState()
@@ -1033,8 +1035,11 @@ final class MultiTrackViewModel: ObservableObject {
             hardwareBufferSize: selectedBufferSize
         )
         let latencyClassFrames = max(0, internalFrames - selectedBufferSize)
+        let broadcastSafetyFrames = track.latencyClass == .broadcast
+            ? max(0, latencyBufferSettings.broadcastPrerollMultiplier - 1) * internalFrames
+            : 0
         let pluginLatencyFrames = trackPluginLatencyFrames[track.id] ?? 0
-        let addedFrames = latencyClassFrames + pluginLatencyFrames
+        let addedFrames = latencyClassFrames + broadcastSafetyFrames + pluginLatencyFrames
         let sampleRate = selectedInputDevice?.nominalSampleRate ?? selectedOutputDevice?.nominalSampleRate ?? 0
         guard sampleRate > 0 else {
             return "+\(addedFrames) fr"
@@ -1275,6 +1280,13 @@ final class MultiTrackViewModel: ObservableObject {
         applyLatencyBufferText(broadcastInternalBufferText, for: .broadcast)
     }
 
+    func setBroadcastPrerollMultiplier(_ multiplier: Int) {
+        let sanitizedMultiplier = normalizedBroadcastPrerollMultiplier(multiplier)
+        broadcastPrerollMultiplier = sanitizedMultiplier
+        latencyBufferSettings.broadcastPrerollMultiplier = sanitizedMultiplier
+        statusMessage = "Ready."
+    }
+
     func toggleStartStop() {
         if isRunning {
             stopEngine()
@@ -1412,8 +1424,7 @@ final class MultiTrackViewModel: ObservableObject {
         selectedBufferSize = session.bufferSize
         customBufferSizeText = String(session.bufferSize)
         latencyBufferSettings = session.latencyBufferSettings
-        bufferedInternalBufferText = String(session.latencyBufferSettings.bufferedFrames)
-        broadcastInternalBufferText = String(session.latencyBufferSettings.broadcastFrames)
+        sanitizeLatencyBufferSettings()
         tracks = session.tracks.isEmpty
             ? [MultiTrackTrackConfiguration(name: "Track 1", layout: .mono)]
             : session.tracks
@@ -1424,7 +1435,6 @@ final class MultiTrackViewModel: ObservableObject {
         wavesTuneState.normalize()
 
         sanitizeTracks(clampTrackRouting: false)
-        sanitizeLatencyBufferSettings()
         updateSessionWarnings()
 
         isApplyingSessionState = false
@@ -1463,8 +1473,16 @@ final class MultiTrackViewModel: ObservableObject {
     private func sanitizeLatencyBufferSettings() {
         latencyBufferSettings.bufferedFrames = normalizedInternalBufferSize(latencyBufferSettings.bufferedFrames)
         latencyBufferSettings.broadcastFrames = normalizedInternalBufferSize(latencyBufferSettings.broadcastFrames)
+        latencyBufferSettings.broadcastPrerollMultiplier = normalizedBroadcastPrerollMultiplier(
+            latencyBufferSettings.broadcastPrerollMultiplier
+        )
         bufferedInternalBufferText = String(latencyBufferSettings.bufferedFrames)
         broadcastInternalBufferText = String(latencyBufferSettings.broadcastFrames)
+        broadcastPrerollMultiplier = latencyBufferSettings.broadcastPrerollMultiplier
+    }
+
+    private func normalizedBroadcastPrerollMultiplier(_ value: Int) -> Int {
+        min(max(value, 1), 3)
     }
 
     private func updateSessionWarnings() {
@@ -1999,6 +2017,13 @@ final class MultiTrackViewModel: ObservableObject {
             .store(in: &persistenceCancellables)
 
         $broadcastInternalBufferText
+            .dropFirst()
+            .sink { [weak self] _ in
+                self?.markSessionAsEdited()
+            }
+            .store(in: &persistenceCancellables)
+
+        $broadcastPrerollMultiplier
             .dropFirst()
             .sink { [weak self] _ in
                 self?.markSessionAsEdited()

@@ -6,6 +6,7 @@ enum DefaultBufferSizes {
     static let hardwareFrames = 32
     static let bufferedFrames = 128
     static let broadcastFrames = 512
+    static let broadcastPrerollMultiplier = 1
 
     static func preferredHardwareBufferSize(from candidates: [Int]) -> Int? {
         let sortedCandidates = candidates.sorted()
@@ -53,13 +54,16 @@ enum TrackChannelLayout: String, CaseIterable, Codable, Identifiable {
 struct MultiTrackLatencyBufferSettings: Codable, Hashable {
     var bufferedFrames: Int
     var broadcastFrames: Int
+    var broadcastPrerollMultiplier: Int
 
     init(
         bufferedFrames: Int,
-        broadcastFrames: Int
+        broadcastFrames: Int,
+        broadcastPrerollMultiplier: Int = DefaultBufferSizes.broadcastPrerollMultiplier
     ) {
         self.bufferedFrames = bufferedFrames
         self.broadcastFrames = broadcastFrames
+        self.broadcastPrerollMultiplier = broadcastPrerollMultiplier
     }
 
     init(hardwareBufferSize: Int) {
@@ -71,6 +75,23 @@ struct MultiTrackLatencyBufferSettings: Codable, Hashable {
             defaultFrames: DefaultBufferSizes.broadcastFrames,
             hardwareBufferSize: hardwareBufferSize
         )
+        self.broadcastPrerollMultiplier = DefaultBufferSizes.broadcastPrerollMultiplier
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case bufferedFrames
+        case broadcastFrames
+        case broadcastPrerollMultiplier
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        bufferedFrames = try container.decode(Int.self, forKey: .bufferedFrames)
+        broadcastFrames = try container.decode(Int.self, forKey: .broadcastFrames)
+        broadcastPrerollMultiplier = try container.decodeIfPresent(
+            Int.self,
+            forKey: .broadcastPrerollMultiplier
+        ) ?? DefaultBufferSizes.broadcastPrerollMultiplier
     }
 
     func internalFrames(
