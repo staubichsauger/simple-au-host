@@ -1125,7 +1125,11 @@ private extension MultiTrackAudioHostController {
         peakOutputCallbackFrames.reset()
         peakSharedInputRingOccupancyFrames.reset()
         peakStagedOutputRingOccupancyFrames.reset()
-        for shard in runtimeCollectionsSnapshot().bufferedWorkerShards {
+        let snapshot = runtimeCollectionsSnapshot()
+        for runtime in snapshot.trackRuntimes {
+            runtime.resetTelemetry()
+        }
+        for shard in snapshot.bufferedWorkerShards {
             shard.resetTelemetry()
         }
     }

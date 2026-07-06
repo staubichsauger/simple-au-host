@@ -36,9 +36,7 @@ extension MultiTrackAudioHostController {
         private let droppedFrameCounter = AtomicCounter()
         private let peakInputRingOccupancyFrames = AtomicCounter()
         private let peakOutputRingOccupancyFrames = AtomicCounter()
-        private let peakRenderDurationNanoseconds = AtomicCounter()
-        private let totalRenderDurationNanoseconds = AtomicCounter()
-        private let renderPassCount = AtomicCounter()
+        private let renderTelemetry = RenderTelemetry()
 
         init(
             configuration: MultiTrackTrackConfiguration,
@@ -120,13 +118,11 @@ extension MultiTrackAudioHostController {
         }
 
         func peakRenderDurationMicros() -> UInt64 {
-            peakRenderDurationNanoseconds.load() / 1_000
+            renderTelemetry.peakDurationMicros()
         }
 
         func averageRenderDurationMicros() -> UInt64 {
-            let passes = renderPassCount.load()
-            guard passes > 0 else { return 0 }
-            return (totalRenderDurationNanoseconds.load() / passes) / 1_000
+            renderTelemetry.averageDurationMicros()
         }
 
         func hasBufferedOutput(frames: Int) -> Bool {
@@ -150,6 +146,10 @@ extension MultiTrackAudioHostController {
         func resetDropoutCounters() {
             audioDropoutCounter.reset()
             droppedFrameCounter.reset()
+        }
+
+        func resetTelemetry() {
+            renderTelemetry.reset()
         }
 
         var isRealtime: Bool {
@@ -518,9 +518,7 @@ extension MultiTrackAudioHostController {
         }
 
         private func recordRenderDuration(_ nanoseconds: UInt64) {
-            peakRenderDurationNanoseconds.storeMax(nanoseconds)
-            totalRenderDurationNanoseconds.add(nanoseconds)
-            renderPassCount.increment()
+            renderTelemetry.record(durationNanoseconds: nanoseconds)
         }
 
         func serializedPluginStates() -> [UUID: Data] {

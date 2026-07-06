@@ -478,6 +478,34 @@ final class AtomicCounter: @unchecked Sendable {
     }
 }
 
+final class RenderTelemetry: @unchecked Sendable {
+    private let peakRenderDurationNanoseconds = AtomicCounter()
+    private let totalRenderDurationNanoseconds = AtomicCounter()
+    private let renderPassCount = AtomicCounter()
+
+    func record(durationNanoseconds: UInt64) {
+        peakRenderDurationNanoseconds.storeMax(durationNanoseconds)
+        totalRenderDurationNanoseconds.add(durationNanoseconds)
+        renderPassCount.increment()
+    }
+
+    func peakDurationMicros() -> UInt64 {
+        peakRenderDurationNanoseconds.load() / 1_000
+    }
+
+    func averageDurationMicros() -> UInt64 {
+        let passes = renderPassCount.load()
+        guard passes > 0 else { return 0 }
+        return (totalRenderDurationNanoseconds.load() / passes) / 1_000
+    }
+
+    func reset() {
+        peakRenderDurationNanoseconds.reset()
+        totalRenderDurationNanoseconds.reset()
+        renderPassCount.reset()
+    }
+}
+
 /// Owns a heap-allocated `SAHFloatRingBuffer` so its `_Atomic` read/write
 /// indices always share one stable address across the producer and consumer
 /// threads. See `AtomicCounter` for why inout access is not safe.

@@ -23,9 +23,7 @@ extension MultiTrackAudioHostController {
         private var shouldRun = false
 
         private let peakInputRingOccupancyFrames = AtomicCounter()
-        private let peakRenderDurationNanoseconds = AtomicCounter()
-        private let totalRenderDurationNanoseconds = AtomicCounter()
-        private let renderPassCount = AtomicCounter()
+        private let renderTelemetry = RenderTelemetry()
         private let peakUtilizationPercent = AtomicCounter()
         private let peakWakeupsPerSecond = AtomicCounter()
 
@@ -74,13 +72,11 @@ extension MultiTrackAudioHostController {
         }
 
         func peakRenderDurationMicros() -> UInt64 {
-            peakRenderDurationNanoseconds.load() / 1_000
+            renderTelemetry.peakDurationMicros()
         }
 
         func averageRenderDurationMicros() -> UInt64 {
-            let passes = renderPassCount.load()
-            guard passes > 0 else { return 0 }
-            return (totalRenderDurationNanoseconds.load() / passes) / 1_000
+            renderTelemetry.averageDurationMicros()
         }
 
         func peakUtilization() -> UInt64 {
@@ -93,9 +89,7 @@ extension MultiTrackAudioHostController {
 
         func resetTelemetry() {
             peakInputRingOccupancyFrames.reset()
-            peakRenderDurationNanoseconds.reset()
-            totalRenderDurationNanoseconds.reset()
-            renderPassCount.reset()
+            renderTelemetry.reset()
             peakUtilizationPercent.reset()
             peakWakeupsPerSecond.reset()
         }
@@ -238,9 +232,7 @@ extension MultiTrackAudioHostController {
                 }
                 signalStagedOutput()
                 let roundDuration = currentUptimeNanoseconds() - roundStart
-                peakRenderDurationNanoseconds.storeMax(roundDuration)
-                totalRenderDurationNanoseconds.add(roundDuration)
-                renderPassCount.increment()
+                renderTelemetry.record(durationNanoseconds: roundDuration)
                 windowActive += roundDuration
                 updateTimingWindow(
                     now: currentUptimeNanoseconds(),
