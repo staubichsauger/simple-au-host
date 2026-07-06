@@ -20,11 +20,6 @@ enum StartupSavedSessionSelection: String, CaseIterable, Identifiable {
 
 @MainActor
 final class MultiTrackViewModel: ObservableObject {
-    private struct CopiedTrackProcessing {
-        let sourceTrackName: String
-        let inserts: [MultiTrackTrackConfiguration.PluginInsert]
-    }
-
     struct SessionDeviceResolutionAlert: Identifiable {
         let id = UUID()
         let message: String
@@ -39,7 +34,7 @@ final class MultiTrackViewModel: ObservableObject {
         }
     }
 
-    private struct SessionReloadRetryContext {
+    struct SessionReloadRetryContext {
         let sessionURL: URL
         let reopensAsTemplate: Bool
     }
@@ -69,10 +64,10 @@ final class MultiTrackViewModel: ObservableObject {
     @Published private(set) var realtimeTelemetrySummary = "Realtime: 0 tracks, render avg/peak 0 / 0 us"
     @Published private(set) var bufferedTelemetrySummary = "Buffered: 0 tracks, 0 shards, track/shard avg 0 / 0 us, peak 0 / 0 us, util 0%, wakeups 0/s"
     @Published private(set) var broadcastTelemetrySummary = "Broadcast: 0 tracks, 0 shards, track/shard avg 0 / 0 us, peak 0 / 0 us, util 0%, wakeups 0/s"
-    @Published private(set) var currentSessionName = "Untitled Session"
-    @Published private(set) var sessionWarnings: [String] = []
-    @Published private(set) var managedSessions: [ManagedSessionFile] = []
-    @Published private(set) var hasUnsavedChanges = false
+    @Published var currentSessionName = "Untitled Session"
+    @Published var sessionWarnings: [String] = []
+    @Published var managedSessions: [ManagedSessionFile] = []
+    @Published var hasUnsavedChanges = false
     @Published var sessionDeviceResolutionAlert: SessionDeviceResolutionAlert?
     @Published var startFailureAlert: StartFailureAlert?
     @Published var launchesIntoPerformViewOnStartup = false
@@ -81,31 +76,31 @@ final class MultiTrackViewModel: ObservableObject {
     @Published var startupSavedSessionSelection: StartupSavedSessionSelection = .lastSaved
     @Published var startupSpecificSessionURL: URL?
     @Published var opensStartupSpecificSessionAsTemplate = false
-    @Published private(set) var lastSavedSessionURL: URL?
-    @Published private(set) var companionControlEndpointURLString = CompanionControlDefaults.baseURLString
-    @Published private(set) var companionControlStatus = "Starting local Companion control API..."
+    @Published var lastSavedSessionURL: URL?
+    @Published var companionControlEndpointURLString = CompanionControlDefaults.baseURLString
+    @Published var companionControlStatus = "Starting local Companion control API..."
     @Published var wavesTuneState = MultiTrackWavesTuneState()
     @Published private var trackPluginLatencyFrames: [UUID: Int] = [:]
 
     private let catalog = AudioHostController()
-    private let controller = MultiTrackAudioHostController()
-    private let companionControlServer = CompanionControlServer()
-    private let userDefaults: UserDefaults
-    private var latencyBufferSettings = MultiTrackLatencyBufferSettings(hardwareBufferSize: DefaultBufferSizes.hardwareFrames)
+    let controller = MultiTrackAudioHostController()
+    let companionControlServer = CompanionControlServer()
+    let startupPreferencesStore: StartupPreferencesStore
+    var latencyBufferSettings = MultiTrackLatencyBufferSettings(hardwareBufferSize: DefaultBufferSizes.hardwareFrames)
     private var audioDropoutMonitorTask: Task<Void, Never>?
     private var startupDropoutResetTask: Task<Void, Never>?
-    private var currentSessionURL: URL?
+    var currentSessionURL: URL?
     private var telemetryPublishingEnabled = false
-    private var copiedTrackProcessing: CopiedTrackProcessing?
+    var copiedTrackProcessing: CopiedTrackProcessing?
     private var persistenceCancellables = Set<AnyCancellable>()
-    private var isApplyingSessionState = false
-    private var hasAppliedStartupSessionPreference = false
+    var isApplyingSessionState = false
+    var hasAppliedStartupSessionPreference = false
     private var hasAppliedStartupEnginePreference = false
-    private var isCurrentSessionStartupTemplate = false
-    private var sessionReloadRetryContext: SessionReloadRetryContext?
+    var isCurrentSessionStartupTemplate = false
+    var sessionReloadRetryContext: SessionReloadRetryContext?
 
     init(userDefaults: UserDefaults = .standard) {
-        self.userDefaults = userDefaults
+        self.startupPreferencesStore = StartupPreferencesStore(userDefaults: userDefaults)
         loadPersistedStartupPreferences()
         setupSessionChangeObservers()
         setupPluginRegistrationObserver()
@@ -235,89 +230,6 @@ final class MultiTrackViewModel: ObservableObject {
         .compactMap { $0 }
     }
 
-    var configuredWavesTuneRealtimeInsertCount: Int {
-        tracks
-            .filter(\.isEnabled)
-            .reduce(into: 0) { count, track in
-                for insert in track.plugins {
-                    guard let pluginID = insert.pluginID,
-                          let plugin = plugins.first(where: { $0.id == pluginID }),
-                          isWavesTuneRealtimePlugin(plugin) else {
-                        continue
-                    }
-                    count += 1
-                }
-            }
-    }
-
-    var performTracks: [MultiTrackTrackConfiguration] {
-        tracks.filter(trackHasConfiguredWavesTuneRealtimeInsert)
-    }
-
-    var stagedWavesTuneKeyTitle: String {
-        wavesTuneState.stagedKey.title
-    }
-
-    var appliedWavesTuneKeyTitle: String {
-        wavesTuneState.appliedKey.title
-    }
-
-    var canApplyStagedWavesTuneKey: Bool {
-        wavesTuneState.stagedKey.normalized != wavesTuneState.appliedKey.normalized
-    }
-
-    var wavesTuneSongs: [WavesTuneSongEntry] {
-        wavesTuneState.songs
-    }
-
-    var selectedWavesTuneSong: WavesTuneSongEntry? {
-        guard let selectedSongID = wavesTuneState.selectedSongID else { return nil }
-        return wavesTuneState.songs.first { $0.id == selectedSongID }
-    }
-
-    var selectedWavesTuneSongIndex: Int? {
-        guard let selectedSongID = wavesTuneState.selectedSongID else { return nil }
-        return wavesTuneState.songs.firstIndex { $0.id == selectedSongID }
-    }
-
-    var selectedWavesTuneSongTitle: String {
-        guard let selectedWavesTuneSongIndex else { return "No Song Selected" }
-        return wavesTuneSongDisplayTitle(for: wavesTuneState.songs[selectedWavesTuneSongIndex], index: selectedWavesTuneSongIndex)
-    }
-
-    var selectedWavesTuneSongKeyTitle: String {
-        selectedWavesTuneSong?.key.title ?? "Select a song to apply its key."
-    }
-
-    var previousWavesTuneSongIndex: Int? {
-        guard !wavesTuneState.songs.isEmpty else { return nil }
-        guard let selectedWavesTuneSongIndex else { return wavesTuneState.songs.count - 1 }
-        let previousIndex = selectedWavesTuneSongIndex - 1
-        return wavesTuneState.songs.indices.contains(previousIndex) ? previousIndex : nil
-    }
-
-    var nextWavesTuneSongIndex: Int? {
-        guard !wavesTuneState.songs.isEmpty else { return nil }
-        guard let selectedWavesTuneSongIndex else { return 0 }
-        let nextIndex = selectedWavesTuneSongIndex + 1
-        return wavesTuneState.songs.indices.contains(nextIndex) ? nextIndex : nil
-    }
-
-    var canSelectPreviousWavesTuneSong: Bool {
-        guard let selectedWavesTuneSongIndex else { return false }
-        return selectedWavesTuneSongIndex > 0
-    }
-
-    var canSelectNextWavesTuneSong: Bool {
-        guard !wavesTuneState.songs.isEmpty else { return false }
-        guard let selectedWavesTuneSongIndex else { return true }
-        return selectedWavesTuneSongIndex < wavesTuneState.songs.count - 1
-    }
-
-    var canSaveStagedKeyToSelectedWavesTuneSong: Bool {
-        selectedWavesTuneSongIndex != nil
-    }
-
     func load() {
         Task {
             await loadAsync()
@@ -378,39 +290,6 @@ final class MultiTrackViewModel: ObservableObject {
         }
     }
 
-    func applyStartupSessionPreferenceIfNeededAsync() async {
-        guard !hasAppliedStartupSessionPreference else { return }
-        hasAppliedStartupSessionPreference = true
-
-        guard loadsSavedSessionOnStartup else { return }
-        let startupURL: URL?
-        switch startupSavedSessionSelection {
-        case .lastSaved:
-            startupURL = lastSavedSessionURL
-        case .specific:
-            startupURL = startupSpecificSessionURL
-        }
-
-        guard let startupURL else {
-            statusMessage = "Choose a startup show before enabling automatic show loading."
-            return
-        }
-
-        guard FileManager.default.fileExists(atPath: startupURL.path) else {
-            statusMessage = "Startup show \(sessionDisplayName(for: startupURL)) is unavailable."
-            return
-        }
-
-        do {
-            try await loadSessionAsync(from: startupURL)
-            if startupSavedSessionSelection == .specific && opensStartupSpecificSessionAsTemplate {
-                openCurrentSessionAsTemplate()
-            }
-        } catch {
-            statusMessage = "Failed to load startup show \(sessionDisplayName(for: startupURL)): \(error.localizedDescription)"
-        }
-    }
-
     func applyStartupEnginePreferenceIfNeeded() {
         guard !hasAppliedStartupEnginePreference else { return }
         hasAppliedStartupEnginePreference = true
@@ -423,369 +302,6 @@ final class MultiTrackViewModel: ObservableObject {
         selectedOutputDeviceID = selectedInputDeviceID
         sanitizeTracks(clampTrackRouting: false)
         updateSessionWarnings()
-    }
-
-    func retrySessionDeviceResolution() {
-        guard let retryContext = sessionReloadRetryContext else { return }
-
-        sessionDeviceResolutionAlert = nil
-        Task { [weak self] in
-            guard let self else { return }
-            // Rescan devices first so the session's saved device UID can resolve.
-            await self.loadAsync()
-            do {
-                try await self.loadSessionAsync(from: retryContext.sessionURL)
-                if retryContext.reopensAsTemplate {
-                    self.openCurrentSessionAsTemplate()
-                }
-                self.startEngine()
-            } catch {
-                self.statusMessage = "Failed to reload \(self.sessionDisplayName(for: retryContext.sessionURL)): \(error.localizedDescription)"
-            }
-        }
-    }
-
-    func createNewSession() {
-        guard !isRunning else { return }
-        isApplyingSessionState = true
-        selectedAudioDeviceID = inputDevices.first?.id
-        selectedBufferSize = DefaultBufferSizes.preferredHardwareBufferSize(from: availableBufferSizes) ?? DefaultBufferSizes.hardwareFrames
-        customBufferSizeText = String(selectedBufferSize)
-        latencyBufferSettings = MultiTrackLatencyBufferSettings(hardwareBufferSize: selectedBufferSize)
-        bufferedInternalBufferText = String(latencyBufferSettings.bufferedFrames)
-        broadcastInternalBufferText = String(latencyBufferSettings.broadcastFrames)
-        broadcastPrerollMultiplier = latencyBufferSettings.broadcastPrerollMultiplier
-        tracks = []
-        addTrack(layout: .mono)
-        wavesTuneState = MultiTrackWavesTuneState()
-        currentSessionURL = nil
-        isCurrentSessionStartupTemplate = false
-        sessionReloadRetryContext = nil
-        sessionDeviceResolutionAlert = nil
-        startFailureAlert = nil
-        currentSessionName = "Untitled Session"
-        sessionWarnings = []
-        statusMessage = "Ready."
-        isApplyingSessionState = false
-        hasUnsavedChanges = false
-    }
-
-    func sessionDocumentForExport() -> MultiTrackSessionDocument {
-        MultiTrackSessionDocument(session: makeSessionFile())
-    }
-
-    func suggestedSessionFilename() -> String {
-        if isCurrentSessionStartupTemplate {
-            return sanitizedSessionFilename(from: "\(currentSessionName)-\(Self.templateDateFormatter.string(from: Date()))")
-        }
-        return sanitizedSessionFilename(from: currentSessionName)
-    }
-
-    /// Synchronous save, kept deliberately: the window/app close flow
-    /// (`AppCloseCoordinator`) must know whether the save succeeded before the
-    /// close proceeds. All other save paths should use `saveSessionAsync`.
-    func saveSession() throws {
-        guard let currentSessionURL else {
-            throw AudioHostError("Choose Save As to create a session file first.")
-        }
-        try saveSession(to: currentSessionURL)
-    }
-
-    /// Synchronous save for the close flow and Save As panel; see `saveSession()`.
-    func saveSession(to url: URL) throws {
-        captureLivePluginStates()
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let data = try encoder.encode(makeSessionFile())
-        try data.write(to: url, options: .atomic)
-        currentSessionURL = url
-        isCurrentSessionStartupTemplate = false
-        sessionReloadRetryContext = SessionReloadRetryContext(sessionURL: url, reopensAsTemplate: false)
-        sessionDeviceResolutionAlert = nil
-        currentSessionName = sessionDisplayName(for: url)
-        recordLastSavedSessionURL(url)
-        hasUnsavedChanges = false
-        try refreshManagedSessions()
-        statusMessage = "Saved \(currentSessionName)."
-    }
-
-    func saveSessionAsync() async throws {
-        guard let currentSessionURL else {
-            throw AudioHostError("Choose Save As to create a session file first.")
-        }
-        try await saveSessionAsync(to: currentSessionURL)
-    }
-
-    func saveSessionAsync(to url: URL) async throws {
-        captureLivePluginStates()
-        let sessionFile = makeSessionFile()
-        try await Task.detached(priority: .userInitiated) {
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(sessionFile)
-            try data.write(to: url, options: .atomic)
-        }.value
-
-        currentSessionURL = url
-        isCurrentSessionStartupTemplate = false
-        sessionReloadRetryContext = SessionReloadRetryContext(sessionURL: url, reopensAsTemplate: false)
-        sessionDeviceResolutionAlert = nil
-        currentSessionName = sessionDisplayName(for: url)
-        recordLastSavedSessionURL(url)
-        hasUnsavedChanges = false
-        managedSessions = try await Task.detached(priority: .userInitiated) {
-            try SAHManagedSessionStore.managedSessions()
-        }.value
-        statusMessage = "Saved \(currentSessionName)."
-    }
-
-    func rememberExportedSessionURL(_ url: URL) {
-        currentSessionURL = url
-        isCurrentSessionStartupTemplate = false
-        sessionReloadRetryContext = SessionReloadRetryContext(sessionURL: url, reopensAsTemplate: false)
-        currentSessionName = sessionDisplayName(for: url)
-        recordLastSavedSessionURL(url)
-        statusMessage = "Saved \(currentSessionName)."
-    }
-
-    func loadSessionAsync(from url: URL) async throws {
-        let (session, sessions) = try await Task.detached(priority: .userInitiated) {
-            let data = try Data(contentsOf: url)
-            let decodedSession: MultiTrackSessionFile
-            do {
-                decodedSession = try JSONDecoder().decode(MultiTrackSessionFile.self, from: data)
-            } catch {
-                throw AudioHostError("Failed to read the multi-track session file: \(error.localizedDescription)")
-            }
-            try decodedSession.validateFormatVersion()
-            return (
-                decodedSession,
-                try SAHManagedSessionStore.managedSessions()
-            )
-        }.value
-
-        sessionDeviceResolutionAlert = nil
-        applySession(session, sourceURL: url)
-        recordLastSavedSessionURL(url)
-        managedSessions = sessions
-    }
-
-    func refreshManagedSessions() throws {
-        managedSessions = try SAHManagedSessionStore.managedSessions()
-    }
-
-    func setLoadsSavedSessionOnStartup(_ isEnabled: Bool) {
-        loadsSavedSessionOnStartup = isEnabled
-        persistStartupPreferences()
-    }
-
-    func setLaunchesIntoPerformViewOnStartup(_ isEnabled: Bool) {
-        launchesIntoPerformViewOnStartup = isEnabled
-        persistStartupPreferences()
-    }
-
-    func setStartsEngineOnLaunch(_ isEnabled: Bool) {
-        startsEngineOnLaunch = isEnabled
-        persistStartupPreferences()
-    }
-
-    func setStartupSavedSessionSelection(_ selection: StartupSavedSessionSelection) {
-        startupSavedSessionSelection = selection
-        persistStartupPreferences()
-    }
-
-    func setStartupSpecificSessionURL(_ url: URL?) {
-        startupSpecificSessionURL = url
-        if url != nil {
-            startupSavedSessionSelection = .specific
-        }
-        persistStartupPreferences()
-    }
-
-    func setOpensStartupSpecificSessionAsTemplate(_ isEnabled: Bool) {
-        opensStartupSpecificSessionAsTemplate = isEnabled
-        persistStartupPreferences()
-    }
-
-    func managedSessionsDirectoryURL() throws -> URL {
-        try SAHManagedSessionStore.sessionsDirectoryURL()
-    }
-
-    func chainPresetsDirectoryURL() throws -> URL {
-        try SAHManagedSessionStore.chainPresetsDirectoryURL()
-    }
-
-    func parameterPresetsDirectoryURL() throws -> URL {
-        try SAHManagedSessionStore.parameterPresetsDirectoryURL()
-    }
-
-    func suggestedChainPresetFilename(for trackID: UUID) -> String {
-        guard let track = tracks.first(where: { $0.id == trackID }) else {
-            return sanitizedFilename(from: "Chain Preset", pathExtension: "sahchain")
-        }
-        return sanitizedFilename(from: "\(track.name) Chain", pathExtension: "sahchain")
-    }
-
-    func suggestedParameterPresetFilename(for trackID: UUID) -> String {
-        guard let track = tracks.first(where: { $0.id == trackID }) else {
-            return sanitizedFilename(from: "Parameter Preset", pathExtension: "sahparams")
-        }
-        return sanitizedFilename(from: "\(track.name) Parameters", pathExtension: "sahparams")
-    }
-
-    func saveChainPreset(for trackID: UUID, to url: URL) async throws {
-        if isRunning {
-            captureLivePluginStates()
-        }
-        guard let track = tracks.first(where: { $0.id == trackID }) else {
-            throw AudioHostError("The selected track could not be found.")
-        }
-
-        let preset = MultiTrackChainPresetFile(
-            name: track.name,
-            layout: track.layout,
-            plugins: track.plugins
-        )
-
-        let resolvedURL = normalizedURL(url, pathExtension: "sahchain")
-        try await Task.detached(priority: .userInitiated) {
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(preset)
-            try data.write(to: resolvedURL, options: .atomic)
-        }.value
-        statusMessage = "Saved chain preset \(resolvedURL.deletingPathExtension().lastPathComponent)."
-    }
-
-    func loadChainPreset(for trackID: UUID, from url: URL) async throws {
-        let preset: MultiTrackChainPresetFile = try await Task.detached(priority: .userInitiated) {
-            let data = try Data(contentsOf: url)
-            do {
-                let decoded = try JSONDecoder().decode(MultiTrackChainPresetFile.self, from: data)
-                try decoded.validateFormatVersion()
-                return decoded
-            } catch {
-                throw AudioHostError("Failed to read the chain preset file: \(error.localizedDescription)")
-            }
-        }.value
-
-        guard let trackIndex = tracks.firstIndex(where: { $0.id == trackID }) else {
-            throw AudioHostError("The selected track could not be found.")
-        }
-
-        guard tracks[trackIndex].layout == preset.layout else {
-            throw AudioHostError(
-                "\(tracks[trackIndex].name) is \(tracks[trackIndex].layout.title.lowercased()), " +
-                "but this chain preset requires \(preset.layout.title.lowercased())."
-            )
-        }
-
-        tracks[trackIndex].plugins = preset.plugins.map { insert in
-            MultiTrackTrackConfiguration.PluginInsert(
-                pluginID: insert.pluginID,
-                pluginStateData: insert.pluginStateData
-            )
-        }
-        updateSessionWarnings()
-        statusMessage = "Loaded chain preset \(url.deletingPathExtension().lastPathComponent) into \(tracks[trackIndex].name)."
-    }
-
-    func saveParameterPreset(for trackID: UUID, to url: URL) async throws {
-        if isRunning {
-            captureLivePluginStates()
-        }
-        guard let track = tracks.first(where: { $0.id == trackID }) else {
-            throw AudioHostError("The selected track could not be found.")
-        }
-
-        let pluginStates = track.plugins.compactMap { insert in
-            insert.pluginID.map { pluginID in
-                MultiTrackParameterPresetPluginState(
-                    pluginID: pluginID,
-                    pluginStateData: insert.pluginStateData
-                )
-            }
-        }
-
-        guard !pluginStates.isEmpty else {
-            throw AudioHostError("Add at least one plugin before saving a parameter preset.")
-        }
-
-        let preset = MultiTrackParameterPresetFile(
-            name: track.name,
-            plugins: pluginStates
-        )
-
-        let resolvedURL = normalizedURL(url, pathExtension: "sahparams")
-        try await Task.detached(priority: .userInitiated) {
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(preset)
-            try data.write(to: resolvedURL, options: .atomic)
-        }.value
-        statusMessage = "Saved parameter preset \(resolvedURL.deletingPathExtension().lastPathComponent)."
-    }
-
-    func loadParameterPreset(for trackID: UUID, from url: URL) async throws {
-        let preset: MultiTrackParameterPresetFile = try await Task.detached(priority: .userInitiated) {
-            let data = try Data(contentsOf: url)
-            do {
-                let decoded = try JSONDecoder().decode(MultiTrackParameterPresetFile.self, from: data)
-                try decoded.validateFormatVersion()
-                return decoded
-            } catch {
-                throw AudioHostError("Failed to read the parameter preset file: \(error.localizedDescription)")
-            }
-        }.value
-
-        guard let trackIndex = tracks.firstIndex(where: { $0.id == trackID }) else {
-            throw AudioHostError("The selected track could not be found.")
-        }
-
-        let pluginIndices = tracks[trackIndex].plugins.indices.filter { index in
-            tracks[trackIndex].plugins[index].pluginID != nil
-        }
-        let currentPluginIDs = pluginIndices.compactMap { index in
-            tracks[trackIndex].plugins[index].pluginID
-        }
-        let presetPluginIDs = preset.plugins.map(\.pluginID)
-
-        guard currentPluginIDs == presetPluginIDs else {
-            throw AudioHostError("Parameter presets require the exact same plugin chain in the same order.")
-        }
-
-        var failedPluginNames: [String] = []
-        if isRunning {
-            let stateMap = Dictionary(uniqueKeysWithValues: zip(pluginIndices, preset.plugins).compactMap { index, pluginState in
-                pluginState.pluginStateData.map { data in
-                    (tracks[trackIndex].plugins[index].id, data)
-                }
-            })
-            let failures = try controller.applyPluginStates(
-                for: tracks[trackIndex].id,
-                statesByInsertID: stateMap
-            )
-
-            for (position, pluginIndex) in pluginIndices.enumerated() {
-                let insertID = tracks[trackIndex].plugins[pluginIndex].id
-                if let failedName = failures[insertID] {
-                    failedPluginNames.append(failedName)
-                    continue
-                }
-                tracks[trackIndex].plugins[pluginIndex].pluginStateData = preset.plugins[position].pluginStateData
-            }
-        } else {
-            for (position, pluginIndex) in pluginIndices.enumerated() {
-                tracks[trackIndex].plugins[pluginIndex].pluginStateData = preset.plugins[position].pluginStateData
-            }
-        }
-
-        let presetName = url.deletingPathExtension().lastPathComponent
-        if failedPluginNames.isEmpty {
-            statusMessage = "Loaded parameter preset \(presetName) into \(tracks[trackIndex].name)."
-        } else {
-            statusMessage = "Loaded parameter preset \(presetName) with failures: \(failedPluginNames.joined(separator: ", "))."
-        }
     }
 
     func openPluginEditor(for trackID: UUID) {
@@ -913,48 +429,6 @@ final class MultiTrackViewModel: ObservableObject {
         updateSessionWarnings()
     }
 
-    func canPasteTrackProcessing(to trackID: UUID) -> Bool {
-        copiedTrackProcessing != nil && !isRunning && tracks.contains(where: { $0.id == trackID })
-    }
-
-    func copyTrackProcessing(from trackID: UUID) {
-        guard tracks.contains(where: { $0.id == trackID }) else { return }
-
-        if isRunning {
-            captureLivePluginStates()
-        }
-
-        guard let refreshedTrack = tracks.first(where: { $0.id == trackID }) else { return }
-        copiedTrackProcessing = CopiedTrackProcessing(
-            sourceTrackName: refreshedTrack.name,
-            inserts: refreshedTrack.plugins
-        )
-        statusMessage = refreshedTrack.plugins.isEmpty
-            ? "Copied empty processing from \(refreshedTrack.name)."
-            : "Copied processing from \(refreshedTrack.name)."
-    }
-
-    func pasteTrackProcessing(to trackID: UUID) {
-        guard !isRunning else {
-            statusMessage = "Stop the engine before pasting track processing."
-            return
-        }
-        guard let copiedTrackProcessing else {
-            statusMessage = "Copy a track’s processing first."
-            return
-        }
-        guard let trackIndex = tracks.firstIndex(where: { $0.id == trackID }) else { return }
-
-        tracks[trackIndex].plugins = copiedTrackProcessing.inserts.map { insert in
-            MultiTrackTrackConfiguration.PluginInsert(
-                pluginID: insert.pluginID,
-                pluginStateData: insert.pluginStateData
-            )
-        }
-        updateSessionWarnings()
-        statusMessage = "Pasted processing from \(copiedTrackProcessing.sourceTrackName) to \(tracks[trackIndex].name)."
-    }
-
     func availableInputStartChannels(for track: MultiTrackTrackConfiguration) -> [Int] {
         guard let selectedInputDevice else { return [track.inputStartChannel] }
         let maxStart = max(1, selectedInputDevice.inputChannelCount - track.channelCount + 1)
@@ -1015,204 +489,6 @@ final class MultiTrackViewModel: ObservableObject {
         return "+\(addedFrames) fr / \(Self.latencyFormatter.string(from: NSNumber(value: milliseconds)) ?? "0.0") ms"
     }
 
-    func setWavesTuneEnabled(_ isEnabled: Bool) {
-        wavesTuneState.isEnabled = isEnabled
-
-        guard isRunning else {
-            statusMessage = configuredWavesTuneRealtimeInsertCount > 0
-                ? "Waves Tune will start \(isEnabled ? "enabled" : "bypassed")."
-                : "No Waves Tune Real-Time inserts are configured."
-            return
-        }
-
-        do {
-            let affectedInstances = try controller.setWavesTuneRealtimeBypassed(!isEnabled)
-            statusMessage = affectedInstances > 0
-                ? "Set Waves Tune \(isEnabled ? "active" : "bypassed") on \(affectedInstances) instance(s)."
-                : "No running Waves Tune Real-Time instances were found."
-        } catch {
-            statusMessage = error.localizedDescription
-        }
-    }
-
-    func setWavesTuneStrength(_ strength: WavesTuneStrengthPreset, for trackID: UUID) {
-        guard let trackIndex = tracks.firstIndex(where: { $0.id == trackID }) else { return }
-        let track = tracks[trackIndex]
-        guard track.wavesTuneStrength != strength else { return }
-
-        tracks[trackIndex].wavesTuneStrength = strength
-
-        guard strength != .custom else {
-            statusMessage = isRunning
-                ? "Left \(tracks[trackIndex].name) on its current Waves Tune settings."
-                : "\(tracks[trackIndex].name) will keep its current Waves Tune settings."
-            return
-        }
-
-        guard isRunning else {
-            statusMessage = trackHasConfiguredWavesTuneRealtimeInsert(tracks[trackIndex])
-                ? "\(tracks[trackIndex].name) tune strength saved as \(strength.title)."
-                : "\(tracks[trackIndex].name) does not have Waves Tune Real-Time loaded."
-            return
-        }
-
-        guard tracks[trackIndex].isEnabled else {
-            statusMessage = "\(tracks[trackIndex].name) is disabled. \(strength.title) will apply when the track is enabled and started."
-            return
-        }
-
-        do {
-            let affectedInstances = try controller.applyWavesTuneRealtimeStrength(strength, to: trackID)
-            refreshWavesTuneStrengthSelectionFromRunningEngine(for: trackID)
-            statusMessage = affectedInstances > 0
-                ? "Set \(tracks[trackIndex].name) to \(tracks[trackIndex].wavesTuneStrength.title) tune strength."
-                : "No running Waves Tune Real-Time instances were found on \(tracks[trackIndex].name)."
-        } catch {
-            statusMessage = error.localizedDescription
-        }
-    }
-
-    func setWavesTuneScaleMode(_ scaleMode: WavesTuneScaleMode) {
-        wavesTuneState.stagedKey.scaleMode = scaleMode
-    }
-
-    func setWavesTuneNoteLetter(_ noteLetter: WavesTuneNoteLetter) {
-        wavesTuneState.stagedKey.noteLetter = noteLetter
-        wavesTuneState.stagedKey.normalize()
-    }
-
-    func setWavesTuneAccidental(_ accidental: WavesTuneAccidental) {
-        guard WavesTuneKeySelection.supports(accidental: accidental, for: wavesTuneState.stagedKey.noteLetter) else {
-            return
-        }
-        wavesTuneState.stagedKey.accidental = accidental
-    }
-
-    func addWavesTuneSong(title: String, key: WavesTuneKeySelection) {
-        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedTitle.isEmpty else {
-            statusMessage = "Enter a song name."
-            return
-        }
-
-        let song = WavesTuneSongEntry(
-            title: trimmedTitle,
-            key: key.normalized
-        )
-        wavesTuneState.songs.append(song)
-        activateWavesTuneSong(at: wavesTuneState.songs.count - 1, action: "Added")
-    }
-
-    func removeWavesTuneSong(_ id: UUID) {
-        guard let index = wavesTuneState.songs.firstIndex(where: { $0.id == id }) else { return }
-        let removedTitle = wavesTuneSongDisplayTitle(for: wavesTuneState.songs[index], index: index)
-        let removedWasSelected = wavesTuneState.selectedSongID == id
-        wavesTuneState.songs.remove(at: index)
-
-        guard removedWasSelected else {
-            statusMessage = "Removed \(removedTitle)."
-            return
-        }
-
-        guard !wavesTuneState.songs.isEmpty else {
-            wavesTuneState.selectedSongID = nil
-            statusMessage = "Removed \(removedTitle)."
-            return
-        }
-
-        activateWavesTuneSong(at: min(index, wavesTuneState.songs.count - 1), action: "Selected")
-    }
-
-    func updateWavesTuneSongTitle(_ id: UUID, title: String) {
-        guard let index = wavesTuneState.songs.firstIndex(where: { $0.id == id }) else { return }
-        wavesTuneState.songs[index].title = title
-    }
-
-    func updateWavesTuneSongNotes(_ id: UUID, notes: String) {
-        guard let index = wavesTuneState.songs.firstIndex(where: { $0.id == id }) else { return }
-        wavesTuneState.songs[index].notes = notes
-    }
-
-    func moveWavesTuneSong(_ id: UUID, direction: Int) {
-        guard direction != 0 else { return }
-        guard let index = wavesTuneState.songs.firstIndex(where: { $0.id == id }) else { return }
-        let targetIndex = index + direction
-        guard wavesTuneState.songs.indices.contains(targetIndex) else { return }
-        let song = wavesTuneState.songs.remove(at: index)
-        wavesTuneState.songs.insert(song, at: targetIndex)
-        wavesTuneState.selectedSongID = song.id
-        statusMessage = "Moved \(wavesTuneSongDisplayTitle(for: song, index: targetIndex))."
-    }
-
-    func duplicateWavesTuneSong(_ id: UUID) {
-        guard let index = wavesTuneState.songs.firstIndex(where: { $0.id == id }) else { return }
-        let source = wavesTuneState.songs[index]
-        let duplicate = WavesTuneSongEntry(
-            title: "\(source.title) Copy",
-            key: source.key.normalized,
-            notes: source.notes
-        )
-        let targetIndex = index + 1
-        wavesTuneState.songs.insert(duplicate, at: targetIndex)
-        activateWavesTuneSong(at: targetIndex, action: "Duplicated")
-    }
-
-    func selectWavesTuneSong(_ id: UUID) {
-        guard let index = wavesTuneState.songs.firstIndex(where: { $0.id == id }) else { return }
-        activateWavesTuneSong(at: index, action: "Selected")
-    }
-
-    func stepWavesTuneSong(direction: Int) {
-        guard direction != 0, !wavesTuneState.songs.isEmpty else { return }
-
-        let targetIndex: Int
-        if let selectedWavesTuneSongIndex {
-            let nextIndex = selectedWavesTuneSongIndex + direction
-            guard wavesTuneState.songs.indices.contains(nextIndex) else { return }
-            targetIndex = nextIndex
-        } else if direction > 0 {
-            targetIndex = 0
-        } else {
-            targetIndex = wavesTuneState.songs.count - 1
-        }
-
-        activateWavesTuneSong(at: targetIndex, action: "Selected")
-    }
-
-    func triggerWavesTuneKeyPanic() {
-        var chromaticSelection = wavesTuneState.appliedKey.normalized
-        chromaticSelection.scaleMode = .chromatic
-        setActiveWavesTuneKey(
-            chromaticSelection,
-            offlineMessage: "Key Panic armed. Start the engine to apply Chromatic.",
-            onlineMessage: { affectedInstances in
-                "Key Panic applied Chromatic to \(affectedInstances) instance(s)."
-            }
-        )
-    }
-
-    func saveStagedKeyToSelectedWavesTuneSong() {
-        guard let selectedWavesTuneSongIndex else {
-            statusMessage = "Select a song first."
-            return
-        }
-
-        let normalizedKey = wavesTuneState.stagedKey.normalized
-        wavesTuneState.songs[selectedWavesTuneSongIndex].key = normalizedKey
-        activateWavesTuneSong(at: selectedWavesTuneSongIndex, action: "Saved")
-    }
-
-    func applyStagedWavesTuneKey() {
-        let normalizedKey = wavesTuneState.stagedKey.normalized
-        setActiveWavesTuneKey(
-            normalizedKey,
-            offlineMessage: "Saved Waves Tune key \(normalizedKey.title). Start the engine to apply it.",
-            onlineMessage: { affectedInstances in
-                "Applied Waves Tune key \(normalizedKey.title) to \(affectedInstances) instance(s)."
-            }
-        )
-    }
-
     func applyCustomBufferSize() {
         let trimmed = customBufferSizeText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let value = Int(trimmed) else {
@@ -1263,7 +539,7 @@ final class MultiTrackViewModel: ObservableObject {
         startEngine()
     }
 
-    private func startEngine() {
+    func startEngine() {
         guard canStart else {
             if presentSessionDeviceResolutionAlertIfNeeded() {
                 return
@@ -1363,7 +639,7 @@ final class MultiTrackViewModel: ObservableObject {
         statusMessage = "Stopped."
     }
 
-    private func addTrack(layout: TrackChannelLayout) {
+    func addTrack(layout: TrackChannelLayout) {
         let trackNumber = tracks.count + 1
         tracks.append(
             MultiTrackTrackConfiguration(
@@ -1374,85 +650,11 @@ final class MultiTrackViewModel: ObservableObject {
         sanitizeTracks()
     }
 
-    private func applySession(_ session: MultiTrackSessionFile, sourceURL: URL?) {
-        isApplyingSessionState = true
-        sessionReloadRetryContext = sourceURL.map { SessionReloadRetryContext(sessionURL: $0, reopensAsTemplate: false) }
-        selectedInputDeviceID = resolvedSessionDeviceID(
-            preferredUID: session.inputDeviceUID,
-            availableDevices: inputDevices
-        )
-        if selectedInputDeviceID == nil {
-            selectedInputDeviceID = resolvedSessionDeviceID(
-                preferredUID: session.outputDeviceUID,
-                availableDevices: inputDevices
-            )
-        }
-        selectedOutputDeviceID = selectedInputDeviceID
-        selectedBufferSize = session.bufferSize
-        customBufferSizeText = String(session.bufferSize)
-        latencyBufferSettings = session.latencyBufferSettings
-        sanitizeLatencyBufferSettings()
-        tracks = session.tracks.isEmpty
-            ? [MultiTrackTrackConfiguration(name: "Track 1", layout: .mono)]
-            : session.tracks
-
-        currentSessionURL = sourceURL
-        currentSessionName = sourceURL.map(sessionDisplayName(for:)) ?? session.name
-        wavesTuneState = session.wavesTuneState ?? MultiTrackWavesTuneState()
-        wavesTuneState.normalize()
-
-        sanitizeTracks(clampTrackRouting: false)
-        updateSessionWarnings()
-
-        isApplyingSessionState = false
-        hasUnsavedChanges = false
-        statusMessage = "Loaded \(currentSessionName)."
+    func normalizedBroadcastPrerollMultiplier(_ value: Int) -> Int {
+        MultiTrackValidation.normalizedBroadcastPrerollMultiplier(value)
     }
 
-    private func sanitizeTracks(clampTrackRouting: Bool = true) {
-        if clampTrackRouting {
-            for index in tracks.indices {
-                tracks[index] = sanitizedTrack(tracks[index])
-            }
-        }
-        if tracks.isEmpty {
-            tracks = [MultiTrackTrackConfiguration(name: "Track 1", layout: .mono)]
-        }
-        if let preferredBufferSize = DefaultBufferSizes.preferredHardwareBufferSize(from: availableBufferSizes), !isSelectedBufferSizeValid {
-            selectedBufferSize = preferredBufferSize
-        }
-        customBufferSizeText = String(selectedBufferSize)
-        updateSessionWarnings()
-    }
-
-    private func resolvedSessionDeviceID(
-        preferredUID: String?,
-        availableDevices: [AudioDeviceInfo]
-    ) -> AudioDeviceID? {
-        if let preferredUID,
-           let matchedDeviceID = availableDevices.first(where: { $0.uid == preferredUID })?.id {
-            return matchedDeviceID
-        }
-
-        return nil
-    }
-
-    private func sanitizeLatencyBufferSettings() {
-        latencyBufferSettings.bufferedFrames = normalizedInternalBufferSize(latencyBufferSettings.bufferedFrames)
-        latencyBufferSettings.broadcastFrames = normalizedInternalBufferSize(latencyBufferSettings.broadcastFrames)
-        latencyBufferSettings.broadcastPrerollMultiplier = normalizedBroadcastPrerollMultiplier(
-            latencyBufferSettings.broadcastPrerollMultiplier
-        )
-        bufferedInternalBufferText = String(latencyBufferSettings.bufferedFrames)
-        broadcastInternalBufferText = String(latencyBufferSettings.broadcastFrames)
-        broadcastPrerollMultiplier = latencyBufferSettings.broadcastPrerollMultiplier
-    }
-
-    private func normalizedBroadcastPrerollMultiplier(_ value: Int) -> Int {
-        min(max(value, 1), 3)
-    }
-
-    private func updateSessionWarnings() {
+    func updateSessionWarnings() {
         var warnings: [String] = []
 
         if sessionReloadRetryContext != nil, selectedInputDevice == nil {
@@ -1479,39 +681,22 @@ final class MultiTrackViewModel: ObservableObject {
         sessionWarnings = warnings
     }
 
-    private func normalizedInternalBufferSize(_ value: Int) -> Int {
-        let minimum = max(1, selectedBufferSize)
-        let maximum = 16_384
-        let clamped = min(max(value, minimum), maximum)
-        let remainder = clamped % minimum
-        if remainder == 0 {
-            return clamped
-        }
-        return min(clamped + (minimum - remainder), maximum)
+    func normalizedInternalBufferSize(_ value: Int) -> Int {
+        MultiTrackValidation.normalizedInternalBufferSize(
+            value,
+            hardwareBufferSize: selectedBufferSize
+        )
     }
 
     private func validateLatencyBufferText(
         _ text: String,
         for latencyClass: TrackLatencyClass
     ) -> String? {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let value = Int(trimmed) else {
-            return "\(latencyClass.title) internal buffer must be numeric."
-        }
-
-        guard value >= selectedBufferSize else {
-            return "\(latencyClass.title) internal buffer must be at least the hardware buffer size."
-        }
-
-        guard value <= 16_384 else {
-            return "\(latencyClass.title) internal buffer must not exceed 16384 frames."
-        }
-
-        guard value % selectedBufferSize == 0 else {
-            return "\(latencyClass.title) internal buffer must be a whole multiple of the hardware buffer size."
-        }
-
-        return nil
+        MultiTrackValidation.validateLatencyBufferText(
+            text,
+            for: latencyClass,
+            hardwareBufferSize: selectedBufferSize
+        )
     }
 
     private func applyLatencyBufferText(
@@ -1545,86 +730,38 @@ final class MultiTrackViewModel: ObservableObject {
         statusMessage = "Ready."
     }
 
-    private func sanitizedTrack(_ track: MultiTrackTrackConfiguration) -> MultiTrackTrackConfiguration {
-        var track = track
-        if let inputDevice = selectedInputDevice {
-            let maxStart = max(1, inputDevice.inputChannelCount - track.channelCount + 1)
-            track.inputStartChannel = min(max(1, track.inputStartChannel), maxStart)
-        } else {
-            track.inputStartChannel = 1
-        }
-
-        if let outputDevice = selectedOutputDevice {
-            let maxStart = max(1, outputDevice.outputChannelCount - track.channelCount + 1)
-            track.outputStartChannel = min(max(1, track.outputStartChannel), maxStart)
-        } else {
-            track.outputStartChannel = 1
-        }
-
-        return track
+    func sanitizedTrack(_ track: MultiTrackTrackConfiguration) -> MultiTrackTrackConfiguration {
+        MultiTrackValidation.sanitizedTrack(
+            track,
+            inputDevice: selectedInputDevice,
+            outputDevice: selectedOutputDevice
+        )
     }
 
     private func validateTrack(_ track: MultiTrackTrackConfiguration) -> String? {
-        guard track.isEnabled else { return nil }
-        guard let inputDevice = selectedInputDevice, let outputDevice = selectedOutputDevice else {
-            return "Select both devices before starting multi track mode."
-        }
-
-        guard !track.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return "Every enabled track needs a name."
-        }
-
-        let requiredInputChannels = track.inputStartChannel + track.channelCount - 1
-        guard requiredInputChannels <= inputDevice.inputChannelCount else {
-            return "\(track.name) exceeds the selected input interface channel count."
-        }
-
-        let requiredOutputChannels = track.outputStartChannel + track.channelCount - 1
-        guard requiredOutputChannels <= outputDevice.outputChannelCount else {
-            return "\(track.name) exceeds the selected output interface channel count."
-        }
-
-        for insert in track.plugins {
-            if let pluginID = insert.pluginID, !plugins.contains(where: { $0.id == pluginID }) {
-                return "\(track.name) references a plugin that is not currently installed. Install it or choose Bypass."
-            }
-        }
-
-        return nil
+        MultiTrackValidation.validateTrack(
+            track,
+            inputDevice: selectedInputDevice,
+            outputDevice: selectedOutputDevice,
+            availablePluginIDs: Set(plugins.map(\.id))
+        )
     }
 
     private func validateExclusiveOutputRouting(
         for tracks: [MultiTrackTrackConfiguration]
     ) -> String? {
-        var channelOwners: [Int: String] = [:]
-
-        for track in tracks where track.isEnabled {
-            let outputChannels = track.outputStartChannel..<(track.outputStartChannel + track.channelCount)
-            for channel in outputChannels {
-                if let existingOwner = channelOwners[channel] {
-                    return "\(track.name) conflicts with \(existingOwner) on output channel \(channel). Outputs are exclusive."
-                }
-                channelOwners[channel] = track.name
-            }
-        }
-
-        return nil
+        MultiTrackValidation.validateExclusiveOutputRouting(for: tracks)
     }
 
     private func outputChannelsAreAvailable(
         for track: MultiTrackTrackConfiguration,
         proposedStartChannel: Int
     ) -> Bool {
-        let proposedRange = proposedStartChannel..<(proposedStartChannel + track.channelCount)
-
-        for otherTrack in tracks where otherTrack.id != track.id && otherTrack.isEnabled {
-            let otherRange = otherTrack.outputStartChannel..<(otherTrack.outputStartChannel + otherTrack.channelCount)
-            if proposedRange.overlaps(otherRange) {
-                return false
-            }
-        }
-
-        return true
+        MultiTrackValidation.outputChannelsAreAvailable(
+            for: track,
+            proposedStartChannel: proposedStartChannel,
+            tracks: tracks
+        )
     }
 
     private func makeConfiguration() throws -> MultiTrackHostConfiguration {
@@ -1660,36 +797,6 @@ final class MultiTrackViewModel: ObservableObject {
         )
     }
 
-    private func makeSessionFile() -> MultiTrackSessionFile {
-        captureLivePluginStates()
-        return MultiTrackSessionFile(
-            name: currentSessionURL.map(sessionDisplayName(for:)) ?? currentSessionName,
-            inputDeviceUID: selectedInputDevice?.uid,
-            outputDeviceUID: selectedOutputDevice?.uid,
-            bufferSize: selectedBufferSize,
-            latencyBufferSettings: latencyBufferSettings,
-            tracks: tracks,
-            wavesTuneState: wavesTuneState.normalized
-        )
-    }
-
-    private func captureLivePluginStates() {
-        guard isRunning else { return }
-        let pluginStates = controller.pluginStateSnapshot()
-        guard !pluginStates.isEmpty else { return }
-        for index in tracks.indices {
-            let trackID = tracks[index].id
-            guard let pluginStateMap = pluginStates[trackID] else { continue }
-            for pluginIndex in tracks[index].plugins.indices {
-                let pluginID = tracks[index].plugins[pluginIndex].id
-                if let pluginState = pluginStateMap[pluginID] {
-                    tracks[index].plugins[pluginIndex].pluginStateData = pluginState
-                }
-            }
-        }
-    }
-
-
     func resetDropoutCounters() {
         controller.resetDropoutCounters()
         refreshPublishedTelemetry()
@@ -1703,133 +810,6 @@ final class MultiTrackViewModel: ObservableObject {
             self.controller.resetDropoutCounters()
             self.refreshPublishedTelemetry()
             self.startupDropoutResetTask = nil
-        }
-    }
-
-    func companionControlStateSnapshot() -> CompanionControlStateSnapshot {
-        CompanionControlStateSnapshot(
-            apiVersion: 1,
-            appMode: "multiTrack",
-            timestamp: Self.iso8601Formatter.string(from: Date()),
-            sessionName: currentSessionDisplayName,
-            statusMessage: statusMessage,
-            isRunning: isRunning,
-            wavesTune: CompanionControlWavesTuneSnapshot(
-                isEnabled: wavesTuneState.isEnabled,
-                configuredInsertCount: configuredWavesTuneRealtimeInsertCount,
-                canApplyStagedKey: canApplyStagedWavesTuneKey,
-                stagedKey: CompanionControlKeySnapshot(selection: wavesTuneState.stagedKey),
-                appliedKey: CompanionControlKeySnapshot(selection: wavesTuneState.appliedKey),
-                selectedSongTitle: selectedWavesTuneSongIndex.map {
-                    wavesTuneSongDisplayTitle(for: wavesTuneState.songs[$0], index: $0)
-                },
-                selectedSongIndex: selectedWavesTuneSongIndex,
-                songCount: wavesTuneState.songs.count,
-                previousSongKey: previousWavesTuneSongIndex.map {
-                    CompanionControlKeySnapshot(selection: wavesTuneState.songs[$0].key)
-                },
-                nextSongKey: nextWavesTuneSongIndex.map {
-                    CompanionControlKeySnapshot(selection: wavesTuneState.songs[$0].key)
-                },
-                canSelectPreviousSong: canSelectPreviousWavesTuneSong,
-                canSelectNextSong: canSelectNextWavesTuneSong
-            )
-        )
-    }
-
-    func companionControlHTTPResponse(for request: CompanionControlHTTPRequest) -> CompanionControlHTTPResponse {
-        if let validationResponse = companionControlValidationErrorHTTPResponse(for: request) {
-            return validationResponse
-        }
-
-        switch (request.method, request.path) {
-        case ("GET", "/health"), ("GET", "/api/v1/health"):
-            return .json(
-                statusCode: 200,
-                value: CompanionControlHealthResponse(
-                    ok: true,
-                    apiVersion: 1,
-                    appMode: "multiTrack"
-                )
-            )
-
-        case ("GET", "/api/v1/state"):
-            return .json(statusCode: 200, value: companionControlStateSnapshot())
-
-        case ("POST", "/api/v1/actions/waves-tune/enabled"):
-            do {
-                let payload = try decodeCompanionControlRequest(CompanionControlSetEnabledRequest.self, from: request.body)
-                setWavesTuneEnabled(payload.enabled)
-                return companionControlCommandHTTPResponse()
-            } catch {
-                return companionControlErrorHTTPResponse(statusCode: 400, message: error.localizedDescription)
-            }
-
-        case ("POST", "/api/v1/actions/waves-tune/toggle-enabled"):
-            setWavesTuneEnabled(!wavesTuneState.isEnabled)
-            return companionControlCommandHTTPResponse()
-
-        case ("POST", "/api/v1/actions/waves-tune/staged-key"):
-            do {
-                let payload = try decodeCompanionControlRequest(CompanionControlSetStagedKeyRequest.self, from: request.body)
-                try setCompanionControlStagedWavesTuneKey(root: payload.root, scaleMode: payload.scaleMode)
-                return companionControlCommandHTTPResponse()
-            } catch {
-                return companionControlErrorHTTPResponse(statusCode: 400, message: error.localizedDescription)
-            }
-
-        case ("POST", "/api/v1/actions/waves-tune/scale-mode"):
-            do {
-                let payload = try decodeCompanionControlRequest(CompanionControlSetScaleModeRequest.self, from: request.body)
-                try setCompanionControlWavesTuneScaleMode(payload.scaleMode)
-                return companionControlCommandHTTPResponse()
-            } catch {
-                return companionControlErrorHTTPResponse(statusCode: 400, message: error.localizedDescription)
-            }
-
-        case ("POST", "/api/v1/actions/waves-tune/note-letter"):
-            do {
-                let payload = try decodeCompanionControlRequest(CompanionControlSetNoteLetterRequest.self, from: request.body)
-                try setCompanionControlWavesTuneNoteLetter(payload.noteLetter)
-                return companionControlCommandHTTPResponse()
-            } catch {
-                return companionControlErrorHTTPResponse(statusCode: 400, message: error.localizedDescription)
-            }
-
-        case ("POST", "/api/v1/actions/waves-tune/accidental"):
-            do {
-                let payload = try decodeCompanionControlRequest(CompanionControlSetAccidentalRequest.self, from: request.body)
-                try setCompanionControlWavesTuneAccidental(payload.accidental)
-                return companionControlCommandHTTPResponse()
-            } catch {
-                return companionControlErrorHTTPResponse(statusCode: 400, message: error.localizedDescription)
-            }
-
-        case ("POST", "/api/v1/actions/waves-tune/apply"):
-            applyStagedWavesTuneKey()
-            return companionControlCommandHTTPResponse()
-
-        case ("POST", "/api/v1/actions/waves-tune/panic"):
-            triggerWavesTuneKeyPanic()
-            return companionControlCommandHTTPResponse()
-
-        case ("POST", "/api/v1/actions/waves-tune/step-song"):
-            do {
-                let payload = try decodeCompanionControlRequest(CompanionControlStepSongRequest.self, from: request.body)
-                guard payload.direction == -1 || payload.direction == 1 else {
-                    throw AudioHostError("Song step direction must be -1 or 1.")
-                }
-                stepWavesTuneSong(direction: payload.direction)
-                return companionControlCommandHTTPResponse()
-            } catch {
-                return companionControlErrorHTTPResponse(statusCode: 400, message: error.localizedDescription)
-            }
-
-        case ("GET", _), ("POST", _):
-            return companionControlErrorHTTPResponse(statusCode: 404, message: "No Companion control route matches \(request.path).")
-
-        default:
-            return companionControlErrorHTTPResponse(statusCode: 405, message: "Use GET or POST with the Companion control API.")
         }
     }
 
@@ -1925,37 +905,13 @@ final class MultiTrackViewModel: ObservableObject {
     ) {
         audioDropoutCount = dropoutCount
         self.droppedFrameCount = droppedFrameCount
-        telemetrySummary = "Callbacks in/out: \(telemetry.peakInputCallbackFrames) / \(telemetry.peakOutputCallbackFrames) frames"
-        ringTelemetrySummary = "Peak ring occupancy in/out: \(telemetryOccupancyString(telemetry.peakInputRingOccupancyFrames, capacity: telemetry.inputRingCapacityFrames)) / \(telemetryOccupancyString(telemetry.peakOutputRingOccupancyFrames, capacity: telemetry.outputRingCapacityFrames))"
-        workerTelemetrySummary = "Workers: \(telemetry.workerShardCount) shards, track/shard render avg \(telemetry.averageTrackRenderDurationMicros) / \(telemetry.averageShardRenderDurationMicros) us, peak \(telemetry.peakTrackRenderDurationMicros) / \(telemetry.peakShardRenderDurationMicros) us, util \(telemetry.peakShardUtilizationPercent)%, wakeups \(telemetry.peakWorkerWakeupsPerSecond)/s"
-        realtimeTelemetrySummary = realtimeTelemetryString(telemetry.realtime)
-        bufferedTelemetrySummary = bufferedTelemetryString(label: "Buffered", telemetry.buffered)
-        broadcastTelemetrySummary = bufferedTelemetryString(label: "Broadcast", telemetry.broadcast)
-    }
-
-    private func realtimeTelemetryString(_ telemetry: LatencyClassTelemetrySnapshot) -> String {
-        "Realtime: \(telemetry.trackCount) tracks, render avg/peak \(telemetry.averageTrackRenderDurationMicros) / \(telemetry.peakTrackRenderDurationMicros) us"
-    }
-
-    private func bufferedTelemetryString(
-        label: String,
-        _ telemetry: LatencyClassTelemetrySnapshot
-    ) -> String {
-        "\(label): \(telemetry.trackCount) tracks, \(telemetry.workerShardCount) shards, track/shard avg \(telemetry.averageTrackRenderDurationMicros) / \(telemetry.averageShardRenderDurationMicros) us, peak \(telemetry.peakTrackRenderDurationMicros) / \(telemetry.peakShardRenderDurationMicros) us, util \(telemetry.peakShardUtilizationPercent)%, wakeups \(telemetry.peakWorkerWakeupsPerSecond)/s"
-    }
-
-    private func telemetryOccupancyString(_ frames: UInt64, capacity: Int) -> String {
-        guard capacity > 0 else {
-            return "\(frames) frames"
-        }
-        let percent = Double(frames) / Double(capacity) * 100
-        return "\(frames) frames (\(Int(percent.rounded()))%)"
-    }
-
-    private func updateSessionNameIfNeeded() {
-        if let currentSessionURL {
-            currentSessionName = sessionDisplayName(for: currentSessionURL)
-        }
+        let formattedTelemetry = EngineTelemetryFormatter.strings(for: telemetry)
+        telemetrySummary = formattedTelemetry.telemetrySummary
+        ringTelemetrySummary = formattedTelemetry.ringTelemetrySummary
+        workerTelemetrySummary = formattedTelemetry.workerTelemetrySummary
+        realtimeTelemetrySummary = formattedTelemetry.realtimeTelemetrySummary
+        bufferedTelemetrySummary = formattedTelemetry.bufferedTelemetrySummary
+        broadcastTelemetrySummary = formattedTelemetry.broadcastTelemetrySummary
     }
 
     private func setupSessionChangeObservers() {
@@ -2038,348 +994,7 @@ final class MultiTrackViewModel: ObservableObject {
             .store(in: &persistenceCancellables)
     }
 
-    private func openCurrentSessionAsTemplate() {
-        currentSessionURL = nil
-        isCurrentSessionStartupTemplate = true
-        if let retryContext = sessionReloadRetryContext {
-            sessionReloadRetryContext = SessionReloadRetryContext(
-                sessionURL: retryContext.sessionURL,
-                reopensAsTemplate: true
-            )
-        }
-        hasUnsavedChanges = false
-        statusMessage = "Loaded \(currentSessionName) as a startup template."
-    }
-
-    private func presentSessionDeviceResolutionAlertIfNeeded() -> Bool {
-        guard sessionReloadRetryContext != nil else { return false }
-
-        var unavailableDevices: [String] = []
-        if selectedInputDevice == nil {
-            unavailableDevices.append("input")
-        }
-        if selectedOutputDevice == nil {
-            unavailableDevices.append("output")
-        }
-
-        guard !unavailableDevices.isEmpty else { return false }
-
-        let deviceSummary = unavailableDevices.joined(separator: " and ")
-        let message = "The saved session could not resolve its \(deviceSummary) device. Reconnect the interface, then retry to rescan devices and reload the session."
-        sessionDeviceResolutionAlert = SessionDeviceResolutionAlert(message: message)
-        statusMessage = message
-        return true
-    }
-
-    private func sessionDisplayName(for url: URL) -> String {
-        url.deletingPathExtension().lastPathComponent
-    }
-
-    private func sanitizedSessionFilename(from name: String) -> String {
-        sanitizedFilename(from: name, pathExtension: "sahsession")
-    }
-
-    private func sanitizedFilename(from name: String, pathExtension: String) -> String {
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let baseName = trimmed.isEmpty ? "MultiTrack Session" : trimmed
-        let invalidCharacters = CharacterSet(charactersIn: "/:\\?%*|\"<>")
-        let cleaned = String(baseName.unicodeScalars.map { invalidCharacters.contains($0) ? "-" : Character($0) })
-        let dottedExtension = ".\(pathExtension)"
-        return cleaned.hasSuffix(dottedExtension) ? cleaned : "\(cleaned)\(dottedExtension)"
-    }
-
-    private func normalizedURL(_ url: URL, pathExtension: String) -> URL {
-        if url.pathExtension.caseInsensitiveCompare(pathExtension) == .orderedSame {
-            return url
-        }
-        return url.appendingPathExtension(pathExtension)
-    }
-
-    private func loadPersistedStartupPreferences() {
-        launchesIntoPerformViewOnStartup = userDefaults.bool(forKey: Self.launchesIntoPerformViewOnStartupKey)
-        loadsSavedSessionOnStartup = userDefaults.bool(forKey: Self.loadsSavedSessionOnStartupKey)
-        startsEngineOnLaunch = userDefaults.bool(forKey: Self.startsEngineOnLaunchKey)
-
-        if let rawValue = userDefaults.string(forKey: Self.startupSavedSessionSelectionKey),
-           let selection = StartupSavedSessionSelection(rawValue: rawValue) {
-            startupSavedSessionSelection = selection
-        }
-
-        startupSpecificSessionURL = Self.fileURL(fromStoredPath: userDefaults.string(forKey: Self.startupSpecificSessionPathKey))
-        opensStartupSpecificSessionAsTemplate = userDefaults.bool(forKey: Self.opensStartupSpecificSessionAsTemplateKey)
-        lastSavedSessionURL = Self.fileURL(fromStoredPath: userDefaults.string(forKey: Self.lastSavedSessionPathKey))
-    }
-
-    private func persistStartupPreferences() {
-        userDefaults.set(launchesIntoPerformViewOnStartup, forKey: Self.launchesIntoPerformViewOnStartupKey)
-        userDefaults.set(loadsSavedSessionOnStartup, forKey: Self.loadsSavedSessionOnStartupKey)
-        userDefaults.set(startsEngineOnLaunch, forKey: Self.startsEngineOnLaunchKey)
-        userDefaults.set(startupSavedSessionSelection.rawValue, forKey: Self.startupSavedSessionSelectionKey)
-
-        if let startupSpecificSessionURL {
-            userDefaults.set(startupSpecificSessionURL.path, forKey: Self.startupSpecificSessionPathKey)
-        } else {
-            userDefaults.removeObject(forKey: Self.startupSpecificSessionPathKey)
-        }
-
-        userDefaults.set(opensStartupSpecificSessionAsTemplate, forKey: Self.opensStartupSpecificSessionAsTemplateKey)
-    }
-
-    private func recordLastSavedSessionURL(_ url: URL) {
-        lastSavedSessionURL = url
-        userDefaults.set(url.path, forKey: Self.lastSavedSessionPathKey)
-    }
-
-    private func startCompanionControlServer() {
-        do {
-            try companionControlServer.start(
-                requestHandler: { [weak self] request in
-                    guard let self else {
-                        return CompanionControlHTTPResponse.json(
-                            statusCode: 503,
-                            value: CompanionControlBasicErrorResponse(
-                                ok: false,
-                                message: "The multi-track controller is unavailable."
-                            )
-                        )
-                    }
-                    return await self.companionControlHTTPResponse(for: request)
-                },
-                stateHandler: { [weak self] state in
-                    Task { @MainActor [weak self] in
-                        self?.applyCompanionControlServerLifecycleState(state)
-                    }
-                }
-            )
-        } catch {
-            companionControlStatus = "Companion control API failed to start: \(error.localizedDescription)"
-        }
-    }
-
-    private func applyCompanionControlServerLifecycleState(_ state: CompanionControlServerLifecycleState) {
-        switch state {
-        case .starting(let url):
-            companionControlEndpointURLString = url
-            companionControlStatus = "Starting local Companion control API..."
-        case .listening(let url):
-            companionControlEndpointURLString = url
-            companionControlStatus = "Listening on \(url)"
-        case .failed(let message):
-            companionControlStatus = "Companion control API error: \(message)"
-        case .stopped:
-            companionControlStatus = "Companion control API stopped."
-        }
-    }
-
-    private func companionControlCommandHTTPResponse() -> CompanionControlHTTPResponse {
-        .json(
-            statusCode: 200,
-            value: CompanionControlCommandResponse(
-                ok: true,
-                message: statusMessage,
-                state: companionControlStateSnapshot()
-            )
-        )
-    }
-
-    private func companionControlErrorHTTPResponse(
-        statusCode: Int,
-        message: String
-    ) -> CompanionControlHTTPResponse {
-        .json(
-            statusCode: statusCode,
-            value: CompanionControlCommandResponse(
-                ok: false,
-                message: message,
-                state: companionControlStateSnapshot()
-            )
-        )
-    }
-
-    private func companionControlValidationErrorHTTPResponse(
-        for request: CompanionControlHTTPRequest
-    ) -> CompanionControlHTTPResponse? {
-        if let host = request.headers["host"]?.lowercased(),
-           !CompanionControlDefaults.allowedHostHeaderValues.contains(host) {
-            return companionControlErrorHTTPResponse(
-                statusCode: 400,
-                message: "Invalid Host header."
-            )
-        }
-
-        guard request.method == "POST" else {
-            return nil
-        }
-
-        let contentType = request.headers["content-type"]?.lowercased() ?? ""
-        guard contentType.hasPrefix("application/json") else {
-            return companionControlErrorHTTPResponse(
-                statusCode: 415,
-                message: "Use Content-Type: application/json."
-            )
-        }
-
-        return nil
-    }
-
-    private func decodeCompanionControlRequest<T: Decodable>(
-        _ type: T.Type,
-        from body: Data
-    ) throws -> T {
-        guard !body.isEmpty else {
-            throw AudioHostError("This Companion control action requires a JSON body.")
-        }
-
-        do {
-            return try JSONDecoder().decode(type, from: body)
-        } catch {
-            throw AudioHostError("Failed to decode the Companion control request.")
-        }
-    }
-
-    private func setCompanionControlStagedWavesTuneKey(
-        root: String,
-        scaleMode: String
-    ) throws {
-        guard let rootChoice = CompanionControlRootChoice(rawValue: root.lowercased()) else {
-            throw AudioHostError("Unsupported Waves Tune root: \(root).")
-        }
-        guard let scaleMode = WavesTuneScaleMode(rawValue: scaleMode.lowercased()) else {
-            throw AudioHostError("Unsupported Waves Tune scale mode: \(scaleMode).")
-        }
-
-        wavesTuneState.stagedKey = WavesTuneKeySelection(
-            scaleMode: scaleMode,
-            noteLetter: rootChoice.noteLetter,
-            accidental: rootChoice.accidental
-        ).normalized
-        statusMessage = "Staged Waves Tune key \(wavesTuneState.stagedKey.title)."
-    }
-
-    private func setCompanionControlWavesTuneScaleMode(_ scaleMode: String) throws {
-        guard let scaleMode = WavesTuneScaleMode(rawValue: scaleMode.lowercased()) else {
-            throw AudioHostError("Unsupported Waves Tune scale mode: \(scaleMode).")
-        }
-
-        wavesTuneState.stagedKey.scaleMode = scaleMode
-        statusMessage = "Staged Waves Tune scale \(wavesTuneState.stagedKey.title)."
-    }
-
-    private func setCompanionControlWavesTuneNoteLetter(_ noteLetter: String) throws {
-        guard let noteLetter = WavesTuneNoteLetter(rawValue: noteLetter.lowercased()) else {
-            throw AudioHostError("Unsupported Waves Tune note letter: \(noteLetter).")
-        }
-
-        wavesTuneState.stagedKey.noteLetter = noteLetter
-        wavesTuneState.stagedKey.normalize()
-        statusMessage = "Staged Waves Tune root \(wavesTuneState.stagedKey.title)."
-    }
-
-    private func setCompanionControlWavesTuneAccidental(_ accidental: String) throws {
-        guard let accidental = WavesTuneAccidental(rawValue: accidental.lowercased()) else {
-            throw AudioHostError("Unsupported Waves Tune accidental: \(accidental).")
-        }
-        guard WavesTuneKeySelection.supports(
-            accidental: accidental,
-            for: wavesTuneState.stagedKey.noteLetter
-        ) else {
-            throw AudioHostError(
-                "\(wavesTuneState.stagedKey.noteLetter.title) does not support \(accidental.title)."
-            )
-        }
-
-        wavesTuneState.stagedKey.accidental = accidental
-        statusMessage = "Staged Waves Tune root \(wavesTuneState.stagedKey.title)."
-    }
-
-    private func activateWavesTuneSong(at index: Int, action: String) {
-        guard wavesTuneState.songs.indices.contains(index) else { return }
-
-        wavesTuneState.songs[index].key = wavesTuneState.songs[index].key.normalized
-        wavesTuneState.selectedSongID = wavesTuneState.songs[index].id
-
-        let song = wavesTuneState.songs[index]
-        let songTitle = wavesTuneSongDisplayTitle(for: song, index: index)
-        setActiveWavesTuneKey(
-            song.key,
-            offlineMessage: "\(action) \(songTitle). Start the engine to apply \(song.key.title).",
-            onlineMessage: { affectedInstances in
-                "\(action) \(songTitle). Applied \(song.key.title) to \(affectedInstances) instance(s)."
-            }
-        )
-    }
-
-    private func setActiveWavesTuneKey(
-        _ selection: WavesTuneKeySelection,
-        offlineMessage: String,
-        onlineMessage: (Int) -> String
-    ) {
-        let normalizedSelection = selection.normalized
-        wavesTuneState.stagedKey = normalizedSelection
-        wavesTuneState.appliedKey = normalizedSelection
-
-        guard isRunning else {
-            statusMessage = configuredWavesTuneRealtimeInsertCount > 0
-                ? offlineMessage
-                : "\(offlineMessage) No Waves Tune Real-Time inserts are configured."
-            return
-        }
-
-        do {
-            let affectedInstances = try controller.applyWavesTuneRealtimeKeySelection(normalizedSelection)
-            statusMessage = affectedInstances > 0
-                ? onlineMessage(affectedInstances)
-                : "No running Waves Tune Real-Time instances were found."
-        } catch {
-            statusMessage = error.localizedDescription
-        }
-    }
-
-    func wavesTuneSongDisplayTitle(for song: WavesTuneSongEntry, index: Int) -> String {
-        let trimmedTitle = song.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmedTitle.isEmpty ? "Song \(index + 1)" : trimmedTitle
-    }
-
-    private func isWavesTuneRealtimePlugin(_ plugin: AudioUnitPluginInfo) -> Bool {
-        plugin.name.localizedCaseInsensitiveContains("Waves Tune Real-Time")
-    }
-
-    private func trackHasConfiguredWavesTuneRealtimeInsert(_ track: MultiTrackTrackConfiguration) -> Bool {
-        track.plugins.contains { insert in
-            guard let pluginID = insert.pluginID,
-                  let plugin = plugins.first(where: { $0.id == pluginID }) else {
-                return false
-            }
-            return isWavesTuneRealtimePlugin(plugin)
-        }
-    }
-
-    private func syncWavesTuneStrengthSelectionsFromRunningEngine() {
-        let existingHasUnsavedChanges = hasUnsavedChanges
-        isApplyingSessionState = true
-        defer {
-            isApplyingSessionState = false
-            hasUnsavedChanges = existingHasUnsavedChanges
-        }
-
-        for track in tracks where track.isEnabled && trackHasConfiguredWavesTuneRealtimeInsert(track) {
-            refreshWavesTuneStrengthSelectionFromRunningEngine(for: track.id)
-        }
-    }
-
-    private func refreshWavesTuneStrengthSelectionFromRunningEngine(for trackID: UUID) {
-        guard let trackIndex = tracks.firstIndex(where: { $0.id == trackID }) else { return }
-
-        do {
-            guard let preset = try controller.currentWavesTuneRealtimeStrengthPreset(for: trackID) else { return }
-            tracks[trackIndex].wavesTuneStrength = preset
-        } catch {
-            statusMessage = error.localizedDescription
-        }
-    }
-
-    private static let iso8601Formatter = ISO8601DateFormatter()
-    private static let templateDateFormatter: DateFormatter = {
+    static let templateDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -2392,67 +1007,5 @@ final class MultiTrackViewModel: ObservableObject {
         formatter.maximumFractionDigits = 1
         return formatter
     }()
-    private static let launchesIntoPerformViewOnStartupKey = "startup.launchesIntoPerformViewOnStartup"
-    private static let loadsSavedSessionOnStartupKey = "startup.loadsSavedSessionOnStartup"
-    private static let startsEngineOnLaunchKey = "startup.startsEngineOnLaunch"
-    private static let startupSavedSessionSelectionKey = "startup.savedSessionSelection"
-    private static let startupSpecificSessionPathKey = "startup.specificSessionPath"
-    private static let opensStartupSpecificSessionAsTemplateKey = "startup.opensSpecificSessionAsTemplate"
-    private static let lastSavedSessionPathKey = "startup.lastSavedSessionPath"
     private static let startupDropoutGracePeriod: Duration = .seconds(1)
-
-    private static func fileURL(fromStoredPath path: String?) -> URL? {
-        guard let path, !path.isEmpty else { return nil }
-        return URL(fileURLWithPath: path, isDirectory: false)
-    }
-}
-
-private enum CompanionControlRootChoice: String {
-    case c
-    case cSharp = "c#"
-    case dFlat = "db"
-    case d
-    case dSharp = "d#"
-    case eFlat = "eb"
-    case e
-    case f
-    case fSharp = "f#"
-    case gFlat = "gb"
-    case g
-    case gSharp = "g#"
-    case aFlat = "ab"
-    case a
-    case aSharp = "a#"
-    case bFlat = "bb"
-    case b
-
-    var noteLetter: WavesTuneNoteLetter {
-        switch self {
-        case .c, .cSharp:
-            .c
-        case .dFlat, .d, .dSharp:
-            .d
-        case .eFlat, .e:
-            .e
-        case .f, .fSharp:
-            .f
-        case .gFlat, .g, .gSharp:
-            .g
-        case .aFlat, .a, .aSharp:
-            .a
-        case .bFlat, .b:
-            .b
-        }
-    }
-
-    var accidental: WavesTuneAccidental {
-        switch self {
-        case .c, .d, .e, .f, .g, .a, .b:
-            .natural
-        case .cSharp, .dSharp, .fSharp, .gSharp, .aSharp:
-            .sharp
-        case .dFlat, .eFlat, .gFlat, .aFlat, .bFlat:
-            .flat
-        }
-    }
 }
