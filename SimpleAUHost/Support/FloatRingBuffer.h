@@ -14,6 +14,8 @@ typedef struct SAHAtomicCounter {
     _Atomic uint64_t value;
 } SAHAtomicCounter;
 
+// `buffer` must be zero-initialized before its first init call. Init may be
+// called again on an initialized buffer to resize; it frees previous storage.
 bool SAHFloatRingBufferInit(SAHFloatRingBuffer *buffer, uint32_t minimumCapacity);
 void SAHFloatRingBufferDeinit(SAHFloatRingBuffer *buffer);
 void SAHFloatRingBufferClear(SAHFloatRingBuffer *buffer);
