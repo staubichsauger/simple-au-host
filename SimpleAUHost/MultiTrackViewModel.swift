@@ -108,6 +108,7 @@ final class MultiTrackViewModel: ObservableObject {
         self.userDefaults = userDefaults
         loadPersistedStartupPreferences()
         setupSessionChangeObservers()
+        setupPluginRegistrationObserver()
         startCompanionControlServer()
     }
 
@@ -2056,6 +2057,23 @@ final class MultiTrackViewModel: ObservableObject {
     private func markSessionAsEdited() {
         guard !isApplyingSessionState else { return }
         hasUnsavedChanges = true
+    }
+
+    /// Reloads the device/plugin catalog when Audio Unit registrations change
+    /// (e.g. a plugin was installed while the app runs). The cache itself is
+    /// invalidated by `AudioHostController`; this refresh updates the published
+    /// plugin list, track validation, and session warnings. Debounced because
+    /// the system can post the notification in bursts.
+    private func setupPluginRegistrationObserver() {
+        NotificationCenter.default
+            .publisher(for: .audioComponentRegistrationsChanged)
+            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.load()
+                }
+            }
+            .store(in: &persistenceCancellables)
     }
 
     private func openCurrentSessionAsTemplate() {

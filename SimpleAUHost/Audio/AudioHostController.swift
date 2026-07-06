@@ -112,9 +112,35 @@ struct TrackPluginLatencySnapshot: Hashable {
     let pluginLatencyFrames: Int
 }
 
+extension Notification.Name {
+    /// Posted by AudioToolbox when Audio Unit components are registered or
+    /// unregistered while the app runs.
+    static let audioComponentRegistrationsChanged = Notification.Name(
+        kAudioComponentRegistrationsChangedNotification as String
+    )
+}
+
 final class AudioHostController: @unchecked Sendable {
     private static let pluginCatalogLock = NSLock()
     private nonisolated(unsafe) static var cachedPlugins: [AudioUnitPluginInfo]?
+    /// Clears the plugin catalog cache whenever the system's Audio Unit
+    /// registrations change, so newly installed (or removed) plugins are picked
+    /// up without an app restart. Lazily registered on first catalog access.
+    /// `nonisolated(unsafe)` is acceptable: the token is written once during
+    /// lazy static initialization and only ever read to force registration.
+    private nonisolated(unsafe) static let registrationsChangedObserver: NSObjectProtocol = NotificationCenter.default.addObserver(
+        forName: .audioComponentRegistrationsChanged,
+        object: nil,
+        queue: nil
+    ) { _ in
+        AudioHostController.invalidatePluginCache()
+    }
+
+    static func invalidatePluginCache() {
+        pluginCatalogLock.lock()
+        cachedPlugins = nil
+        pluginCatalogLock.unlock()
+    }
 
     func availableDevices() throws -> [AudioDeviceInfo] {
         let devices: [AudioDeviceID] = try getAudioObjectProperty(
@@ -178,6 +204,7 @@ final class AudioHostController: @unchecked Sendable {
     }
 
     func availablePlugins() throws -> [AudioUnitPluginInfo] {
+        _ = Self.registrationsChangedObserver
         Self.pluginCatalogLock.lock()
         if let cachedPlugins = Self.cachedPlugins {
             Self.pluginCatalogLock.unlock()
