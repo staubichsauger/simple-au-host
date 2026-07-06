@@ -3,6 +3,7 @@
 .derived-release/
 dist/
 build/
+todo/
 DerivedData/
 *.xcuserstate
 xcuserdata/
