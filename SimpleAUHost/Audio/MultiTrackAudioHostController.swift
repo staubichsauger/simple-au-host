@@ -4,7 +4,6 @@ import CoreAudio
 import Darwin
 import Foundation
 
-
 final class MultiTrackAudioHostController: @unchecked Sendable {
     private func recordDroppedFrames(_ frameCount: UInt32) {
         guard frameCount > 0 else { return }

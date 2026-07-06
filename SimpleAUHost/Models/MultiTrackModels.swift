@@ -124,7 +124,6 @@ enum TrackLatencyClass: String, CaseIterable, Codable, Identifiable {
         }
     }
 
-
     var description: String {
         switch self {
         case .realtime:

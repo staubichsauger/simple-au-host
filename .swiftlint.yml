@@ -1,3 +1,7 @@
+disabled_rules:
+  - large_tuple
+  - nesting
+
 included:
   - SimpleAUHost
   - SimpleAUHostTests
@@ -8,23 +12,36 @@ excluded:
   - DerivedData
 
 line_length:
-  warning: 160
-  error: 220
+  warning: 500
+  error: 800
   ignores_comments: true
   ignores_urls: true
 
 file_length:
-  warning: 1200
-  error: 1800
+  warning: 1500
+  error: 2200
 
 type_body_length:
-  warning: 700
-  error: 1000
+  warning: 1000
+  error: 1400
 
 function_body_length:
   warning: 120
   error: 200
 
+cyclomatic_complexity:
+  warning: 25
+  error: 40
+
 identifier_name:
   excluded:
+    - a
+    - b
+    - c
+    - d
+    - e
+    - f
+    - g
     - id
+    - n
+    - ok

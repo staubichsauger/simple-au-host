@@ -275,7 +275,7 @@ func getAudioObjectProperty<T>(
     if count == 0 {
         return []
     }
-    var values = Array<T>(unsafeUninitializedCapacity: count) { _, initializedCount in
+    var values = [T](unsafeUninitializedCapacity: count) { _, initializedCount in
         initializedCount = count
     }
 
