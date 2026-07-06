@@ -1771,6 +1771,10 @@ final class MultiTrackViewModel: ObservableObject {
     }
 
     func companionControlHTTPResponse(for request: CompanionControlHTTPRequest) -> CompanionControlHTTPResponse {
+        if let validationResponse = companionControlValidationErrorHTTPResponse(for: request) {
+            return validationResponse
+        }
+
         switch (request.method, request.path) {
         case ("GET", "/health"), ("GET", "/api/v1/health"):
             return .json(
@@ -2206,6 +2210,32 @@ final class MultiTrackViewModel: ObservableObject {
                 state: companionControlStateSnapshot()
             )
         )
+    }
+
+    private func companionControlValidationErrorHTTPResponse(
+        for request: CompanionControlHTTPRequest
+    ) -> CompanionControlHTTPResponse? {
+        if let host = request.headers["host"]?.lowercased(),
+           !CompanionControlDefaults.allowedHostHeaderValues.contains(host) {
+            return companionControlErrorHTTPResponse(
+                statusCode: 400,
+                message: "Invalid Host header."
+            )
+        }
+
+        guard request.method == "POST" else {
+            return nil
+        }
+
+        let contentType = request.headers["content-type"]?.lowercased() ?? ""
+        guard contentType.hasPrefix("application/json") else {
+            return companionControlErrorHTTPResponse(
+                statusCode: 415,
+                message: "Use Content-Type: application/json."
+            )
+        }
+
+        return nil
     }
 
     private func decodeCompanionControlRequest<T: Decodable>(

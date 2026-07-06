@@ -8,6 +8,13 @@ enum CompanionControlDefaults {
     static var baseURLString: String {
         "http://\(host):\(port)"
     }
+
+    static var allowedHostHeaderValues: Set<String> {
+        [
+            "\(host):\(port)",
+            "localhost:\(port)"
+        ]
+    }
 }
 
 struct CompanionControlKeySnapshot: Codable, Sendable {
