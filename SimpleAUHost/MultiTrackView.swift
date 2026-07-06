@@ -1284,9 +1284,10 @@ struct MultiTrackView: View {
                     saveChainPreset(for: value.id)
                 }
                 rackFooterButton("Chain", icon: "square.and.arrow.up") {
-                    loadChainPreset(for: value.id)
-                    if selectedRackTrackID == value.id {
-                        selectedRackPluginID = viewModel.tracks.first(where: { $0.id == value.id })?.plugins.first?.id
+                    loadChainPreset(for: value.id) {
+                        if selectedRackTrackID == value.id {
+                            selectedRackPluginID = viewModel.tracks.first(where: { $0.id == value.id })?.plugins.first?.id
+                        }
                     }
                 }
                 .disabled(viewModel.isRunning)
@@ -1297,9 +1298,10 @@ struct MultiTrackView: View {
                 .disabled(!value.hasPlugins)
 
                 rackFooterButton("Params", icon: "square.and.arrow.up.on.square") {
-                    loadParameterPreset(for: value.id)
-                    if selectedRackTrackID == value.id {
-                        selectedRackPluginID = viewModel.tracks.first(where: { $0.id == value.id })?.plugins.first?.id
+                    loadParameterPreset(for: value.id) {
+                        if selectedRackTrackID == value.id {
+                            selectedRackPluginID = viewModel.tracks.first(where: { $0.id == value.id })?.plugins.first?.id
+                        }
                     }
                 }
                 .disabled(!value.hasPlugins)
@@ -2294,14 +2296,16 @@ struct MultiTrackView: View {
             return
         }
 
-        do {
-            try viewModel.saveChainPreset(for: trackID, to: url)
-        } catch {
-            viewModel.statusMessage = error.localizedDescription
+        Task {
+            do {
+                try await viewModel.saveChainPreset(for: trackID, to: url)
+            } catch {
+                viewModel.statusMessage = error.localizedDescription
+            }
         }
     }
 
-    private func loadChainPreset(for trackID: UUID) {
+    private func loadChainPreset(for trackID: UUID, onLoaded: @escaping () -> Void = {}) {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
@@ -2312,10 +2316,13 @@ struct MultiTrackView: View {
             return
         }
 
-        do {
-            try viewModel.loadChainPreset(for: trackID, from: url)
-        } catch {
-            viewModel.statusMessage = error.localizedDescription
+        Task {
+            do {
+                try await viewModel.loadChainPreset(for: trackID, from: url)
+                onLoaded()
+            } catch {
+                viewModel.statusMessage = error.localizedDescription
+            }
         }
     }
 
@@ -2329,14 +2336,16 @@ struct MultiTrackView: View {
             return
         }
 
-        do {
-            try viewModel.saveParameterPreset(for: trackID, to: url)
-        } catch {
-            viewModel.statusMessage = error.localizedDescription
+        Task {
+            do {
+                try await viewModel.saveParameterPreset(for: trackID, to: url)
+            } catch {
+                viewModel.statusMessage = error.localizedDescription
+            }
         }
     }
 
-    private func loadParameterPreset(for trackID: UUID) {
+    private func loadParameterPreset(for trackID: UUID, onLoaded: @escaping () -> Void = {}) {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
@@ -2347,10 +2356,13 @@ struct MultiTrackView: View {
             return
         }
 
-        do {
-            try viewModel.loadParameterPreset(for: trackID, from: url)
-        } catch {
-            viewModel.statusMessage = error.localizedDescription
+        Task {
+            do {
+                try await viewModel.loadParameterPreset(for: trackID, from: url)
+                onLoaded()
+            } catch {
+                viewModel.statusMessage = error.localizedDescription
+            }
         }
     }
 

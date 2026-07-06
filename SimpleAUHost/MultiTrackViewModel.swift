@@ -378,44 +378,6 @@ final class MultiTrackViewModel: ObservableObject {
         }
     }
 
-    func applyStartupSessionPreferenceIfNeeded() {
-        guard !hasAppliedStartupSessionPreference else { return }
-        hasAppliedStartupSessionPreference = true
-
-        guard loadsSavedSessionOnStartup else { return }
-
-        let startupURL: URL?
-        let missingSelectionMessage: String
-
-        switch startupSavedSessionSelection {
-        case .lastSaved:
-            startupURL = lastSavedSessionURL
-            missingSelectionMessage = "Save a show first before using Last Saved Show at launch."
-        case .specific:
-            startupURL = startupSpecificSessionURL
-            missingSelectionMessage = "Choose a specific show in Setup > Settings to open at launch."
-        }
-
-        guard let startupURL else {
-            statusMessage = missingSelectionMessage
-            return
-        }
-
-        guard FileManager.default.fileExists(atPath: startupURL.path) else {
-            statusMessage = "Startup show \(sessionDisplayName(for: startupURL)) is unavailable."
-            return
-        }
-
-        do {
-            try loadSession(from: startupURL)
-            if startupSavedSessionSelection == .specific && opensStartupSpecificSessionAsTemplate {
-                openCurrentSessionAsTemplate()
-            }
-        } catch {
-            statusMessage = "Failed to load startup show \(sessionDisplayName(for: startupURL)): \(error.localizedDescription)"
-        }
-    }
-
     func applyStartupSessionPreferenceIfNeededAsync() async {
         guard !hasAppliedStartupSessionPreference else { return }
         hasAppliedStartupSessionPreference = true
@@ -467,16 +429,19 @@ final class MultiTrackViewModel: ObservableObject {
         guard let retryContext = sessionReloadRetryContext else { return }
 
         sessionDeviceResolutionAlert = nil
-        load()
-
-        do {
-            try loadSession(from: retryContext.sessionURL)
-            if retryContext.reopensAsTemplate {
-                openCurrentSessionAsTemplate()
+        Task { [weak self] in
+            guard let self else { return }
+            // Rescan devices first so the session's saved device UID can resolve.
+            await self.loadAsync()
+            do {
+                try await self.loadSessionAsync(from: retryContext.sessionURL)
+                if retryContext.reopensAsTemplate {
+                    self.openCurrentSessionAsTemplate()
+                }
+                self.startEngine()
+            } catch {
+                self.statusMessage = "Failed to reload \(self.sessionDisplayName(for: retryContext.sessionURL)): \(error.localizedDescription)"
             }
-            startEngine()
-        } catch {
-            statusMessage = "Failed to reload \(sessionDisplayName(for: retryContext.sessionURL)): \(error.localizedDescription)"
         }
     }
 
@@ -516,6 +481,9 @@ final class MultiTrackViewModel: ObservableObject {
         return sanitizedSessionFilename(from: currentSessionName)
     }
 
+    /// Synchronous save, kept deliberately: the window/app close flow
+    /// (`AppCloseCoordinator`) must know whether the save succeeded before the
+    /// close proceeds. All other save paths should use `saveSessionAsync`.
     func saveSession() throws {
         guard let currentSessionURL else {
             throw AudioHostError("Choose Save As to create a session file first.")
@@ -523,6 +491,7 @@ final class MultiTrackViewModel: ObservableObject {
         try saveSession(to: currentSessionURL)
     }
 
+    /// Synchronous save for the close flow and Save As panel; see `saveSession()`.
     func saveSession(to url: URL) throws {
         captureLivePluginStates()
         let encoder = JSONEncoder()
@@ -577,21 +546,6 @@ final class MultiTrackViewModel: ObservableObject {
         currentSessionName = sessionDisplayName(for: url)
         recordLastSavedSessionURL(url)
         statusMessage = "Saved \(currentSessionName)."
-    }
-
-    func loadSession(from url: URL) throws {
-        let data = try Data(contentsOf: url)
-        let session: MultiTrackSessionFile
-        do {
-            session = try JSONDecoder().decode(MultiTrackSessionFile.self, from: data)
-        } catch {
-            throw AudioHostError("Failed to read the multi-track session file: \(error.localizedDescription)")
-        }
-        try session.validateFormatVersion()
-        sessionDeviceResolutionAlert = nil
-        applySession(session, sourceURL: url)
-        recordLastSavedSessionURL(url)
-        try refreshManagedSessions()
     }
 
     func loadSessionAsync(from url: URL) async throws {
@@ -679,7 +633,7 @@ final class MultiTrackViewModel: ObservableObject {
         return sanitizedFilename(from: "\(track.name) Parameters", pathExtension: "sahparams")
     }
 
-    func saveChainPreset(for trackID: UUID, to url: URL) throws {
+    func saveChainPreset(for trackID: UUID, to url: URL) async throws {
         if isRunning {
             captureLivePluginStates()
         }
@@ -693,23 +647,27 @@ final class MultiTrackViewModel: ObservableObject {
             plugins: track.plugins
         )
 
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let data = try encoder.encode(preset)
         let resolvedURL = normalizedURL(url, pathExtension: "sahchain")
-        try data.write(to: resolvedURL, options: .atomic)
+        try await Task.detached(priority: .userInitiated) {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(preset)
+            try data.write(to: resolvedURL, options: .atomic)
+        }.value
         statusMessage = "Saved chain preset \(resolvedURL.deletingPathExtension().lastPathComponent)."
     }
 
-    func loadChainPreset(for trackID: UUID, from url: URL) throws {
-        let data = try Data(contentsOf: url)
-        let preset: MultiTrackChainPresetFile
-        do {
-            preset = try JSONDecoder().decode(MultiTrackChainPresetFile.self, from: data)
-        } catch {
-            throw AudioHostError("Failed to read the chain preset file: \(error.localizedDescription)")
-        }
-        try preset.validateFormatVersion()
+    func loadChainPreset(for trackID: UUID, from url: URL) async throws {
+        let preset: MultiTrackChainPresetFile = try await Task.detached(priority: .userInitiated) {
+            let data = try Data(contentsOf: url)
+            do {
+                let decoded = try JSONDecoder().decode(MultiTrackChainPresetFile.self, from: data)
+                try decoded.validateFormatVersion()
+                return decoded
+            } catch {
+                throw AudioHostError("Failed to read the chain preset file: \(error.localizedDescription)")
+            }
+        }.value
 
         guard let trackIndex = tracks.firstIndex(where: { $0.id == trackID }) else {
             throw AudioHostError("The selected track could not be found.")
@@ -732,7 +690,7 @@ final class MultiTrackViewModel: ObservableObject {
         statusMessage = "Loaded chain preset \(url.deletingPathExtension().lastPathComponent) into \(tracks[trackIndex].name)."
     }
 
-    func saveParameterPreset(for trackID: UUID, to url: URL) throws {
+    func saveParameterPreset(for trackID: UUID, to url: URL) async throws {
         if isRunning {
             captureLivePluginStates()
         }
@@ -758,23 +716,27 @@ final class MultiTrackViewModel: ObservableObject {
             plugins: pluginStates
         )
 
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let data = try encoder.encode(preset)
         let resolvedURL = normalizedURL(url, pathExtension: "sahparams")
-        try data.write(to: resolvedURL, options: .atomic)
+        try await Task.detached(priority: .userInitiated) {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(preset)
+            try data.write(to: resolvedURL, options: .atomic)
+        }.value
         statusMessage = "Saved parameter preset \(resolvedURL.deletingPathExtension().lastPathComponent)."
     }
 
-    func loadParameterPreset(for trackID: UUID, from url: URL) throws {
-        let data = try Data(contentsOf: url)
-        let preset: MultiTrackParameterPresetFile
-        do {
-            preset = try JSONDecoder().decode(MultiTrackParameterPresetFile.self, from: data)
-        } catch {
-            throw AudioHostError("Failed to read the parameter preset file: \(error.localizedDescription)")
-        }
-        try preset.validateFormatVersion()
+    func loadParameterPreset(for trackID: UUID, from url: URL) async throws {
+        let preset: MultiTrackParameterPresetFile = try await Task.detached(priority: .userInitiated) {
+            let data = try Data(contentsOf: url)
+            do {
+                let decoded = try JSONDecoder().decode(MultiTrackParameterPresetFile.self, from: data)
+                try decoded.validateFormatVersion()
+                return decoded
+            } catch {
+                throw AudioHostError("Failed to read the parameter preset file: \(error.localizedDescription)")
+            }
+        }.value
 
         guard let trackIndex = tracks.firstIndex(where: { $0.id == trackID }) else {
             throw AudioHostError("The selected track could not be found.")
