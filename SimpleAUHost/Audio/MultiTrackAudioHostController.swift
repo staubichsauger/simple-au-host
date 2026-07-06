@@ -1845,8 +1845,16 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
     private let peakOutputCallbackFrames = AtomicCounter()
     private let peakSharedInputRingOccupancyFrames = AtomicCounter()
     private let peakStagedOutputRingOccupancyFrames = AtomicCounter()
+    /// Owned by the respective audio callback thread. Off-thread resets while
+    /// the engine runs must go through the reset-request flags below instead of
+    /// writing these directly (`start()`/`stop()` may write them because the IO
+    /// units are not running at that point).
     private var nextExpectedInputSampleTime: Double?
     private var nextExpectedOutputSampleTime: Double?
+    /// Non-zero requests that the next input/output callback clears its expected
+    /// sample time; lets `resetDropoutCounters()` avoid racing the callbacks.
+    private let inputSampleTimeResetRequested = AtomicCounter()
+    private let outputSampleTimeResetRequested = AtomicCounter()
     private let priorityController = AudioHostingPriorityController()
     /// Guards `runtimeStatus` plus the runtime collections (`trackRuntimes`,
     /// `bufferedTrackRuntimes`, `broadcastTrackRuntimes`, `realtimeTrackRuntimes`,
@@ -1887,6 +1895,8 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         resetTelemetry()
         nextExpectedInputSampleTime = nil
         nextExpectedOutputSampleTime = nil
+        inputSampleTimeResetRequested.reset()
+        outputSampleTimeResetRequested.reset()
         clearRuntimeStatus()
         priorityController.activate(reason: "Low-latency audio hosting")
 
@@ -1994,8 +2004,10 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
     func resetDropoutCounters() {
         audioDropoutCounter.reset()
         droppedFrameCounter.reset()
-        nextExpectedInputSampleTime = nil
-        nextExpectedOutputSampleTime = nil
+        // The expected sample times are owned by the audio callback threads;
+        // request the reset there instead of racing them from this thread.
+        inputSampleTimeResetRequested.storeMax(1)
+        outputSampleTimeResetRequested.storeMax(1)
         for runtime in currentTrackRuntimes() {
             runtime.resetDropoutCounters()
         }
@@ -2517,6 +2529,10 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             return noErr
         }
         peakInputCallbackFrames.storeMax(UInt64(inNumberFrames))
+        if inputSampleTimeResetRequested.load() != 0 {
+            inputSampleTimeResetRequested.reset()
+            nextExpectedInputSampleTime = nil
+        }
         updateExpectedSampleTime(
             with: inTimeStamp,
             frameCount: inNumberFrames,
@@ -2585,6 +2601,10 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             return noErr
         }
         peakOutputCallbackFrames.storeMax(UInt64(inNumberFrames))
+        if outputSampleTimeResetRequested.load() != 0 {
+            outputSampleTimeResetRequested.reset()
+            nextExpectedOutputSampleTime = nil
+        }
         updateExpectedSampleTime(
             with: inTimeStamp,
             frameCount: inNumberFrames,
