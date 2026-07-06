@@ -608,10 +608,10 @@ struct MultiTrackSessionDocument: FileDocument {
         }
         do {
             session = try JSONDecoder().decode(MultiTrackSessionFile.self, from: data)
-            try session.validateFormatVersion()
         } catch {
             throw AudioHostError("Failed to read the multi-track session file: \(error.localizedDescription)")
         }
+        try session.validateFormatVersion()
     }
 
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {

@@ -583,10 +583,10 @@ final class MultiTrackViewModel: ObservableObject {
         let session: MultiTrackSessionFile
         do {
             session = try JSONDecoder().decode(MultiTrackSessionFile.self, from: data)
-            try session.validateFormatVersion()
         } catch {
             throw AudioHostError("Failed to read the multi-track session file: \(error.localizedDescription)")
         }
+        try session.validateFormatVersion()
         sessionDeviceResolutionAlert = nil
         applySession(session, sourceURL: url)
         recordLastSavedSessionURL(url)
@@ -599,10 +599,10 @@ final class MultiTrackViewModel: ObservableObject {
             let decodedSession: MultiTrackSessionFile
             do {
                 decodedSession = try JSONDecoder().decode(MultiTrackSessionFile.self, from: data)
-                try decodedSession.validateFormatVersion()
             } catch {
                 throw AudioHostError("Failed to read the multi-track session file: \(error.localizedDescription)")
             }
+            try decodedSession.validateFormatVersion()
             return (
                 decodedSession,
                 try SAHManagedSessionStore.managedSessions()
@@ -705,10 +705,10 @@ final class MultiTrackViewModel: ObservableObject {
         let preset: MultiTrackChainPresetFile
         do {
             preset = try JSONDecoder().decode(MultiTrackChainPresetFile.self, from: data)
-            try preset.validateFormatVersion()
         } catch {
             throw AudioHostError("Failed to read the chain preset file: \(error.localizedDescription)")
         }
+        try preset.validateFormatVersion()
 
         guard let trackIndex = tracks.firstIndex(where: { $0.id == trackID }) else {
             throw AudioHostError("The selected track could not be found.")
@@ -770,10 +770,10 @@ final class MultiTrackViewModel: ObservableObject {
         let preset: MultiTrackParameterPresetFile
         do {
             preset = try JSONDecoder().decode(MultiTrackParameterPresetFile.self, from: data)
-            try preset.validateFormatVersion()
         } catch {
             throw AudioHostError("Failed to read the parameter preset file: \(error.localizedDescription)")
         }
+        try preset.validateFormatVersion()
 
         guard let trackIndex = tracks.firstIndex(where: { $0.id == trackID }) else {
             throw AudioHostError("The selected track could not be found.")
