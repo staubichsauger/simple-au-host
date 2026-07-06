@@ -1864,6 +1864,14 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
     private var nextExpectedInputSampleTime: Double?
     private var nextExpectedOutputSampleTime: Double?
     private let priorityController = AudioHostingPriorityController()
+    /// Guards `runtimeStatus` plus the runtime collections (`trackRuntimes`,
+    /// `bufferedTrackRuntimes`, `broadcastTrackRuntimes`, `realtimeTrackRuntimes`,
+    /// `bufferedWorkerShards`) and the ring-capacity fields read by
+    /// `telemetrySnapshot()`, so the telemetry monitor task can read them safely
+    /// while `start()`/`stop()` mutate them.
+    /// IMPORTANT: never take this lock inside the audio callbacks or worker loops.
+    /// They read the collections without locking, which is safe because the IO
+    /// units and workers are stopped before `stop()` mutates the collections.
     private let runtimeStateLock = NSLock()
     private let deviceObserver = AudioHardwareChangeObserver()
     private let stagedOutputStateLock = NSLock()
@@ -1918,7 +1926,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
 
             let availablePlugins = try AudioHostController().availablePlugins()
 
-            trackRuntimes = try configuration.tracks.map { track in
+            let createdTrackRuntimes = try configuration.tracks.map { track in
                 let resolvedPlugins = track.plugins.compactMap { insert in
                     insert.pluginID.flatMap { id in
                         availablePlugins.first { $0.id == id }.map { (insert, $0) }
@@ -1937,12 +1945,15 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
                     maximumRenderFrames: maximumRenderFrames
                 )
             }
-            bufferedTrackRuntimes = trackRuntimes.filter { $0.configuration.latencyClass == .buffered }
-            broadcastTrackRuntimes = trackRuntimes.filter { $0.configuration.latencyClass == .broadcast }
-            realtimeTrackRuntimes = trackRuntimes.filter(\.isRealtime)
-            peakTrackOutputRingCapacityFrames = trackRuntimes.reduce(0) { partialResult, runtime in
+            runtimeStateLock.lock()
+            trackRuntimes = createdTrackRuntimes
+            bufferedTrackRuntimes = createdTrackRuntimes.filter { $0.configuration.latencyClass == .buffered }
+            broadcastTrackRuntimes = createdTrackRuntimes.filter { $0.configuration.latencyClass == .broadcast }
+            realtimeTrackRuntimes = createdTrackRuntimes.filter(\.isRealtime)
+            peakTrackOutputRingCapacityFrames = createdTrackRuntimes.reduce(0) { partialResult, runtime in
                 max(partialResult, runtime.outputRingCapacityFrames)
             }
+            runtimeStateLock.unlock()
             try prepareBufferedWorkerShards()
 
             try createAndConfigureIOUnits(for: configuration)
@@ -1980,14 +1991,14 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
 
     func audioDropoutCount() -> UInt64 {
         let controllerCount = SAHAtomicCounterLoad(&audioDropoutCounter)
-        return trackRuntimes.reduce(controllerCount) { partialResult, runtime in
+        return currentTrackRuntimes().reduce(controllerCount) { partialResult, runtime in
             partialResult + runtime.audioDropoutCount()
         }
     }
 
     func droppedFrameCount() -> UInt64 {
         let controllerCount = SAHAtomicCounterLoad(&droppedFrameCounter)
-        return trackRuntimes.reduce(controllerCount) { partialResult, runtime in
+        return currentTrackRuntimes().reduce(controllerCount) { partialResult, runtime in
             partialResult + runtime.droppedFrameCount()
         }
     }
@@ -1997,7 +2008,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         SAHAtomicCounterReset(&droppedFrameCounter)
         nextExpectedInputSampleTime = nil
         nextExpectedOutputSampleTime = nil
-        for runtime in trackRuntimes {
+        for runtime in currentTrackRuntimes() {
             runtime.resetDropoutCounters()
         }
     }
@@ -2008,41 +2019,74 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         return runtimeStatus
     }
 
+    private struct RuntimeCollectionsSnapshot {
+        let trackRuntimes: [TrackRuntime]
+        let bufferedTrackRuntimes: [TrackRuntime]
+        let broadcastTrackRuntimes: [TrackRuntime]
+        let realtimeTrackRuntimes: [TrackRuntime]
+        let bufferedWorkerShards: [BufferedTrackWorkerShard]
+        let inputRingCapacityFrames: Int
+        let peakTrackOutputRingCapacityFrames: Int
+        let stagedOutputRingCapacityFrames: Int
+    }
+
+    private func runtimeCollectionsSnapshot() -> RuntimeCollectionsSnapshot {
+        runtimeStateLock.lock()
+        defer { runtimeStateLock.unlock() }
+        return RuntimeCollectionsSnapshot(
+            trackRuntimes: trackRuntimes,
+            bufferedTrackRuntimes: bufferedTrackRuntimes,
+            broadcastTrackRuntimes: broadcastTrackRuntimes,
+            realtimeTrackRuntimes: realtimeTrackRuntimes,
+            bufferedWorkerShards: bufferedWorkerShards,
+            inputRingCapacityFrames: inputRingCapacityFrames,
+            peakTrackOutputRingCapacityFrames: peakTrackOutputRingCapacityFrames,
+            stagedOutputRingCapacityFrames: stagedOutputRingCapacityFrames
+        )
+    }
+
+    private func currentTrackRuntimes() -> [TrackRuntime] {
+        runtimeStateLock.lock()
+        defer { runtimeStateLock.unlock() }
+        return trackRuntimes
+    }
+
     func telemetrySnapshot() -> AudioEngineTelemetrySnapshot {
+        let snapshot = runtimeCollectionsSnapshot()
         let realtimeTelemetry = latencyTelemetrySnapshot(
-            tracks: realtimeTrackRuntimes,
+            tracks: snapshot.realtimeTrackRuntimes,
             shards: []
         )
         let bufferedTelemetry = latencyTelemetrySnapshot(
-            tracks: bufferedTrackRuntimes,
-            shards: bufferedWorkerShards.filter { $0.latencyClass == .buffered }
+            tracks: snapshot.bufferedTrackRuntimes,
+            shards: snapshot.bufferedWorkerShards.filter { $0.latencyClass == .buffered }
         )
         let broadcastTelemetry = latencyTelemetrySnapshot(
-            tracks: broadcastTrackRuntimes,
-            shards: bufferedWorkerShards.filter { $0.latencyClass == .broadcast }
+            tracks: snapshot.broadcastTrackRuntimes,
+            shards: snapshot.bufferedWorkerShards.filter { $0.latencyClass == .broadcast }
         )
-        let peakTrackOutputOccupancy = trackRuntimes.reduce(UInt64(0)) { partialResult, runtime in
+        let peakTrackOutputOccupancy = snapshot.trackRuntimes.reduce(UInt64(0)) { partialResult, runtime in
             max(partialResult, runtime.peakOutputRingOccupancy())
         }
-        let peakTrackInputOccupancy = realtimeTrackRuntimes.reduce(UInt64(0)) { partialResult, runtime in
+        let peakTrackInputOccupancy = snapshot.realtimeTrackRuntimes.reduce(UInt64(0)) { partialResult, runtime in
             max(partialResult, runtime.peakInputRingOccupancy())
         }
-        let peakShardInputOccupancy = bufferedWorkerShards.reduce(UInt64(0)) { partialResult, shard in
+        let peakShardInputOccupancy = snapshot.bufferedWorkerShards.reduce(UInt64(0)) { partialResult, shard in
             max(partialResult, shard.peakInputRingOccupancy())
         }
-        let peakTrackRenderDuration = trackRuntimes.reduce(UInt64(0)) { partialResult, runtime in
+        let peakTrackRenderDuration = snapshot.trackRuntimes.reduce(UInt64(0)) { partialResult, runtime in
             max(partialResult, runtime.peakRenderDurationMicros())
         }
-        let peakShardRenderDuration = bufferedWorkerShards.reduce(UInt64(0)) { partialResult, shard in
+        let peakShardRenderDuration = snapshot.bufferedWorkerShards.reduce(UInt64(0)) { partialResult, shard in
             max(partialResult, shard.peakRenderDurationMicros())
         }
         let averageTrackRenderDuration = averageMicros(
-            totals: trackRuntimes.map { $0.averageRenderDurationMicros() },
-            count: trackRuntimes.count
+            totals: snapshot.trackRuntimes.map { $0.averageRenderDurationMicros() },
+            count: snapshot.trackRuntimes.count
         )
         let averageShardRenderDuration = averageMicros(
-            totals: bufferedWorkerShards.map { $0.averageRenderDurationMicros() },
-            count: bufferedWorkerShards.count
+            totals: snapshot.bufferedWorkerShards.map { $0.averageRenderDurationMicros() },
+            count: snapshot.bufferedWorkerShards.count
         )
         let peakOutputOccupancy = max(peakTrackOutputOccupancy, SAHAtomicCounterLoad(&peakStagedOutputRingOccupancyFrames))
         return AudioEngineTelemetrySnapshot(
@@ -2051,15 +2095,15 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             peakEffectRenderFrames: 0,
             peakInputRingOccupancyFrames: max(peakTrackInputOccupancy, max(peakShardInputOccupancy, SAHAtomicCounterLoad(&peakSharedInputRingOccupancyFrames))),
             peakOutputRingOccupancyFrames: peakOutputOccupancy,
-            inputRingCapacityFrames: inputRingCapacityFrames,
-            outputRingCapacityFrames: max(peakTrackOutputRingCapacityFrames, stagedOutputRingCapacityFrames),
+            inputRingCapacityFrames: snapshot.inputRingCapacityFrames,
+            outputRingCapacityFrames: max(snapshot.peakTrackOutputRingCapacityFrames, snapshot.stagedOutputRingCapacityFrames),
             peakTrackRenderDurationMicros: peakTrackRenderDuration,
             averageTrackRenderDurationMicros: averageTrackRenderDuration,
             peakShardRenderDurationMicros: peakShardRenderDuration,
             averageShardRenderDurationMicros: averageShardRenderDuration,
-            peakShardUtilizationPercent: bufferedWorkerShards.reduce(0) { max($0, $1.peakUtilization()) },
-            peakWorkerWakeupsPerSecond: bufferedWorkerShards.reduce(0) { max($0, $1.peakWakeups()) },
-            workerShardCount: bufferedWorkerShards.count,
+            peakShardUtilizationPercent: snapshot.bufferedWorkerShards.reduce(0) { max($0, $1.peakUtilization()) },
+            peakWorkerWakeupsPerSecond: snapshot.bufferedWorkerShards.reduce(0) { max($0, $1.peakWakeups()) },
+            workerShardCount: snapshot.bufferedWorkerShards.count,
             realtime: realtimeTelemetry,
             buffered: bufferedTelemetry,
             broadcast: broadcastTelemetry
@@ -2067,14 +2111,14 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
     }
 
     func pluginStateSnapshot() -> [UUID: [UUID: Data]] {
-        Dictionary(uniqueKeysWithValues: trackRuntimes.compactMap { runtime in
+        Dictionary(uniqueKeysWithValues: currentTrackRuntimes().compactMap { runtime in
             let states = runtime.serializedPluginStates()
             return states.isEmpty ? nil : (runtime.configuration.id, states)
         })
     }
 
     func trackPluginLatencySnapshot() -> [TrackPluginLatencySnapshot] {
-        trackRuntimes.map { runtime in
+        currentTrackRuntimes().map { runtime in
             TrackPluginLatencySnapshot(
                 trackID: runtime.configuration.id,
                 pluginLatencyFrames: runtime.pluginLatencyFrames()
@@ -2086,7 +2130,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         for trackID: UUID,
         statesByInsertID: [UUID: Data]
     ) throws -> [UUID: String] {
-        guard let runtime = trackRuntimes.first(where: { $0.configuration.id == trackID }) else {
+        guard let runtime = currentTrackRuntimes().first(where: { $0.configuration.id == trackID }) else {
             throw AudioHostError("This track is not loaded on the running engine.")
         }
         return runtime.applySerializedPluginStates(statesByInsertID)
@@ -2097,7 +2141,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             throw AudioHostError("Start the engine before changing Waves Tune bypass.")
         }
 
-        return try trackRuntimes.reduce(into: 0) { count, runtime in
+        return try currentTrackRuntimes().reduce(into: 0) { count, runtime in
             count += try runtime.setWavesTuneRealtimeBypassed(isBypassed)
         }
     }
@@ -2108,7 +2152,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         }
 
         let normalizedSelection = selection.normalized
-        return try trackRuntimes.reduce(into: 0) { count, runtime in
+        return try currentTrackRuntimes().reduce(into: 0) { count, runtime in
             count += try runtime.applyWavesTuneRealtimeKeySelection(normalizedSelection)
         }
     }
@@ -2121,7 +2165,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             throw AudioHostError("Start the engine before applying Waves Tune strength.")
         }
 
-        guard let runtime = trackRuntimes.first(where: { $0.configuration.id == trackID }) else {
+        guard let runtime = currentTrackRuntimes().first(where: { $0.configuration.id == trackID }) else {
             throw AudioHostError("This track is not loaded on the running engine.")
         }
 
@@ -2135,7 +2179,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             throw AudioHostError("Start the engine before reading Waves Tune strength.")
         }
 
-        guard let runtime = trackRuntimes.first(where: { $0.configuration.id == trackID }) else {
+        guard let runtime = currentTrackRuntimes().first(where: { $0.configuration.id == trackID }) else {
             throw AudioHostError("This track is not loaded on the running engine.")
         }
 
@@ -2167,11 +2211,24 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
 
         inputUnit = nil
         outputUnit = nil
-        trackRuntimes.removeAll()
-        bufferedTrackRuntimes.removeAll()
-        broadcastTrackRuntimes.removeAll()
-        realtimeTrackRuntimes.removeAll()
-        bufferedWorkerShards.removeAll()
+
+        // Retire the runtime collections under the lock so concurrent readers
+        // (e.g. the telemetry monitor task) never observe a mid-mutation array.
+        // The local copies keep the runtimes alive until the end of this scope;
+        // their deinits dispose the plugin Audio Units and free the ring buffers.
+        runtimeStateLock.lock()
+        let retiredTrackRuntimes = trackRuntimes
+        let retiredWorkerShards = bufferedWorkerShards
+        trackRuntimes = []
+        bufferedTrackRuntimes = []
+        broadcastTrackRuntimes = []
+        realtimeTrackRuntimes = []
+        bufferedWorkerShards = []
+        inputRingCapacityFrames = 0
+        peakTrackOutputRingCapacityFrames = 0
+        stagedOutputRingCapacityFrames = 0
+        runtimeStateLock.unlock()
+
         sharedStagedOutputBuffers.removeAll()
 
         for pointer in captureChannelBuffers {
@@ -2189,18 +2246,17 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         maxFramesPerSlice = 0
         callbackFrameCapacity = 0
         stagedOutputPrerollFrames = 0
-        inputRingCapacityFrames = 0
-        peakTrackOutputRingCapacityFrames = 0
-        stagedOutputRingCapacityFrames = 0
         nextExpectedInputSampleTime = nil
         nextExpectedOutputSampleTime = nil
         clearRuntimeStatus()
         priorityController.deactivate()
+        withExtendedLifetime(retiredTrackRuntimes) {}
+        withExtendedLifetime(retiredWorkerShards) {}
     }
 
     @MainActor
     func openPluginEditor(for trackID: UUID, pluginID: UUID? = nil) async throws {
-        guard let runtime = trackRuntimes.first(where: { $0.configuration.id == trackID }) else {
+        guard let runtime = currentTrackRuntimes().first(where: { $0.configuration.id == trackID }) else {
             throw AudioHostError("Start the engine before opening a plugin editor.")
         }
         guard runtime.hasOpenablePluginEditor else {
@@ -2238,7 +2294,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
 
     @MainActor
     func makeHostedPluginEditorSession(for trackID: UUID, pluginID: UUID? = nil) async throws -> HostedPluginEditorSession {
-        guard let runtime = trackRuntimes.first(where: { $0.configuration.id == trackID }) else {
+        guard let runtime = currentTrackRuntimes().first(where: { $0.configuration.id == trackID }) else {
             throw AudioHostError("Start the engine before opening a plugin editor.")
         }
         guard runtime.hasOpenablePluginEditor else {
@@ -2287,7 +2343,9 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         sharedStagedOutputBuffers.removeAll()
         stagedOutputPrimed = false
         stagedOutputPrerollFrames = 0
+        runtimeStateLock.lock()
         stagedOutputRingCapacityFrames = 0
+        runtimeStateLock.unlock()
 
         guard let configuration else { return }
         let maxProcessingFrames = maxNonRealtimeProcessingFrames()
@@ -2304,6 +2362,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         )
         let ringCapacity = UInt32(min(ringCapacityFrames, Int(UInt32.max)))
 
+        var newStagedOutputRingCapacityFrames = 0
         for _ in 0..<outputChannelCount {
             let buffer = SharedOutputChannelBuffer()
             guard SAHFloatRingBufferInit(&buffer.ring, ringCapacity) else {
@@ -2311,8 +2370,11 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             }
             sharedStagedOutputBuffers.append(buffer)
             stagedOutputScratchBuffers.append(UnsafeMutablePointer<Float>.allocate(capacity: configuration.bufferSize))
-            stagedOutputRingCapacityFrames = max(stagedOutputRingCapacityFrames, Int(buffer.ring.capacity))
+            newStagedOutputRingCapacityFrames = max(newStagedOutputRingCapacityFrames, Int(buffer.ring.capacity))
         }
+        runtimeStateLock.lock()
+        stagedOutputRingCapacityFrames = newStagedOutputRingCapacityFrames
+        runtimeStateLock.unlock()
     }
 
     private func createAndConfigureIOUnits(for configuration: MultiTrackHostConfiguration) throws {
@@ -2556,8 +2618,10 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
 private extension MultiTrackAudioHostController {
     func prepareBufferedWorkerShards() throws {
         stopBufferedWorkers()
-        bufferedWorkerShards.removeAll()
-        inputRingCapacityFrames = realtimeTrackRuntimes.reduce(0) { max($0, $1.outputRingCapacityFrames) }
+        runtimeStateLock.lock()
+        bufferedWorkerShards = []
+        runtimeStateLock.unlock()
+        var newInputRingCapacityFrames = realtimeTrackRuntimes.reduce(0) { max($0, $1.outputRingCapacityFrames) }
 
         let bufferedShards = try makeBufferedWorkerShards(
             tracks: bufferedTrackRuntimes,
@@ -2569,8 +2633,13 @@ private extension MultiTrackAudioHostController {
             latencyClass: .broadcast,
             suggestedCount: suggestedWorkerShardCount(for: .broadcast, trackCount: broadcastTrackRuntimes.count)
         )
-        bufferedWorkerShards = bufferedShards + broadcastShards
-        inputRingCapacityFrames = bufferedWorkerShards.reduce(inputRingCapacityFrames) { max($0, $1.inputRingCapacityFrames) }
+        let newShards = bufferedShards + broadcastShards
+        newInputRingCapacityFrames = newShards.reduce(newInputRingCapacityFrames) { max($0, $1.inputRingCapacityFrames) }
+
+        runtimeStateLock.lock()
+        bufferedWorkerShards = newShards
+        inputRingCapacityFrames = newInputRingCapacityFrames
+        runtimeStateLock.unlock()
     }
 
     private func makeBufferedWorkerShards(
@@ -2774,7 +2843,7 @@ private extension MultiTrackAudioHostController {
         SAHAtomicCounterReset(&peakOutputCallbackFrames)
         SAHAtomicCounterReset(&peakSharedInputRingOccupancyFrames)
         SAHAtomicCounterReset(&peakStagedOutputRingOccupancyFrames)
-        for shard in bufferedWorkerShards {
+        for shard in runtimeCollectionsSnapshot().bufferedWorkerShards {
             shard.resetTelemetry()
         }
     }
