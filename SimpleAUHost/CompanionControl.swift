@@ -154,8 +154,12 @@ final class CompanionControlServer: @unchecked Sendable {
             throw AudioHostError("The Companion control port is invalid.")
         }
         let parameters = NWParameters.tcp
+        parameters.requiredLocalEndpoint = .hostPort(
+            host: NWEndpoint.Host(CompanionControlDefaults.host),
+            port: listenerPort
+        )
 
-        let listener = try NWListener(using: parameters, on: listenerPort)
+        let listener = try NWListener(using: parameters)
         self.listener = listener
 
         let url = CompanionControlDefaults.baseURLString
