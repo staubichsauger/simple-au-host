@@ -13,14 +13,14 @@ enum WavesTuneRealtimeParameterMap {
         plugin.name.localizedCaseInsensitiveContains("Waves Tune Real-Time")
     }
 
-    static func resolveStrengthParameterIDs(for unit: AudioUnit) throws -> (
+    static func resolveStrengthParameterIDs(for control: any PluginParameterControl) throws -> (
         speed: AudioUnitParameterID,
         noteTransition: AudioUnitParameterID
     ) {
-        let parameterIDs = try availableParameterIDs(for: unit)
+        let parameterIDs = try control.availableParameterIDs()
 
         guard let speedParameterID = try findParameterID(
-            in: unit,
+            in: control,
             parameterIDs: parameterIDs,
             preferredNames: speedPreferredNames,
             matchingAll: speedParameterTokens
@@ -29,7 +29,7 @@ enum WavesTuneRealtimeParameterMap {
         }
 
         guard let noteTransitionParameterID = try findParameterID(
-            in: unit,
+            in: control,
             parameterIDs: parameterIDs,
             preferredNames: noteTransitionPreferredNames,
             matchingAll: noteTransitionParameterTokens
@@ -40,54 +40,19 @@ enum WavesTuneRealtimeParameterMap {
         return (speedParameterID, noteTransitionParameterID)
     }
 
-    static func strengthValues(for unit: AudioUnit) throws -> (
+    static func strengthValues(for control: any PluginParameterControl) throws -> (
         speed: Float,
         noteTransition: Float
     ) {
-        let parameterIDs = try resolveStrengthParameterIDs(for: unit)
+        let parameterIDs = try resolveStrengthParameterIDs(for: control)
         return (
-            try displayedParameterValue(for: parameterIDs.speed, in: unit),
-            try displayedParameterValue(for: parameterIDs.noteTransition, in: unit)
+            try control.displayedParameterValue(for: parameterIDs.speed),
+            try control.displayedParameterValue(for: parameterIDs.noteTransition)
         )
-    }
-
-    private static func availableParameterIDs(for unit: AudioUnit) throws -> [AudioUnitParameterID] {
-        var propertySize: UInt32 = 0
-        try checkStatus(
-            AudioUnitGetPropertyInfo(
-                unit,
-                kAudioUnitProperty_ParameterList,
-                kAudioUnitScope_Global,
-                0,
-                &propertySize,
-                nil
-            ),
-            "Failed to inspect Audio Unit parameters"
-        )
-
-        let count = Int(propertySize) / MemoryLayout<AudioUnitParameterID>.size
-        guard count > 0 else { return [] }
-
-        var parameterIDs = Array(repeating: AudioUnitParameterID(0), count: count)
-        try parameterIDs.withUnsafeMutableBytes { bytes in
-            guard let baseAddress = bytes.baseAddress else { return }
-            try checkStatus(
-                AudioUnitGetProperty(
-                    unit,
-                    kAudioUnitProperty_ParameterList,
-                    kAudioUnitScope_Global,
-                    0,
-                    baseAddress,
-                    &propertySize
-                ),
-                "Failed to load Audio Unit parameters"
-            )
-        }
-        return parameterIDs
     }
 
     private static func findParameterID(
-        in unit: AudioUnit,
+        in control: any PluginParameterControl,
         parameterIDs: [AudioUnitParameterID],
         preferredNames: [String],
         matchingAll tokens: [String]
@@ -97,7 +62,7 @@ enum WavesTuneRealtimeParameterMap {
         var fallbackMatch: AudioUnitParameterID?
 
         for parameterID in parameterIDs {
-            let parameterName = try parameterDisplayName(for: parameterID, in: unit)
+            let parameterName = try control.parameterDisplayName(for: parameterID)
             let normalizedName = normalizeParameterName(parameterName)
 
             if normalizedPreferredNames.contains(normalizedName) {
@@ -119,135 +84,21 @@ enum WavesTuneRealtimeParameterMap {
         return fallbackMatch
     }
 
-    private static func parameterDisplayName(
-        for parameterID: AudioUnitParameterID,
-        in unit: AudioUnit
-    ) throws -> String {
-        var parameterInfo = AudioUnitParameterInfo()
-        var propertySize = UInt32(MemoryLayout<AudioUnitParameterInfo>.size)
-        try checkStatus(
-            AudioUnitGetProperty(
-                unit,
-                kAudioUnitProperty_ParameterInfo,
-                kAudioUnitScope_Global,
-                parameterID,
-                &parameterInfo,
-                &propertySize
-            ),
-            "Failed to read Audio Unit parameter info"
-        )
-
-        return withUnsafePointer(to: parameterInfo.name) { pointer in
-            pointer.withMemoryRebound(to: CChar.self, capacity: MemoryLayout.size(ofValue: parameterInfo.name)) { namePointer in
-                String(cString: namePointer)
-            }
-        }
-    }
-
-    private static func displayedParameterValue(
-        for parameterID: AudioUnitParameterID,
-        in unit: AudioUnit
-    ) throws -> Float {
-        if let displayString = try parameterString(for: parameterID, in: unit),
-           let displayValue = parseLeadingFloat(from: displayString) {
-            return displayValue
-        }
-
-        var rawValue = AudioUnitParameterValue(0)
-        try checkStatus(
-            AudioUnitGetParameter(
-                unit,
-                parameterID,
-                kAudioUnitScope_Global,
-                0,
-                &rawValue
-            ),
-            "Failed to read the Audio Unit parameter value"
-        )
-        return Float(rawValue)
-    }
-
     static func parameterValue(
         for parameterID: AudioUnitParameterID,
         displayValue: Float,
-        in unit: AudioUnit
+        using control: any PluginParameterControl
     ) throws -> AudioUnitParameterValue {
         for candidate in parameterValueStringCandidates(for: displayValue) {
-            if let resolvedValue = try parameterValue(
+            if let resolvedValue = try control.parameterValue(
                 for: parameterID,
-                string: candidate,
-                in: unit
+                string: candidate
             ) {
                 return resolvedValue
             }
         }
 
         return AudioUnitParameterValue(displayValue)
-    }
-
-    private static func parameterString(
-        for parameterID: AudioUnitParameterID,
-        in unit: AudioUnit
-    ) throws -> String? {
-        var currentValue = AudioUnitParameterValue(0)
-        try checkStatus(
-            AudioUnitGetParameter(
-                unit,
-                parameterID,
-                kAudioUnitScope_Global,
-                0,
-                &currentValue
-            ),
-            "Failed to read the Audio Unit parameter value"
-        )
-
-        return try withUnsafePointer(to: &currentValue) { valuePointer in
-            var request = AudioUnitParameterStringFromValue(
-                inParamID: parameterID,
-                inValue: valuePointer,
-                outString: nil
-            )
-            var propertySize = UInt32(MemoryLayout<AudioUnitParameterStringFromValue>.size)
-            try checkStatus(
-                AudioUnitGetProperty(
-                    unit,
-                    kAudioUnitProperty_ParameterStringFromValue,
-                    kAudioUnitScope_Global,
-                    0,
-                    &request,
-                    &propertySize
-                ),
-                "Failed to format the Audio Unit parameter value"
-            )
-
-            guard let outString = request.outString else { return nil }
-            return outString.takeRetainedValue() as String
-        }
-    }
-
-    private static func parameterValue(
-        for parameterID: AudioUnitParameterID,
-        string: String,
-        in unit: AudioUnit
-    ) throws -> AudioUnitParameterValue? {
-        let cfString = string as CFString
-        var request = AudioUnitParameterValueFromString(
-            inParamID: parameterID,
-            inString: Unmanaged.passUnretained(cfString),
-            outValue: 0
-        )
-        var propertySize = UInt32(MemoryLayout<AudioUnitParameterValueFromString>.size)
-        let status = AudioUnitGetProperty(
-            unit,
-            kAudioUnitProperty_ParameterValueFromString,
-            kAudioUnitScope_Global,
-            0,
-            &request,
-            &propertySize
-        )
-
-        guard status == noErr else { return nil }
-        return request.outValue
     }
 
     private static func parameterValueStringCandidates(for displayValue: Float) -> [String] {
@@ -264,12 +115,6 @@ enum WavesTuneRealtimeParameterMap {
         ]
     }
 
-    private static func parseLeadingFloat(from string: String) -> Float? {
-        let scanner = Scanner(string: string)
-        scanner.locale = Locale(identifier: "en_US_POSIX")
-        return scanner.scanFloat()
-    }
-
     private static func normalizeParameterName(_ name: String) -> String {
         name
             .lowercased()
@@ -282,46 +127,26 @@ enum WavesTuneRealtimeParameterMap {
 
 extension MultiTrackAudioHostController.TrackRuntime {
     func setWavesTuneRealtimeBypassed(_ isBypassed: Bool) throws -> Int {
-        try applyToWavesTuneRealtimeUnits { plugin in
-            var bypassedValue: UInt32 = isBypassed ? 1 : 0
-            try checkStatus(
-                AudioUnitSetProperty(
-                    plugin.unit,
-                    kAudioUnitProperty_BypassEffect,
-                    kAudioUnitScope_Global,
-                    0,
-                    &bypassedValue,
-                    UInt32(MemoryLayout<UInt32>.size)
-                ),
-                "Failed to update Waves Tune bypass"
+        try applyToWavesTuneRealtimeControls { control in
+            try control.setBypass(
+                isBypassed,
+                failureMessage: "Failed to update Waves Tune bypass"
             )
         }
     }
 
     func applyWavesTuneRealtimeKeySelection(_ selection: WavesTuneKeySelection) throws -> Int {
         let normalizedSelection = selection.normalized
-        return try applyToWavesTuneRealtimeUnits { plugin in
-            try checkStatus(
-                AudioUnitSetParameter(
-                    plugin.unit,
-                    WavesTuneRealtimeParameterMap.scaleTypeParameterID,
-                    kAudioUnitScope_Global,
-                    0,
-                    AudioUnitParameterValue(normalizedSelection.pluginScaleTypeValue),
-                    0
-                ),
-                "Failed to update the Waves Tune scale type"
+        return try applyToWavesTuneRealtimeControls { control in
+            try control.setParameter(
+                WavesTuneRealtimeParameterMap.scaleTypeParameterID,
+                value: AudioUnitParameterValue(normalizedSelection.pluginScaleTypeValue),
+                failureMessage: "Failed to update the Waves Tune scale type"
             )
-            try checkStatus(
-                AudioUnitSetParameter(
-                    plugin.unit,
-                    WavesTuneRealtimeParameterMap.scaleRootParameterID,
-                    kAudioUnitScope_Global,
-                    0,
-                    AudioUnitParameterValue(normalizedSelection.pluginScaleRootValue),
-                    0
-                ),
-                "Failed to update the Waves Tune scale root"
+            try control.setParameter(
+                WavesTuneRealtimeParameterMap.scaleRootParameterID,
+                value: AudioUnitParameterValue(normalizedSelection.pluginScaleRootValue),
+                failureMessage: "Failed to update the Waves Tune scale root"
             )
         }
     }
@@ -332,39 +157,27 @@ extension MultiTrackAudioHostController.TrackRuntime {
             return 0
         }
 
-        return try applyToWavesTuneRealtimeUnits { plugin in
-            let parameterIDs = try WavesTuneRealtimeParameterMap.resolveStrengthParameterIDs(for: plugin.unit)
+        return try applyToWavesTuneRealtimeControls { control in
+            let parameterIDs = try WavesTuneRealtimeParameterMap.resolveStrengthParameterIDs(for: control)
             let speedValue = try WavesTuneRealtimeParameterMap.parameterValue(
                 for: parameterIDs.speed,
                 displayValue: speed,
-                in: plugin.unit
+                using: control
             )
             let noteTransitionValue = try WavesTuneRealtimeParameterMap.parameterValue(
                 for: parameterIDs.noteTransition,
                 displayValue: noteTransition,
-                in: plugin.unit
+                using: control
             )
-            try checkStatus(
-                AudioUnitSetParameter(
-                    plugin.unit,
-                    parameterIDs.speed,
-                    kAudioUnitScope_Global,
-                    0,
-                    speedValue,
-                    0
-                ),
-                "Failed to update the Waves Tune Speed parameter"
+            try control.setParameter(
+                parameterIDs.speed,
+                value: speedValue,
+                failureMessage: "Failed to update the Waves Tune Speed parameter"
             )
-            try checkStatus(
-                AudioUnitSetParameter(
-                    plugin.unit,
-                    parameterIDs.noteTransition,
-                    kAudioUnitScope_Global,
-                    0,
-                    noteTransitionValue,
-                    0
-                ),
-                "Failed to update the Waves Tune Note Transition parameter"
+            try control.setParameter(
+                parameterIDs.noteTransition,
+                value: noteTransitionValue,
+                failureMessage: "Failed to update the Waves Tune Note Transition parameter"
             )
         }
     }
@@ -372,8 +185,8 @@ extension MultiTrackAudioHostController.TrackRuntime {
     func currentWavesTuneRealtimeStrengthPreset() throws -> WavesTuneStrengthPreset? {
         var resolvedPreset: WavesTuneStrengthPreset?
 
-        for plugin in plugins where WavesTuneRealtimeParameterMap.matches(plugin.plugin) {
-            let values = try WavesTuneRealtimeParameterMap.strengthValues(for: plugin.unit)
+        for control in plugins where WavesTuneRealtimeParameterMap.matches(control.pluginInfo) {
+            let values = try WavesTuneRealtimeParameterMap.strengthValues(for: control)
             let preset = WavesTuneStrengthPreset.matchingDisplayValues(
                 speed: values.speed,
                 noteTransition: values.noteTransition
@@ -389,16 +202,16 @@ extension MultiTrackAudioHostController.TrackRuntime {
         return resolvedPreset
     }
 
-    private func applyToWavesTuneRealtimeUnits(
-        _ body: (PluginRuntime) throws -> Void
+    private func applyToWavesTuneRealtimeControls(
+        _ body: (any PluginParameterControl) throws -> Void
     ) throws -> Int {
-        var affectedUnits = 0
+        var affectedControls = 0
 
-        for plugin in plugins where WavesTuneRealtimeParameterMap.matches(plugin.plugin) {
-            try body(plugin)
-            affectedUnits += 1
+        for control in plugins where WavesTuneRealtimeParameterMap.matches(control.pluginInfo) {
+            try body(control)
+            affectedControls += 1
         }
 
-        return affectedUnits
+        return affectedControls
     }
 }

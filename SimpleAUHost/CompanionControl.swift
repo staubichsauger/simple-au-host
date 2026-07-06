@@ -255,16 +255,98 @@ final class CompanionControlServer: @unchecked Sendable {
     }
 }
 
-private enum ParsedCompanionControlRequest {
+enum ParsedCompanionControlRequest {
     case incomplete
     case malformed(String)
     case tooLarge(String)
     case complete(CompanionControlHTTPRequest)
 }
 
+enum CompanionControlRequestParsingLimits {
+    static let maximumHeaderBytes = 16 * 1024
+    static let maximumBodyBytes = 256 * 1024
+}
+
+func parseCompanionControlHTTPRequest(
+    from buffer: Data,
+    maximumHeaderBytes: Int = CompanionControlRequestParsingLimits.maximumHeaderBytes,
+    maximumBodyBytes: Int = CompanionControlRequestParsingLimits.maximumBodyBytes
+) -> ParsedCompanionControlRequest {
+    let delimiter = Data([13, 10, 13, 10])
+    guard let headerRange = buffer.range(of: delimiter) else {
+        if buffer.count > maximumHeaderBytes {
+            return .tooLarge("Request headers are too large.")
+        }
+        return .incomplete
+    }
+
+    guard headerRange.lowerBound <= maximumHeaderBytes else {
+        return .tooLarge("Request headers are too large.")
+    }
+
+    let headerData = buffer.subdata(in: 0..<headerRange.lowerBound)
+    guard let headerText = String(data: headerData, encoding: .utf8) else {
+        return .malformed("Request headers must be UTF-8.")
+    }
+
+    let lines = headerText.components(separatedBy: "\r\n")
+    guard let requestLine = lines.first, !requestLine.isEmpty else {
+        return .malformed("Missing request line.")
+    }
+
+    let requestLineParts = requestLine.split(separator: " ", omittingEmptySubsequences: true)
+    guard requestLineParts.count >= 2 else {
+        return .malformed("Malformed request line.")
+    }
+
+    var headers: [String: String] = [:]
+    for line in lines.dropFirst() where !line.isEmpty {
+        let parts = line.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
+        guard parts.count == 2 else {
+            return .malformed("Malformed header line.")
+        }
+
+        let name = String(parts[0]).trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let value = String(parts[1]).trimmingCharacters(in: .whitespacesAndNewlines)
+        headers[name] = value
+    }
+
+    let bodyOffset = headerRange.upperBound
+    let contentLength: Int
+    if let rawContentLength = headers["content-length"] {
+        guard let parsedContentLength = Int(rawContentLength), parsedContentLength >= 0 else {
+            return .malformed("Content-Length must be a non-negative integer.")
+        }
+        contentLength = parsedContentLength
+    } else {
+        contentLength = 0
+    }
+
+    guard contentLength <= maximumBodyBytes else {
+        return .tooLarge("Request body is too large.")
+    }
+
+    let totalLength = bodyOffset + contentLength
+    guard totalLength <= maximumHeaderBytes + maximumBodyBytes else {
+        return .tooLarge("Request is too large.")
+    }
+
+    guard buffer.count >= totalLength else {
+        return .incomplete
+    }
+
+    let body = buffer.subdata(in: bodyOffset..<totalLength)
+    return .complete(
+        CompanionControlHTTPRequest(
+            method: String(requestLineParts[0]).uppercased(),
+            path: String(requestLineParts[1]),
+            headers: headers,
+            body: body
+        )
+    )
+}
+
 private final class ConnectionSession: @unchecked Sendable {
-    private static let maximumHeaderBytes = 16 * 1024
-    private static let maximumBodyBytes = 256 * 1024
     private static let requestTimeout: DispatchTimeInterval = .seconds(5)
 
     private let connection: NWConnection
@@ -315,7 +397,7 @@ private final class ConnectionSession: @unchecked Sendable {
                 return
             }
 
-            switch self.parseRequest() {
+            switch parseCompanionControlHTTPRequest(from: self.buffer) {
             case .incomplete:
                 if isComplete {
                     self.send(
@@ -362,81 +444,6 @@ private final class ConnectionSession: @unchecked Sendable {
                 }
             }
         }
-    }
-
-    private func parseRequest() -> ParsedCompanionControlRequest {
-        let delimiter = Data([13, 10, 13, 10])
-        guard let headerRange = buffer.range(of: delimiter) else {
-            if buffer.count > Self.maximumHeaderBytes {
-                return .tooLarge("Request headers are too large.")
-            }
-            return .incomplete
-        }
-
-        guard headerRange.lowerBound <= Self.maximumHeaderBytes else {
-            return .tooLarge("Request headers are too large.")
-        }
-
-        let headerData = buffer.subdata(in: 0..<headerRange.lowerBound)
-        guard let headerText = String(data: headerData, encoding: .utf8) else {
-            return .malformed("Request headers must be UTF-8.")
-        }
-
-        let lines = headerText.components(separatedBy: "\r\n")
-        guard let requestLine = lines.first, !requestLine.isEmpty else {
-            return .malformed("Missing request line.")
-        }
-
-        let requestLineParts = requestLine.split(separator: " ", omittingEmptySubsequences: true)
-        guard requestLineParts.count >= 2 else {
-            return .malformed("Malformed request line.")
-        }
-
-        var headers: [String: String] = [:]
-        for line in lines.dropFirst() where !line.isEmpty {
-            let parts = line.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
-            guard parts.count == 2 else {
-                return .malformed("Malformed header line.")
-            }
-
-            let name = String(parts[0]).trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            let value = String(parts[1]).trimmingCharacters(in: .whitespacesAndNewlines)
-            headers[name] = value
-        }
-
-        let bodyOffset = headerRange.upperBound
-        let contentLength: Int
-        if let rawContentLength = headers["content-length"] {
-            guard let parsedContentLength = Int(rawContentLength), parsedContentLength >= 0 else {
-                return .malformed("Content-Length must be a non-negative integer.")
-            }
-            contentLength = parsedContentLength
-        } else {
-            contentLength = 0
-        }
-
-        guard contentLength <= Self.maximumBodyBytes else {
-            return .tooLarge("Request body is too large.")
-        }
-
-        let totalLength = bodyOffset + contentLength
-        guard totalLength <= Self.maximumHeaderBytes + Self.maximumBodyBytes else {
-            return .tooLarge("Request is too large.")
-        }
-
-        guard buffer.count >= totalLength else {
-            return .incomplete
-        }
-
-        let body = buffer.subdata(in: bodyOffset..<totalLength)
-        return .complete(
-            CompanionControlHTTPRequest(
-                method: String(requestLineParts[0]).uppercased(),
-                path: String(requestLineParts[1]),
-                headers: headers,
-                body: body
-            )
-        )
     }
 
     private func send(_ response: CompanionControlHTTPResponse) {
