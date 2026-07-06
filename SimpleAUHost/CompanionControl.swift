@@ -151,72 +151,88 @@ final class CompanionControlServer: @unchecked Sendable {
         requestHandler: @escaping RequestHandler,
         stateHandler: @escaping StateHandler
     ) throws {
-        guard listener == nil else { return }
+        // All mutable server state (`listener`, the handlers, `activeSessions`)
+        // is confined to `queue`: the connection callbacks and `stop()` mutate
+        // it there. Hop onto the queue synchronously so `start()` keeps its
+        // throwing signature. Must not be called from `queue` itself.
+        try queue.sync {
+            guard listener == nil else { return }
 
-        self.requestHandler = requestHandler
-        self.stateHandler = stateHandler
+            self.requestHandler = requestHandler
+            self.stateHandler = stateHandler
 
-        let listenerPort = NWEndpoint.Port(rawValue: port)
-        guard let listenerPort else {
-            throw AudioHostError("The Companion control port is invalid.")
-        }
-        let parameters = NWParameters.tcp
-        parameters.requiredLocalEndpoint = .hostPort(
-            host: NWEndpoint.Host(CompanionControlDefaults.host),
-            port: listenerPort
-        )
-
-        let listener = try NWListener(using: parameters)
-        self.listener = listener
-
-        let url = CompanionControlDefaults.baseURLString
-        stateHandler(.starting(url: url))
-
-        listener.stateUpdateHandler = { [weak self] state in
-            guard let self else { return }
-            switch state {
-            case .ready:
-                self.stateHandler?(.listening(url: url))
-            case .failed(let error):
-                self.stateHandler?(.failed(message: error.localizedDescription))
-            case .cancelled:
-                self.stateHandler?(.stopped)
-            default:
-                break
+            let listenerPort = NWEndpoint.Port(rawValue: port)
+            guard let listenerPort else {
+                throw AudioHostError("The Companion control port is invalid.")
             }
-        }
-
-        listener.newConnectionHandler = { [weak self] connection in
-            guard CompanionControlServer.isLoopbackConnection(connection) else {
-                connection.cancel()
-                return
-            }
-
-            guard let self, let requestHandler = self.requestHandler else {
-                connection.cancel()
-                return
-            }
-
-            let session = ConnectionSession(
-                connection: connection,
-                queue: self.queue,
-                requestHandler: requestHandler,
-                onClose: { [weak self] session in
-                    self?.activeSessions.removeValue(forKey: ObjectIdentifier(session))
-                }
+            let parameters = NWParameters.tcp
+            parameters.requiredLocalEndpoint = .hostPort(
+                host: NWEndpoint.Host(CompanionControlDefaults.host),
+                port: listenerPort
             )
-            self.activeSessions[ObjectIdentifier(session)] = session
-            session.start()
-        }
 
-        listener.start(queue: queue)
+            let listener = try NWListener(using: parameters)
+            self.listener = listener
+
+            let url = CompanionControlDefaults.baseURLString
+            stateHandler(.starting(url: url))
+
+            listener.stateUpdateHandler = { [weak self] state in
+                guard let self else { return }
+                switch state {
+                case .ready:
+                    self.stateHandler?(.listening(url: url))
+                case .failed(let error):
+                    self.stateHandler?(.failed(message: error.localizedDescription))
+                case .cancelled:
+                    self.stateHandler?(.stopped)
+                default:
+                    break
+                }
+            }
+
+            listener.newConnectionHandler = { [weak self] connection in
+                guard CompanionControlServer.isLoopbackConnection(connection) else {
+                    connection.cancel()
+                    return
+                }
+
+                guard let self, let requestHandler = self.requestHandler else {
+                    connection.cancel()
+                    return
+                }
+
+                let session = ConnectionSession(
+                    connection: connection,
+                    queue: self.queue,
+                    requestHandler: requestHandler,
+                    onClose: { [weak self] session in
+                        self?.activeSessions.removeValue(forKey: ObjectIdentifier(session))
+                    }
+                )
+                self.activeSessions[ObjectIdentifier(session)] = session
+                session.start()
+            }
+
+            listener.start(queue: queue)
+        }
     }
 
     func stop() {
-        activeSessions.removeAll()
-        listener?.cancel()
-        listener = nil
-        stateHandler?(.stopped)
+        // Teardown runs on `queue` because the connection callbacks mutate the
+        // same state there. `self` is captured strongly so the server survives
+        // until teardown completes even if the owner releases it right after.
+        queue.async {
+            self.activeSessions.removeAll()
+            self.listener?.cancel()
+            self.listener = nil
+            self.stateHandler?(.stopped)
+            // Clearing the handlers after emitting `.stopped` releases the
+            // owner's closures; the cancelled listener's late `.cancelled`
+            // state update then finds no handler, avoiding a duplicate event.
+            self.requestHandler = nil
+            self.stateHandler = nil
+        }
     }
 
     private static func isLoopbackConnection(_ connection: NWConnection) -> Bool {
