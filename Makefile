@@ -13,7 +13,7 @@ STAGED_APP := $(DIST_DIR)/$(APP_BUNDLE)
 PACKAGE := $(DIST_DIR)/$(APP_NAME)-$(CONFIGURATION).zip
 LSREGISTER := /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
 
-.PHONY: help build bundle package run clean
+.PHONY: help build bundle package run lint clean
 
 help:
 	@printf "Targets:\n"
@@ -21,6 +21,7 @@ help:
 	@printf "  make bundle   Copy the built app bundle into %s\n" "$(DIST_DIR)"
 	@printf "  make package  Zip the app bundle for transfer to another Mac\n"
 	@printf "  make run      Launch the built app\n"
+	@printf "  make lint     Run SwiftLint using .swiftlint.yml\n"
 	@printf "  make clean    Remove build and dist artifacts\n"
 
 build:
@@ -47,6 +48,13 @@ run: build
 	@touch "$(BUILT_APP)" "$(BUILT_APP)/Contents/Info.plist"
 	@"$(LSREGISTER)" -f "$(BUILT_APP)" >/dev/null 2>&1 || true
 	open -n "$(BUILT_APP)"
+
+lint:
+	@command -v swiftlint >/dev/null 2>&1 || { \
+		printf "swiftlint not found. Install SwiftLint to use make lint.\n" >&2; \
+		exit 127; \
+	}
+	swiftlint --config .swiftlint.yml
 
 clean:
 	rm -rf "$(CURDIR)/build" "$(DIST_DIR)"

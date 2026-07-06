@@ -7,6 +7,7 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 - `make run` — builds and launches the app bundle.
 - `make bundle` — stages the built `.app` into `dist/SimpleAUHost.app`.
 - `make package` — zips the staged app into `dist/SimpleAUHost-Release.zip`.
+- `make lint` — runs SwiftLint with `.swiftlint.yml` when SwiftLint is installed.
 - `make clean` — removes `build/` and `dist/`.
 - `xcodebuild -project SimpleAUHost.xcodeproj -scheme SimpleAUHost -configuration Debug build` — local debug build without using the Makefile.
 - `xcodebuild -project SimpleAUHost.xcodeproj -scheme SimpleAUHost -configuration Release build` — release build equivalent to `make build`.
@@ -14,7 +15,7 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 
 ## Tests and linting
 - `SimpleAUHostTests` is the unit test target in `SimpleAUHost.xcodeproj`.
-- There is currently **no dedicated lint command** or SwiftLint configuration in the repository.
+- SwiftLint is configured in `.swiftlint.yml`; run `make lint` when SwiftLint is installed.
 - For validation, run a debug build and the unit tests:
   - `xcodebuild -project SimpleAUHost.xcodeproj -scheme SimpleAUHost -configuration Debug build`
   - `xcodebuild test -project SimpleAUHost.xcodeproj -scheme SimpleAUHost -destination 'platform=macOS'`
