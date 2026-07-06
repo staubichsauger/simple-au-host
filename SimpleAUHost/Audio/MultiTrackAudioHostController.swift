@@ -1642,10 +1642,20 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             shouldRun = false
             stateLock.unlock()
 
+            // `Thread.cancel()` only sets `isCancelled`; the wakeup signal below is
+            // what actually unblocks a worker parked in `wakeup.wait()`. The wakeup
+            // latch guarantees the signal is not lost even if it fires before the
+            // worker reaches `wait()`, and every wait in `workerLoop` loops back to
+            // the `shouldContinue()` check, so shutdown cannot hang in a wait point.
+            // Keep those invariants when changing the loop.
             workerThread?.cancel()
             wakeup.signal()
             if workerThread != nil {
-                exitGroup.wait()
+                if exitGroup.wait(timeout: .now() + .seconds(5)) == .timedOut {
+                    NSLog("SimpleAUHost: worker shard \(id) did not exit within 5 seconds; continuing to wait.")
+                    assertionFailure("Worker shard \(id) failed to stop in time")
+                    exitGroup.wait()
+                }
             }
             workerThread = nil
         }
@@ -1681,6 +1691,8 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             var windowActive: UInt64 = 0
 
             while shouldContinue() && !Thread.current.isCancelled {
+                // Permanent exit: a non-nil runtime status means the engine was
+                // invalidated (e.g. device change) and must be restarted.
                 if runtimeStatusMessage() != nil {
                     return
                 }
@@ -1688,7 +1700,11 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
                 switch processReadiness(frameCount: frames) {
                 case .ready:
                     break
-                case .waitingForInput:
+                case .waitingForInput, .waitingForOutputSpace:
+                    // Both the input producer (HW callbacks) and the output consumer
+                    // (staged output worker) signal this wakeup every cycle, so
+                    // waiting here never stalls while the engine runs. `continue`
+                    // re-evaluates `shouldContinue()` so shutdown cannot hang here.
                     wakeup.wait()
                     windowWakeups += 1
                     updateTimingWindow(
@@ -1697,9 +1713,6 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
                         windowWakeups: &windowWakeups,
                         windowActiveNanoseconds: &windowActive
                     )
-                    continue
-                case .waitingForOutputSpace:
-                    sched_yield()
                     continue
                 }
 
@@ -2689,10 +2702,17 @@ private extension MultiTrackAudioHostController {
         shouldRunStagedOutputWorker = false
         stagedOutputStateLock.unlock()
 
+        // See `BufferedTrackWorkerShard.stopWorker()` for the shutdown invariant:
+        // the wakeup signal (not `cancel()`) unblocks a parked worker, and the
+        // loop re-checks its run flag after every wait.
         stagedOutputThread?.cancel()
         stagedOutputWakeup.signal()
         if stagedOutputThread != nil {
-            stagedOutputExitGroup.wait()
+            if stagedOutputExitGroup.wait(timeout: .now() + .seconds(5)) == .timedOut {
+                NSLog("SimpleAUHost: staged output worker did not exit within 5 seconds; continuing to wait.")
+                assertionFailure("Staged output worker failed to stop in time")
+                stagedOutputExitGroup.wait()
+            }
         }
         stagedOutputThread = nil
     }
@@ -2709,6 +2729,8 @@ private extension MultiTrackAudioHostController {
         let frames = configuration.bufferSize
 
         while shouldStagedOutputWorkerContinue() && !Thread.current.isCancelled {
+            // Permanent exit: a non-nil runtime status means the engine was
+            // invalidated (e.g. device change) and must be restarted.
             if runtimeStatusMessage() != nil {
                 return
             }
