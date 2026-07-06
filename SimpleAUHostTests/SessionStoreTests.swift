@@ -124,4 +124,101 @@ final class SessionStoreTests: XCTestCase {
         XCTAssertEqual(chainPreset.formatVersion, MultiTrackChainPresetFile.currentFormatVersion)
         XCTAssertEqual(parameterPreset.formatVersion, MultiTrackParameterPresetFile.currentFormatVersion)
     }
+
+    func testAtomicCounterOperations() {
+        let counter = AtomicCounter()
+        XCTAssertEqual(counter.load(), 0)
+
+        counter.increment()
+        counter.add(41)
+        XCTAssertEqual(counter.load(), 42)
+
+        counter.storeMax(10)
+        XCTAssertEqual(counter.load(), 42)
+        counter.storeMax(100)
+        XCTAssertEqual(counter.load(), 100)
+
+        counter.reset()
+        XCTAssertEqual(counter.load(), 0)
+    }
+
+    func testFloatRingBufferRoundTripAndWraparound() {
+        let ring = FloatRingBuffer()
+        XCTAssertTrue(ring.initialize(minimumCapacity: 60))
+        XCTAssertEqual(ring.capacity, 64)
+        XCTAssertEqual(ring.availableRead(), 0)
+        XCTAssertEqual(ring.availableWrite(), 64)
+
+        var input: [Float] = (0..<48).map(Float.init)
+        var output = [Float](repeating: -1, count: 48)
+
+        XCTAssertEqual(input.withUnsafeBufferPointer { ring.write(from: $0.baseAddress!, count: 48) }, 48)
+        XCTAssertEqual(ring.availableRead(), 48)
+        XCTAssertEqual(output.withUnsafeMutableBufferPointer { ring.read(into: $0.baseAddress!, count: 48) }, 48)
+        XCTAssertEqual(output, input)
+
+        // Second pass wraps around the end of storage.
+        input = (100..<148).map(Float.init)
+        XCTAssertEqual(input.withUnsafeBufferPointer { ring.write(from: $0.baseAddress!, count: 48) }, 48)
+
+        // An overflowing write is truncated to the remaining space.
+        let extra: [Float] = (0..<32).map(Float.init)
+        XCTAssertEqual(extra.withUnsafeBufferPointer { ring.write(from: $0.baseAddress!, count: 32) }, 16)
+
+        XCTAssertEqual(output.withUnsafeMutableBufferPointer { ring.read(into: $0.baseAddress!, count: 48) }, 48)
+        XCTAssertEqual(output, input)
+    }
+
+    func testFloatRingBufferSingleProducerSingleConsumerIntegrity() {
+        let ring = FloatRingBuffer()
+        XCTAssertTrue(ring.initialize(minimumCapacity: 1024))
+
+        let totalSamples = 1 << 18
+        let chunk = 240
+        let producerDone = expectation(description: "producer finished")
+        let consumerDone = expectation(description: "consumer finished")
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            var next = 0
+            var buffer = [Float](repeating: 0, count: chunk)
+            while next < totalSamples {
+                let count = min(chunk, totalSamples - next)
+                for index in 0..<count {
+                    buffer[index] = Float(next + index)
+                }
+                let written = buffer.withUnsafeBufferPointer {
+                    ring.write(from: $0.baseAddress!, count: UInt32(count))
+                }
+                next += Int(written)
+                if written == 0 {
+                    sched_yield()
+                }
+            }
+            producerDone.fulfill()
+        }
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            var next = 0
+            var corrupted = false
+            var buffer = [Float](repeating: 0, count: chunk)
+            while next < totalSamples {
+                let requested = min(chunk, totalSamples - next)
+                let read = buffer.withUnsafeMutableBufferPointer {
+                    ring.read(into: $0.baseAddress!, count: UInt32(requested))
+                }
+                if read == 0 {
+                    sched_yield()
+                    continue
+                }
+                for index in 0..<Int(read) where buffer[index] != Float(next + index) {
+                    corrupted = true
+                }
+                next += Int(read)
+            }
+            XCTAssertFalse(corrupted, "Ring buffer lost, duplicated, or reordered samples")
+            consumerDone.fulfill()
+        }
+
+        wait(for: [producerDone, consumerDone], timeout: 30)
+    }
 }

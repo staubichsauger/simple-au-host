@@ -345,14 +345,6 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         }
     }
 
-    private final class SharedOutputChannelBuffer {
-        var ring = SAHFloatRingBuffer()
-
-        deinit {
-            SAHFloatRingBufferDeinit(&ring)
-        }
-    }
-
     private final class TrackRuntime: @unchecked Sendable {
         @MainActor
         private final class NativeEditorRequest {
@@ -416,10 +408,10 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
 
         private var plugins: [PluginRuntime] = []
         private var wetBufferList: UnsafeMutableAudioBufferListPointer?
-        private var realtimeInputRing1 = SAHFloatRingBuffer()
-        private var realtimeInputRing2 = SAHFloatRingBuffer()
-        private var bufferedOutputRing1 = SAHFloatRingBuffer()
-        private var bufferedOutputRing2 = SAHFloatRingBuffer()
+        private let realtimeInputRing1 = FloatRingBuffer()
+        private let realtimeInputRing2 = FloatRingBuffer()
+        private let bufferedOutputRing1 = FloatRingBuffer()
+        private let bufferedOutputRing2 = FloatRingBuffer()
         private var inputScratch1: UnsafeMutablePointer<Float>?
         private var inputScratch2: UnsafeMutablePointer<Float>?
         private var outputScratch1: UnsafeMutablePointer<Float>?
@@ -430,13 +422,13 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         private var currentInputSource2: UnsafeMutablePointer<Float>?
         private var bufferedOutputPrimed = false
         private var renderSampleTime: Double = 0
-        private var audioDropoutCounter = SAHAtomicCounter()
-        private var droppedFrameCounter = SAHAtomicCounter()
-        private var peakInputRingOccupancyFrames = SAHAtomicCounter()
-        private var peakOutputRingOccupancyFrames = SAHAtomicCounter()
-        private var peakRenderDurationNanoseconds = SAHAtomicCounter()
-        private var totalRenderDurationNanoseconds = SAHAtomicCounter()
-        private var renderPassCount = SAHAtomicCounter()
+        private let audioDropoutCounter = AtomicCounter()
+        private let droppedFrameCounter = AtomicCounter()
+        private let peakInputRingOccupancyFrames = AtomicCounter()
+        private let peakOutputRingOccupancyFrames = AtomicCounter()
+        private let peakRenderDurationNanoseconds = AtomicCounter()
+        private let totalRenderDurationNanoseconds = AtomicCounter()
+        private let renderPassCount = AtomicCounter()
 
         init(
             configuration: MultiTrackTrackConfiguration,
@@ -454,13 +446,6 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
                 : max(hardwareBufferSize, internalBufferFrames)
             self.renderFrameCapacity = max(self.processingFrames, maximumRenderFrames)
             self.broadcastPrerollMultiplier = max(1, broadcastPrerollMultiplier)
-            SAHAtomicCounterReset(&audioDropoutCounter)
-            SAHAtomicCounterReset(&droppedFrameCounter)
-            SAHAtomicCounterReset(&peakInputRingOccupancyFrames)
-            SAHAtomicCounterReset(&peakOutputRingOccupancyFrames)
-            SAHAtomicCounterReset(&peakRenderDurationNanoseconds)
-            SAHAtomicCounterReset(&totalRenderDurationNanoseconds)
-            SAHAtomicCounterReset(&renderPassCount)
 
             try prepareBuffers(hardwareBufferSize: hardwareBufferSize)
 
@@ -500,18 +485,14 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             outputScratch2?.deallocate()
             intermediateScratch1?.deallocate()
             intermediateScratch2?.deallocate()
-            SAHFloatRingBufferDeinit(&realtimeInputRing1)
-            SAHFloatRingBufferDeinit(&realtimeInputRing2)
-            SAHFloatRingBufferDeinit(&bufferedOutputRing1)
-            SAHFloatRingBufferDeinit(&bufferedOutputRing2)
         }
 
         func audioDropoutCount() -> UInt64 {
-            SAHAtomicCounterLoad(&audioDropoutCounter)
+            audioDropoutCounter.load()
         }
 
         func droppedFrameCount() -> UInt64 {
-            SAHAtomicCounterLoad(&droppedFrameCounter)
+            droppedFrameCounter.load()
         }
 
         func pluginLatencyFrames() -> Int {
@@ -521,21 +502,21 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         }
 
         func peakInputRingOccupancy() -> UInt64 {
-            SAHAtomicCounterLoad(&peakInputRingOccupancyFrames)
+            peakInputRingOccupancyFrames.load()
         }
 
         func peakOutputRingOccupancy() -> UInt64 {
-            SAHAtomicCounterLoad(&peakOutputRingOccupancyFrames)
+            peakOutputRingOccupancyFrames.load()
         }
 
         func peakRenderDurationMicros() -> UInt64 {
-            SAHAtomicCounterLoad(&peakRenderDurationNanoseconds) / 1_000
+            peakRenderDurationNanoseconds.load() / 1_000
         }
 
         func averageRenderDurationMicros() -> UInt64 {
-            let passes = SAHAtomicCounterLoad(&renderPassCount)
+            let passes = renderPassCount.load()
             guard passes > 0 else { return 0 }
-            return (SAHAtomicCounterLoad(&totalRenderDurationNanoseconds) / passes) / 1_000
+            return (totalRenderDurationNanoseconds.load() / passes) / 1_000
         }
 
         func hasBufferedOutput(frames: Int) -> Bool {
@@ -543,22 +524,22 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             let requestedFrames = bufferedOutputPrimed
                 ? UInt32(frames)
                 : bufferedOutputPrerollFrames(stagingFrames: frames)
-            let available1 = SAHFloatRingBufferAvailableRead(&bufferedOutputRing1)
-            let available2 = configuration.channelCount == 1 ? available1 : SAHFloatRingBufferAvailableRead(&bufferedOutputRing2)
+            let available1 = bufferedOutputRing1.availableRead()
+            let available2 = configuration.channelCount == 1 ? available1 : bufferedOutputRing2.availableRead()
             return available1 >= requestedFrames && available2 >= requestedFrames
         }
 
         func canAcceptBufferedInput(frames: Int) -> Bool {
             guard configuration.latencyClass != .realtime else { return false }
             let requestedFrames = UInt32(frames)
-            let available1 = SAHFloatRingBufferAvailableWrite(&bufferedOutputRing1)
-            let available2 = configuration.channelCount == 1 ? available1 : SAHFloatRingBufferAvailableWrite(&bufferedOutputRing2)
+            let available1 = bufferedOutputRing1.availableWrite()
+            let available2 = configuration.channelCount == 1 ? available1 : bufferedOutputRing2.availableWrite()
             return available1 >= requestedFrames && available2 >= requestedFrames
         }
 
         func resetDropoutCounters() {
-            SAHAtomicCounterReset(&audioDropoutCounter)
-            SAHAtomicCounterReset(&droppedFrameCounter)
+            audioDropoutCounter.reset()
+            droppedFrameCounter.reset()
         }
 
         var isRealtime: Bool {
@@ -610,12 +591,12 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             frameCount: UInt32
         ) {
             guard configuration.latencyClass == .realtime else { return }
-            let writtenFrames1 = SAHFloatRingBufferWrite(&realtimeInputRing1, source1, frameCount)
-            SAHAtomicCounterStoreMax(&peakInputRingOccupancyFrames, UInt64(SAHFloatRingBufferAvailableRead(&realtimeInputRing1)))
+            let writtenFrames1 = realtimeInputRing1.write(from: source1, count: frameCount)
+            peakInputRingOccupancyFrames.storeMax(UInt64(realtimeInputRing1.availableRead()))
             var droppedFrames = frameCount - writtenFrames1
             if configuration.channelCount == 2, let source2 {
-                let writtenFrames2 = SAHFloatRingBufferWrite(&realtimeInputRing2, source2, frameCount)
-                SAHAtomicCounterStoreMax(&peakInputRingOccupancyFrames, UInt64(SAHFloatRingBufferAvailableRead(&realtimeInputRing2)))
+                let writtenFrames2 = realtimeInputRing2.write(from: source2, count: frameCount)
+                peakInputRingOccupancyFrames.storeMax(UInt64(realtimeInputRing2.availableRead()))
                 droppedFrames = max(droppedFrames, frameCount - writtenFrames2)
             }
             if droppedFrames > 0 {
@@ -657,12 +638,12 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
 
             guard let outputScratch1 else { return }
             let frames = UInt32(processingFrames)
-            let writtenFrames1 = SAHFloatRingBufferWrite(&bufferedOutputRing1, outputScratch1, frames)
-            SAHAtomicCounterStoreMax(&peakOutputRingOccupancyFrames, UInt64(SAHFloatRingBufferAvailableRead(&bufferedOutputRing1)))
+            let writtenFrames1 = bufferedOutputRing1.write(from: outputScratch1, count: frames)
+            peakOutputRingOccupancyFrames.storeMax(UInt64(bufferedOutputRing1.availableRead()))
             var droppedFrames = frames - writtenFrames1
             if configuration.channelCount == 2, let outputScratch2 {
-                let writtenFrames2 = SAHFloatRingBufferWrite(&bufferedOutputRing2, outputScratch2, frames)
-                SAHAtomicCounterStoreMax(&peakOutputRingOccupancyFrames, UInt64(SAHFloatRingBufferAvailableRead(&bufferedOutputRing2)))
+                let writtenFrames2 = bufferedOutputRing2.write(from: outputScratch2, count: frames)
+                peakOutputRingOccupancyFrames.storeMax(UInt64(bufferedOutputRing2.availableRead()))
                 droppedFrames = max(droppedFrames, frames - writtenFrames2)
             }
             if droppedFrames > 0 {
@@ -694,20 +675,20 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
 
             if configuration.latencyClass == .realtime {
                 let inputRingCapacity = UInt32(max(renderFrameCapacity * 32, 4096))
-                guard SAHFloatRingBufferInit(&realtimeInputRing1, inputRingCapacity) else {
+                guard realtimeInputRing1.initialize(minimumCapacity: inputRingCapacity) else {
                     throw AudioHostError("Failed to allocate multi-track realtime input buffer.")
                 }
                 if configuration.channelCount == 2 {
-                    guard SAHFloatRingBufferInit(&realtimeInputRing2, inputRingCapacity) else {
+                    guard realtimeInputRing2.initialize(minimumCapacity: inputRingCapacity) else {
                         throw AudioHostError("Failed to allocate stereo realtime input buffer.")
                     }
                 }
             } else {
-                guard SAHFloatRingBufferInit(&bufferedOutputRing1, ringCapacity) else {
+                guard bufferedOutputRing1.initialize(minimumCapacity: ringCapacity) else {
                     throw AudioHostError("Failed to allocate multi-track output buffer.")
                 }
                 if configuration.channelCount == 2 {
-                    guard SAHFloatRingBufferInit(&bufferedOutputRing2, ringCapacity) else {
+                    guard bufferedOutputRing2.initialize(minimumCapacity: ringCapacity) else {
                         throw AudioHostError("Failed to allocate stereo output buffer.")
                     }
                 }
@@ -741,14 +722,14 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             guard let inputScratch1, let outputScratch1 else { return }
 
             let requestedFrames = UInt32(frames)
-            let receivedFrames1 = SAHFloatRingBufferRead(&realtimeInputRing1, inputScratch1, requestedFrames)
+            let receivedFrames1 = realtimeInputRing1.read(into: inputScratch1, count: requestedFrames)
             var droppedFrames = requestedFrames - receivedFrames1
             if Int(receivedFrames1) < frames {
                 inputScratch1.advanced(by: Int(receivedFrames1)).update(repeating: 0, count: frames - Int(receivedFrames1))
             }
 
             if configuration.channelCount == 2, let inputScratch2 {
-                let receivedFrames2 = SAHFloatRingBufferRead(&realtimeInputRing2, inputScratch2, requestedFrames)
+                let receivedFrames2 = realtimeInputRing2.read(into: inputScratch2, count: requestedFrames)
                 droppedFrames = max(droppedFrames, requestedFrames - receivedFrames2)
                 if Int(receivedFrames2) < frames {
                     inputScratch2.advanced(by: Int(receivedFrames2)).update(repeating: 0, count: frames - Int(receivedFrames2))
@@ -773,10 +754,10 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         private func drainBufferedOutput(frames: Int) {
             guard let outputScratch1 else { return }
             let prerollFrames = bufferedOutputPrerollFrames(stagingFrames: frames)
-            let availableFrames1 = SAHFloatRingBufferAvailableRead(&bufferedOutputRing1)
+            let availableFrames1 = bufferedOutputRing1.availableRead()
             let availableFrames2 = configuration.channelCount == 1
                 ? availableFrames1
-                : SAHFloatRingBufferAvailableRead(&bufferedOutputRing2)
+                : bufferedOutputRing2.availableRead()
             let availableFrames = min(availableFrames1, availableFrames2)
 
             if !bufferedOutputPrimed {
@@ -794,14 +775,14 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
                 return
             }
 
-            let receivedFrames1 = SAHFloatRingBufferRead(&bufferedOutputRing1, outputScratch1, requestedFrames)
+            let receivedFrames1 = bufferedOutputRing1.read(into: outputScratch1, count: requestedFrames)
             var droppedFrames = requestedFrames - receivedFrames1
             if Int(receivedFrames1) < frames {
                 outputScratch1.advanced(by: Int(receivedFrames1)).update(repeating: 0, count: frames - Int(receivedFrames1))
             }
 
             if configuration.channelCount == 2, let outputScratch2 {
-                let receivedFrames2 = SAHFloatRingBufferRead(&bufferedOutputRing2, outputScratch2, requestedFrames)
+                let receivedFrames2 = bufferedOutputRing2.read(into: outputScratch2, count: requestedFrames)
                 droppedFrames = max(droppedFrames, requestedFrames - receivedFrames2)
                 if Int(receivedFrames2) < frames {
                     outputScratch2.advanced(by: Int(receivedFrames2)).update(repeating: 0, count: frames - Int(receivedFrames2))
@@ -922,14 +903,14 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
 
         private func recordDroppedFrames(_ frameCount: UInt32) {
             guard frameCount > 0 else { return }
-            SAHAtomicCounterIncrement(&audioDropoutCounter)
-            SAHAtomicCounterAdd(&droppedFrameCounter, UInt64(frameCount))
+            audioDropoutCounter.increment()
+            droppedFrameCounter.add(UInt64(frameCount))
         }
 
         private func recordRenderDuration(_ nanoseconds: UInt64) {
-            SAHAtomicCounterStoreMax(&peakRenderDurationNanoseconds, nanoseconds)
-            SAHAtomicCounterAdd(&totalRenderDurationNanoseconds, nanoseconds)
-            SAHAtomicCounterIncrement(&renderPassCount)
+            peakRenderDurationNanoseconds.storeMax(nanoseconds)
+            totalRenderDurationNanoseconds.add(nanoseconds)
+            renderPassCount.increment()
         }
 
         func serializedPluginStates() -> [UUID: Data] {
@@ -1530,7 +1511,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         private let signalStagedOutput: @Sendable () -> Void
         private let runtimeStatusMessage: @Sendable () -> String?
 
-        private var inputRings: [SAHFloatRingBuffer]
+        private var inputRings: [FloatRingBuffer]
         private var stagedInputs: [UnsafeMutablePointer<Float>]
         private let stateLock = NSLock()
         private let wakeup = AudioWorkerWakeup()
@@ -1538,12 +1519,12 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         private var workerThread: Thread?
         private var shouldRun = false
 
-        private var peakInputRingOccupancyFrames = SAHAtomicCounter()
-        private var peakRenderDurationNanoseconds = SAHAtomicCounter()
-        private var totalRenderDurationNanoseconds = SAHAtomicCounter()
-        private var renderPassCount = SAHAtomicCounter()
-        private var peakUtilizationPercent = SAHAtomicCounter()
-        private var peakWakeupsPerSecond = SAHAtomicCounter()
+        private let peakInputRingOccupancyFrames = AtomicCounter()
+        private let peakRenderDurationNanoseconds = AtomicCounter()
+        private let totalRenderDurationNanoseconds = AtomicCounter()
+        private let renderPassCount = AtomicCounter()
+        private let peakUtilizationPercent = AtomicCounter()
+        private let peakWakeupsPerSecond = AtomicCounter()
 
         init(
             id: Int,
@@ -1564,15 +1545,8 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             let orderedInputChannels = Set(tracks.flatMap(\.inputChannelOffsets)).sorted()
             self.inputChannelOffsets = orderedInputChannels
             self.channelIndexMap = Dictionary(uniqueKeysWithValues: orderedInputChannels.enumerated().map { ($1, $0) })
-            self.inputRings = orderedInputChannels.map { _ in SAHFloatRingBuffer() }
+            self.inputRings = orderedInputChannels.map { _ in FloatRingBuffer() }
             self.stagedInputs = []
-
-            SAHAtomicCounterReset(&peakInputRingOccupancyFrames)
-            SAHAtomicCounterReset(&peakRenderDurationNanoseconds)
-            SAHAtomicCounterReset(&totalRenderDurationNanoseconds)
-            SAHAtomicCounterReset(&renderPassCount)
-            SAHAtomicCounterReset(&peakUtilizationPercent)
-            SAHAtomicCounterReset(&peakWakeupsPerSecond)
 
             try prepareBuffers()
         }
@@ -1581,9 +1555,6 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             stopWorker()
             for pointer in stagedInputs {
                 pointer.deallocate()
-            }
-            for index in inputRings.indices {
-                SAHFloatRingBufferDeinit(&inputRings[index])
             }
         }
 
@@ -1596,34 +1567,34 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         }
 
         func peakInputRingOccupancy() -> UInt64 {
-            SAHAtomicCounterLoad(&peakInputRingOccupancyFrames)
+            peakInputRingOccupancyFrames.load()
         }
 
         func peakRenderDurationMicros() -> UInt64 {
-            SAHAtomicCounterLoad(&peakRenderDurationNanoseconds) / 1_000
+            peakRenderDurationNanoseconds.load() / 1_000
         }
 
         func averageRenderDurationMicros() -> UInt64 {
-            let passes = SAHAtomicCounterLoad(&renderPassCount)
+            let passes = renderPassCount.load()
             guard passes > 0 else { return 0 }
-            return (SAHAtomicCounterLoad(&totalRenderDurationNanoseconds) / passes) / 1_000
+            return (totalRenderDurationNanoseconds.load() / passes) / 1_000
         }
 
         func peakUtilization() -> UInt64 {
-            SAHAtomicCounterLoad(&peakUtilizationPercent)
+            peakUtilizationPercent.load()
         }
 
         func peakWakeups() -> UInt64 {
-            SAHAtomicCounterLoad(&peakWakeupsPerSecond)
+            peakWakeupsPerSecond.load()
         }
 
         func resetTelemetry() {
-            SAHAtomicCounterReset(&peakInputRingOccupancyFrames)
-            SAHAtomicCounterReset(&peakRenderDurationNanoseconds)
-            SAHAtomicCounterReset(&totalRenderDurationNanoseconds)
-            SAHAtomicCounterReset(&renderPassCount)
-            SAHAtomicCounterReset(&peakUtilizationPercent)
-            SAHAtomicCounterReset(&peakWakeupsPerSecond)
+            peakInputRingOccupancyFrames.reset()
+            peakRenderDurationNanoseconds.reset()
+            totalRenderDurationNanoseconds.reset()
+            renderPassCount.reset()
+            peakUtilizationPercent.reset()
+            peakWakeupsPerSecond.reset()
         }
 
         func enqueueInput(from captureBufferList: UnsafeMutableAudioBufferListPointer, frameCount: UInt32) {
@@ -1635,8 +1606,8 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
                     droppedFrames = max(droppedFrames, frameCount)
                     continue
                 }
-                let writtenFrames = SAHFloatRingBufferWrite(&inputRings[ringIndex], source, frameCount)
-                SAHAtomicCounterStoreMax(&peakInputRingOccupancyFrames, UInt64(SAHFloatRingBufferAvailableRead(&inputRings[ringIndex])))
+                let writtenFrames = inputRings[ringIndex].write(from: source, count: frameCount)
+                peakInputRingOccupancyFrames.storeMax(UInt64(inputRings[ringIndex].availableRead()))
                 droppedFrames = max(droppedFrames, frameCount - writtenFrames)
             }
             if droppedFrames > 0 {
@@ -1681,8 +1652,8 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
 
         private func prepareBuffers() throws {
             let ringCapacity = UInt32(max(processingFrames * 32, 4096))
-            for index in inputRings.indices {
-                guard SAHFloatRingBufferInit(&inputRings[index], ringCapacity) else {
+            for ring in inputRings {
+                guard ring.initialize(minimumCapacity: ringCapacity) else {
                     throw AudioHostError("Failed to allocate worker shard input buffer.")
                 }
             }
@@ -1743,9 +1714,9 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
                 }
                 signalStagedOutput()
                 let roundDuration = currentUptimeNanoseconds() - roundStart
-                SAHAtomicCounterStoreMax(&peakRenderDurationNanoseconds, roundDuration)
-                SAHAtomicCounterAdd(&totalRenderDurationNanoseconds, roundDuration)
-                SAHAtomicCounterIncrement(&renderPassCount)
+                peakRenderDurationNanoseconds.storeMax(roundDuration)
+                totalRenderDurationNanoseconds.add(roundDuration)
+                renderPassCount.increment()
                 windowActive += roundDuration
                 updateTimingWindow(
                     now: currentUptimeNanoseconds(),
@@ -1763,8 +1734,8 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         }
 
         private func processReadiness(frameCount: UInt32) -> ProcessReadiness {
-            let hasInput = inputRings.indices.allSatisfy { index in
-                SAHFloatRingBufferAvailableRead(&inputRings[index]) >= frameCount
+            let hasInput = inputRings.allSatisfy { ring in
+                ring.availableRead() >= frameCount
             }
             guard hasInput else { return .waitingForInput }
 
@@ -1775,7 +1746,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         private func stageInputRound(frameCount: UInt32) {
             var droppedFrames: UInt32 = 0
             for index in inputRings.indices {
-                let readFrames = SAHFloatRingBufferRead(&inputRings[index], stagedInputs[index], frameCount)
+                let readFrames = inputRings[index].read(into: stagedInputs[index], count: frameCount)
                 if readFrames < frameCount {
                     droppedFrames = max(droppedFrames, frameCount - readFrames)
                     stagedInputs[index].advanced(by: Int(readFrames)).update(repeating: 0, count: processingFrames - Int(readFrames))
@@ -1804,8 +1775,8 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
 
             let elapsed = max(1, now - windowStart)
             let utilization = min(UInt64(100), (windowActiveNanoseconds * 100) / elapsed)
-            SAHAtomicCounterStoreMax(&peakUtilizationPercent, utilization)
-            SAHAtomicCounterStoreMax(&peakWakeupsPerSecond, windowWakeups)
+            peakUtilizationPercent.storeMax(utilization)
+            peakWakeupsPerSecond.storeMax(windowWakeups)
 
             windowStart = now
             windowWakeups = 0
@@ -1815,8 +1786,8 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
 
     private func recordDroppedFrames(_ frameCount: UInt32) {
         guard frameCount > 0 else { return }
-        SAHAtomicCounterIncrement(&audioDropoutCounter)
-        SAHAtomicCounterAdd(&droppedFrameCounter, UInt64(frameCount))
+        audioDropoutCounter.increment()
+        droppedFrameCounter.add(UInt64(frameCount))
     }
 
     private func updateExpectedSampleTime(
@@ -1851,16 +1822,16 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
     private var bufferedWorkerShards: [BufferedTrackWorkerShard] = []
     private var captureBufferList: UnsafeMutableAudioBufferListPointer?
     private var captureChannelBuffers: [UnsafeMutablePointer<Float>] = []
-    private var sharedStagedOutputBuffers: [SharedOutputChannelBuffer] = []
+    private var sharedStagedOutputBuffers: [FloatRingBuffer] = []
     private var stagedOutputScratchBuffers: [UnsafeMutablePointer<Float>] = []
     private var maxFramesPerSlice: UInt32 = 0
     private var callbackFrameCapacity: Int = 0
-    private var audioDropoutCounter = SAHAtomicCounter()
-    private var droppedFrameCounter = SAHAtomicCounter()
-    private var peakInputCallbackFrames = SAHAtomicCounter()
-    private var peakOutputCallbackFrames = SAHAtomicCounter()
-    private var peakSharedInputRingOccupancyFrames = SAHAtomicCounter()
-    private var peakStagedOutputRingOccupancyFrames = SAHAtomicCounter()
+    private let audioDropoutCounter = AtomicCounter()
+    private let droppedFrameCounter = AtomicCounter()
+    private let peakInputCallbackFrames = AtomicCounter()
+    private let peakOutputCallbackFrames = AtomicCounter()
+    private let peakSharedInputRingOccupancyFrames = AtomicCounter()
+    private let peakStagedOutputRingOccupancyFrames = AtomicCounter()
     private var nextExpectedInputSampleTime: Double?
     private var nextExpectedOutputSampleTime: Double?
     private let priorityController = AudioHostingPriorityController()
@@ -1894,8 +1865,8 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
 
     func start(configuration: MultiTrackHostConfiguration) throws {
         stop()
-        SAHAtomicCounterReset(&audioDropoutCounter)
-        SAHAtomicCounterReset(&droppedFrameCounter)
+        audioDropoutCounter.reset()
+        droppedFrameCounter.reset()
         resetTelemetry()
         nextExpectedInputSampleTime = nil
         nextExpectedOutputSampleTime = nil
@@ -1990,22 +1961,22 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
     }
 
     func audioDropoutCount() -> UInt64 {
-        let controllerCount = SAHAtomicCounterLoad(&audioDropoutCounter)
+        let controllerCount = audioDropoutCounter.load()
         return currentTrackRuntimes().reduce(controllerCount) { partialResult, runtime in
             partialResult + runtime.audioDropoutCount()
         }
     }
 
     func droppedFrameCount() -> UInt64 {
-        let controllerCount = SAHAtomicCounterLoad(&droppedFrameCounter)
+        let controllerCount = droppedFrameCounter.load()
         return currentTrackRuntimes().reduce(controllerCount) { partialResult, runtime in
             partialResult + runtime.droppedFrameCount()
         }
     }
 
     func resetDropoutCounters() {
-        SAHAtomicCounterReset(&audioDropoutCounter)
-        SAHAtomicCounterReset(&droppedFrameCounter)
+        audioDropoutCounter.reset()
+        droppedFrameCounter.reset()
         nextExpectedInputSampleTime = nil
         nextExpectedOutputSampleTime = nil
         for runtime in currentTrackRuntimes() {
@@ -2088,12 +2059,12 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             totals: snapshot.bufferedWorkerShards.map { $0.averageRenderDurationMicros() },
             count: snapshot.bufferedWorkerShards.count
         )
-        let peakOutputOccupancy = max(peakTrackOutputOccupancy, SAHAtomicCounterLoad(&peakStagedOutputRingOccupancyFrames))
+        let peakOutputOccupancy = max(peakTrackOutputOccupancy, peakStagedOutputRingOccupancyFrames.load())
         return AudioEngineTelemetrySnapshot(
-            peakInputCallbackFrames: SAHAtomicCounterLoad(&peakInputCallbackFrames),
-            peakOutputCallbackFrames: SAHAtomicCounterLoad(&peakOutputCallbackFrames),
+            peakInputCallbackFrames: peakInputCallbackFrames.load(),
+            peakOutputCallbackFrames: peakOutputCallbackFrames.load(),
             peakEffectRenderFrames: 0,
-            peakInputRingOccupancyFrames: max(peakTrackInputOccupancy, max(peakShardInputOccupancy, SAHAtomicCounterLoad(&peakSharedInputRingOccupancyFrames))),
+            peakInputRingOccupancyFrames: max(peakTrackInputOccupancy, max(peakShardInputOccupancy, peakSharedInputRingOccupancyFrames.load())),
             peakOutputRingOccupancyFrames: peakOutputOccupancy,
             inputRingCapacityFrames: snapshot.inputRingCapacityFrames,
             outputRingCapacityFrames: max(snapshot.peakTrackOutputRingCapacityFrames, snapshot.stagedOutputRingCapacityFrames),
@@ -2364,13 +2335,13 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
 
         var newStagedOutputRingCapacityFrames = 0
         for _ in 0..<outputChannelCount {
-            let buffer = SharedOutputChannelBuffer()
-            guard SAHFloatRingBufferInit(&buffer.ring, ringCapacity) else {
+            let buffer = FloatRingBuffer()
+            guard buffer.initialize(minimumCapacity: ringCapacity) else {
                 throw AudioHostError("Failed to allocate staged output buffer.")
             }
             sharedStagedOutputBuffers.append(buffer)
             stagedOutputScratchBuffers.append(UnsafeMutablePointer<Float>.allocate(capacity: configuration.bufferSize))
-            newStagedOutputRingCapacityFrames = max(newStagedOutputRingCapacityFrames, Int(buffer.ring.capacity))
+            newStagedOutputRingCapacityFrames = max(newStagedOutputRingCapacityFrames, Int(buffer.capacity))
         }
         runtimeStateLock.lock()
         stagedOutputRingCapacityFrames = newStagedOutputRingCapacityFrames
@@ -2528,7 +2499,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         if runtimeStatusMessage() != nil {
             return noErr
         }
-        SAHAtomicCounterStoreMax(&peakInputCallbackFrames, UInt64(inNumberFrames))
+        peakInputCallbackFrames.storeMax(UInt64(inNumberFrames))
         updateExpectedSampleTime(
             with: inTimeStamp,
             frameCount: inNumberFrames,
@@ -2596,7 +2567,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         if runtimeStatusMessage() != nil {
             return noErr
         }
-        SAHAtomicCounterStoreMax(&peakOutputCallbackFrames, UInt64(inNumberFrames))
+        peakOutputCallbackFrames.storeMax(UInt64(inNumberFrames))
         updateExpectedSampleTime(
             with: inTimeStamp,
             frameCount: inNumberFrames,
@@ -2739,7 +2710,7 @@ private extension MultiTrackAudioHostController {
             }
 
             let hasRingSpace = sharedStagedOutputBuffers.allSatisfy {
-                SAHFloatRingBufferAvailableWrite(&$0.ring) >= UInt32(frames)
+                $0.availableWrite() >= UInt32(frames)
             }
             let hasTrackOutput = canStageNonRealtimeOutput(frames: frames)
 
@@ -2755,8 +2726,8 @@ private extension MultiTrackAudioHostController {
             stageNonRealtimeOutput(into: stagedOutputScratchBuffers, frames: frames)
 
             for (index, buffer) in sharedStagedOutputBuffers.enumerated() {
-                let writtenFrames = SAHFloatRingBufferWrite(&buffer.ring, stagedOutputScratchBuffers[index], UInt32(frames))
-                SAHAtomicCounterStoreMax(&peakStagedOutputRingOccupancyFrames, UInt64(SAHFloatRingBufferAvailableRead(&buffer.ring)))
+                let writtenFrames = buffer.write(from: stagedOutputScratchBuffers[index], count: UInt32(frames))
+                peakStagedOutputRingOccupancyFrames.storeMax(UInt64(buffer.availableRead()))
                 if writtenFrames < UInt32(frames) {
                     recordDroppedFrames(UInt32(frames) - writtenFrames)
                 }
@@ -2770,7 +2741,7 @@ private extension MultiTrackAudioHostController {
         let requestedFrames = UInt32(frameCount)
         let prerollFrames = UInt32(max(stagedOutputPrerollFrames, frameCount * 2))
         let minAvailable = sharedStagedOutputBuffers.reduce(UInt32.max) { partialResult, buffer in
-            min(partialResult, SAHFloatRingBufferAvailableRead(&buffer.ring))
+            min(partialResult, buffer.availableRead())
         }
 
         if !stagedOutputPrimed {
@@ -2791,8 +2762,8 @@ private extension MultiTrackAudioHostController {
             guard let destination = outputBuffers[index].mData?.assumingMemoryBound(to: Float.self) else {
                 continue
             }
-            let readFrames = SAHFloatRingBufferRead(&sharedStagedOutputBuffers[index].ring, destination, requestedFrames)
-            SAHAtomicCounterStoreMax(&peakStagedOutputRingOccupancyFrames, UInt64(SAHFloatRingBufferAvailableRead(&sharedStagedOutputBuffers[index].ring)))
+            let readFrames = sharedStagedOutputBuffers[index].read(into: destination, count: requestedFrames)
+            peakStagedOutputRingOccupancyFrames.storeMax(UInt64(sharedStagedOutputBuffers[index].availableRead()))
             if readFrames < requestedFrames {
                 droppedFrames = max(droppedFrames, requestedFrames - readFrames)
                 destination.advanced(by: Int(readFrames)).update(repeating: 0, count: frameCount - Int(readFrames))
@@ -2839,10 +2810,10 @@ private extension MultiTrackAudioHostController {
     }
 
     func resetTelemetry() {
-        SAHAtomicCounterReset(&peakInputCallbackFrames)
-        SAHAtomicCounterReset(&peakOutputCallbackFrames)
-        SAHAtomicCounterReset(&peakSharedInputRingOccupancyFrames)
-        SAHAtomicCounterReset(&peakStagedOutputRingOccupancyFrames)
+        peakInputCallbackFrames.reset()
+        peakOutputCallbackFrames.reset()
+        peakSharedInputRingOccupancyFrames.reset()
+        peakStagedOutputRingOccupancyFrames.reset()
         for shard in runtimeCollectionsSnapshot().bufferedWorkerShards {
             shard.resetTelemetry()
         }
