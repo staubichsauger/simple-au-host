@@ -522,7 +522,9 @@ struct MultiTrackHostConfiguration {
 }
 
 struct MultiTrackSessionFile: Codable {
-    var formatVersion: Int = 3
+    static let currentFormatVersion = 3
+
+    var formatVersion: Int = currentFormatVersion
     var name: String
     var inputDeviceUID: String?
     var outputDeviceUID: String?
@@ -530,13 +532,31 @@ struct MultiTrackSessionFile: Codable {
     var latencyBufferSettings: MultiTrackLatencyBufferSettings
     var tracks: [MultiTrackTrackConfiguration]
     var wavesTuneState: MultiTrackWavesTuneState?
+
+    func validateFormatVersion() throws {
+        guard formatVersion <= Self.currentFormatVersion else {
+            throw AudioHostError(
+                "This session was saved with a newer version of SimpleAUHost (format \(formatVersion)). Update the app to open it."
+            )
+        }
+    }
 }
 
 struct MultiTrackChainPresetFile: Codable {
-    var formatVersion: Int = 1
+    static let currentFormatVersion = 1
+
+    var formatVersion: Int = currentFormatVersion
     var name: String
     var layout: TrackChannelLayout
     var plugins: [MultiTrackTrackConfiguration.PluginInsert]
+
+    func validateFormatVersion() throws {
+        guard formatVersion <= Self.currentFormatVersion else {
+            throw AudioHostError(
+                "This chain preset was saved with a newer version of SimpleAUHost (format \(formatVersion)). Update the app to open it."
+            )
+        }
+    }
 }
 
 struct MultiTrackParameterPresetPluginState: Codable {
@@ -545,9 +565,19 @@ struct MultiTrackParameterPresetPluginState: Codable {
 }
 
 struct MultiTrackParameterPresetFile: Codable {
-    var formatVersion: Int = 1
+    static let currentFormatVersion = 1
+
+    var formatVersion: Int = currentFormatVersion
     var name: String
     var plugins: [MultiTrackParameterPresetPluginState]
+
+    func validateFormatVersion() throws {
+        guard formatVersion <= Self.currentFormatVersion else {
+            throw AudioHostError(
+                "This parameter preset was saved with a newer version of SimpleAUHost (format \(formatVersion)). Update the app to open it."
+            )
+        }
+    }
 }
 
 extension UTType {
@@ -578,8 +608,9 @@ struct MultiTrackSessionDocument: FileDocument {
         }
         do {
             session = try JSONDecoder().decode(MultiTrackSessionFile.self, from: data)
+            try session.validateFormatVersion()
         } catch {
-            throw AudioHostError("Failed to read the multi-track session file.")
+            throw AudioHostError("Failed to read the multi-track session file: \(error.localizedDescription)")
         }
     }
 

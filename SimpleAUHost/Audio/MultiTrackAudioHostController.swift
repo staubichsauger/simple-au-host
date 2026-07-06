@@ -1105,6 +1105,9 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         private func applySerializedPluginState(_ data: Data?, to unit: AudioUnit) throws {
             guard let data else { return }
             let propertyList = try PropertyListSerialization.propertyList(from: data, options: [], format: nil)
+            guard propertyList is [String: Any] else {
+                throw AudioHostError("Saved Audio Unit state is not a property-list dictionary.")
+            }
             let cfPropertyList = propertyList as CFPropertyList
             var unmanagedPropertyList = Unmanaged.passUnretained(cfPropertyList)
             _ = try withExtendedLifetime(cfPropertyList) {

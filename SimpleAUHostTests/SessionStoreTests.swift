@@ -60,4 +60,68 @@ final class SessionStoreTests: XCTestCase {
         XCTAssertEqual(settings.broadcastPrerollMultiplier, 1)
     }
 
+    func testSessionFileRejectsFutureFormatVersion() throws {
+        var session = MultiTrackSessionFile(
+            name: "Future",
+            inputDeviceUID: nil,
+            outputDeviceUID: nil,
+            bufferSize: 128,
+            latencyBufferSettings: .init(bufferedFrames: 256, broadcastFrames: 512),
+            tracks: [],
+            wavesTuneState: nil
+        )
+        session.formatVersion = MultiTrackSessionFile.currentFormatVersion + 1
+
+        XCTAssertThrowsError(try session.validateFormatVersion()) { error in
+            XCTAssertTrue(error.localizedDescription.contains("newer version of SimpleAUHost"))
+        }
+    }
+
+    func testPresetFilesRejectFutureFormatVersion() throws {
+        var chainPreset = MultiTrackChainPresetFile(
+            name: "Future Chain",
+            layout: .mono,
+            plugins: []
+        )
+        chainPreset.formatVersion = MultiTrackChainPresetFile.currentFormatVersion + 1
+
+        XCTAssertThrowsError(try chainPreset.validateFormatVersion()) { error in
+            XCTAssertTrue(error.localizedDescription.contains("newer version of SimpleAUHost"))
+        }
+
+        var parameterPreset = MultiTrackParameterPresetFile(
+            name: "Future Params",
+            plugins: []
+        )
+        parameterPreset.formatVersion = MultiTrackParameterPresetFile.currentFormatVersion + 1
+
+        XCTAssertThrowsError(try parameterPreset.validateFormatVersion()) { error in
+            XCTAssertTrue(error.localizedDescription.contains("newer version of SimpleAUHost"))
+        }
+    }
+
+    func testCurrentFormatVersionsAreDefaulted() throws {
+        let session = MultiTrackSessionFile(
+            name: "Current",
+            inputDeviceUID: nil,
+            outputDeviceUID: nil,
+            bufferSize: 128,
+            latencyBufferSettings: .init(bufferedFrames: 256, broadcastFrames: 512),
+            tracks: [],
+            wavesTuneState: nil
+        )
+        let chainPreset = MultiTrackChainPresetFile(
+            name: "Current Chain",
+            layout: .mono,
+            plugins: []
+        )
+        let parameterPreset = MultiTrackParameterPresetFile(
+            name: "Current Params",
+            plugins: []
+        )
+
+        XCTAssertEqual(session.formatVersion, MultiTrackSessionFile.currentFormatVersion)
+        XCTAssertEqual(chainPreset.formatVersion, MultiTrackChainPresetFile.currentFormatVersion)
+        XCTAssertEqual(parameterPreset.formatVersion, MultiTrackParameterPresetFile.currentFormatVersion)
+    }
 }
