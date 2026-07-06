@@ -140,7 +140,7 @@ extension MultiTrackAudioHostController {
             workerThread.start()
         }
 
-        func stopWorker() {
+        func requestStop() {
             stateLock.lock()
             shouldRun = false
             stateLock.unlock()
@@ -153,6 +153,9 @@ extension MultiTrackAudioHostController {
             // Keep those invariants when changing the loop.
             workerThread?.cancel()
             wakeup.signal()
+        }
+
+        func joinStopped() {
             if workerThread != nil {
                 if exitGroup.wait(timeout: .now() + .seconds(5)) == .timedOut {
                     NSLog("SimpleAUHost: worker shard \(id) did not exit within 5 seconds; continuing to wait.")
@@ -161,6 +164,11 @@ extension MultiTrackAudioHostController {
                 }
             }
             workerThread = nil
+        }
+
+        func stopWorker() {
+            requestStop()
+            joinStopped()
         }
 
         private func prepareBuffers() throws {

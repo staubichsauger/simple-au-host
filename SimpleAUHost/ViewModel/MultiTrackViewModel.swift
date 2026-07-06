@@ -111,6 +111,10 @@ final class MultiTrackViewModel: ObservableObject {
         audioDropoutMonitorTask?.cancel()
         startupDropoutResetTask?.cancel()
         companionControlServer.stop()
+        let controller = controller
+        Task { @MainActor in
+            controller.closePluginEditorWindows()
+        }
         controller.stop()
     }
 
@@ -626,17 +630,38 @@ final class MultiTrackViewModel: ObservableObject {
     }
 
     private func stopEngine() {
+        beginStoppingEngine(finalStatusMessage: "Stopped.")
+    }
+
+    private func beginStoppingEngine(
+        finalStatusMessage: String,
+        interimStatusMessage: String = "Stopping..."
+    ) {
         clearEmbeddedPluginEditor()
+        controller.closePluginEditorWindows()
         audioDropoutMonitorTask?.cancel()
         audioDropoutMonitorTask = nil
         startupDropoutResetTask?.cancel()
         startupDropoutResetTask = nil
         refreshPublishedTelemetry()
         captureLivePluginStates()
-        controller.stop()
+        controller.beginStop()
         isRunning = false
+        isBusy = true
         trackPluginLatencyFrames = [:]
-        statusMessage = "Stopped."
+        statusMessage = interimStatusMessage
+
+        let controller = self.controller
+        Task { [weak self, controller] in
+            await Task.detached(priority: .userInitiated) {
+                controller.joinStopped()
+            }.value
+
+            guard let self else { return }
+            self.refreshPublishedTelemetry()
+            self.isBusy = false
+            self.statusMessage = finalStatusMessage
+        }
     }
 
     func addTrack(layout: TrackChannelLayout) {
@@ -854,10 +879,10 @@ final class MultiTrackViewModel: ObservableObject {
                             droppedFrameCount: droppedFrameCount,
                             telemetry: telemetry
                         )
-                        controller.stop()
-                        self.isRunning = false
-                        self.trackPluginLatencyFrames = [:]
-                        self.statusMessage = runtimeStatus
+                        self.beginStoppingEngine(
+                            finalStatusMessage: runtimeStatus,
+                            interimStatusMessage: runtimeStatus
+                        )
                     }
                     return
                 }

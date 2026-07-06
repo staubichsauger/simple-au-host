@@ -74,6 +74,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
     /// They read the collections without locking, which is safe because the IO
     /// units and workers are stopped before `stop()` mutates the collections.
     private let runtimeStateLock = NSLock()
+    private let lifecycleQueue = DispatchQueue(label: "SimpleAUHost.MultiTrackAudioHostController.lifecycle")
     private let deviceObserver = AudioHardwareChangeObserver()
     private let stagedOutputStateLock = NSLock()
     private let stagedOutputWakeup = AudioWorkerWakeup()
@@ -98,7 +99,13 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
     }
 
     func start(configuration: MultiTrackHostConfiguration) throws {
-        stop()
+        try lifecycleQueue.sync {
+            try startOnLifecycleQueue(configuration: configuration)
+        }
+    }
+
+    private func startOnLifecycleQueue(configuration: MultiTrackHostConfiguration) throws {
+        stopOnLifecycleQueue()
         audioDropoutCounter.reset()
         droppedFrameCounter.reset()
         resetTelemetry()
@@ -191,7 +198,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
                 try checkStatus(AudioOutputUnitStart(inputUnit), "Failed to start multi-track input audio")
             }
         } catch {
-            stop()
+            stopOnLifecycleQueue()
             throw error
         }
     }
@@ -395,12 +402,32 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         return try runtime.currentWavesTuneRealtimeStrengthPreset()
     }
 
-    func stop() {
-        Task { @MainActor [weak self] in
-            self?.closePluginEditorWindows()
+    func beginStop() {
+        lifecycleQueue.sync {
+            beginStopOnLifecycleQueue()
         }
-        stopBufferedWorkers()
-        stopStagedOutputWorker()
+    }
+
+    func joinStopped() {
+        lifecycleQueue.sync {
+            joinStoppedOnLifecycleQueue()
+        }
+    }
+
+    func stop() {
+        lifecycleQueue.sync {
+            stopOnLifecycleQueue()
+        }
+    }
+
+    private func stopOnLifecycleQueue() {
+        beginStopOnLifecycleQueue()
+        joinStoppedOnLifecycleQueue()
+    }
+
+    private func beginStopOnLifecycleQueue() {
+        requestBufferedWorkersStop()
+        requestStagedOutputWorkerStop()
         deviceObserver.stop()
         if let inputUnit {
             AudioOutputUnitStop(inputUnit)
@@ -420,6 +447,11 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
 
         inputUnit = nil
         outputUnit = nil
+    }
+
+    private func joinStoppedOnLifecycleQueue() {
+        joinBufferedWorkers()
+        joinStagedOutputWorker()
 
         // Retire the runtime collections under the lock so concurrent readers
         // (e.g. the telemetry monitor task) never observe a mid-mutation array.
@@ -830,6 +862,11 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
 
         return noErr
     }
+
+    @MainActor
+    func closePluginEditorWindows() {
+        closePluginEditorWindowsOnMainActor()
+    }
 }
 
 private extension MultiTrackAudioHostController {
@@ -896,10 +933,21 @@ private extension MultiTrackAudioHostController {
         }
     }
 
-    func stopBufferedWorkers() {
+    func requestBufferedWorkersStop() {
         for shard in bufferedWorkerShards {
-            shard.stopWorker()
+            shard.requestStop()
         }
+    }
+
+    func joinBufferedWorkers() {
+        for shard in bufferedWorkerShards {
+            shard.joinStopped()
+        }
+    }
+
+    func stopBufferedWorkers() {
+        requestBufferedWorkersStop()
+        joinBufferedWorkers()
     }
 
     func signalBufferedWorkers() {
@@ -926,16 +974,19 @@ private extension MultiTrackAudioHostController {
         stagedOutputThread.start()
     }
 
-    func stopStagedOutputWorker() {
+    func requestStagedOutputWorkerStop() {
         stagedOutputStateLock.lock()
         shouldRunStagedOutputWorker = false
         stagedOutputStateLock.unlock()
 
-        // See `BufferedTrackWorkerShard.stopWorker()` for the shutdown invariant:
+        // See `BufferedTrackWorkerShard.requestStop()` for the shutdown invariant:
         // the wakeup signal (not `cancel()`) unblocks a parked worker, and the
         // loop re-checks its run flag after every wait.
         stagedOutputThread?.cancel()
         stagedOutputWakeup.signal()
+    }
+
+    func joinStagedOutputWorker() {
         if stagedOutputThread != nil {
             if stagedOutputExitGroup.wait(timeout: .now() + .seconds(5)) == .timedOut {
                 NSLog("SimpleAUHost: staged output worker did not exit within 5 seconds; continuing to wait.")
@@ -944,6 +995,11 @@ private extension MultiTrackAudioHostController {
             }
         }
         stagedOutputThread = nil
+    }
+
+    func stopStagedOutputWorker() {
+        requestStagedOutputWorkerStop()
+        joinStagedOutputWorker()
     }
 
     func shouldStagedOutputWorkerContinue() -> Bool {
@@ -1175,7 +1231,7 @@ private extension MultiTrackAudioHostController {
     }
 
     @MainActor
-    func closePluginEditorWindows() {
+    func closePluginEditorWindowsOnMainActor() {
         for (editorKey, windowController) in pluginEditorWindows {
             if let session = pluginEditorSessions[editorKey] {
                 session.invalidate()
