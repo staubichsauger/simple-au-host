@@ -36,9 +36,14 @@ enum SAHManagedSessionStore {
     private static let parameterPresetsFolderName = "Parameter Presets"
     private static let sessionFileExtension = "sahsession"
 
-    static func ensureDirectories(fileManager: FileManager = .default) throws -> SAHManagedStorageDirectories {
-        let musicDirectory = try musicDirectoryURL(fileManager: fileManager)
-        let root = musicDirectory.appendingPathComponent(appFolderName, isDirectory: true)
+    static func ensureDirectories(
+        rootDirectoryURL: URL? = nil,
+        fileManager: FileManager = .default
+    ) throws -> SAHManagedStorageDirectories {
+        let root = try storageRootDirectoryURL(
+            rootDirectoryURL: rootDirectoryURL,
+            fileManager: fileManager
+        )
         let sessions = root.appendingPathComponent(sessionsFolderName, isDirectory: true)
         let chainPresets = root.appendingPathComponent(chainPresetsFolderName, isDirectory: true)
         let parameterPresets = root.appendingPathComponent(parameterPresetsFolderName, isDirectory: true)
@@ -56,8 +61,14 @@ enum SAHManagedSessionStore {
         )
     }
 
-    static func managedSessions(fileManager: FileManager = .default) throws -> [ManagedSessionFile] {
-        let directories = try ensureDirectories(fileManager: fileManager)
+    static func managedSessions(
+        rootDirectoryURL: URL? = nil,
+        fileManager: FileManager = .default
+    ) throws -> [ManagedSessionFile] {
+        let directories = try ensureDirectories(
+            rootDirectoryURL: rootDirectoryURL,
+            fileManager: fileManager
+        )
         let resourceKeys: Set<URLResourceKey> = [.contentModificationDateKey, .isRegularFileKey]
         let fileURLs = try fileManager.contentsOfDirectory(
             at: directories.sessions,
@@ -86,16 +97,46 @@ enum SAHManagedSessionStore {
         }
     }
 
-    static func sessionsDirectoryURL(fileManager: FileManager = .default) throws -> URL {
-        try ensureDirectories(fileManager: fileManager).sessions
+    static func sessionsDirectoryURL(
+        rootDirectoryURL: URL? = nil,
+        fileManager: FileManager = .default
+    ) throws -> URL {
+        try ensureDirectories(
+            rootDirectoryURL: rootDirectoryURL,
+            fileManager: fileManager
+        ).sessions
     }
 
-    static func chainPresetsDirectoryURL(fileManager: FileManager = .default) throws -> URL {
-        try ensureDirectories(fileManager: fileManager).chainPresets
+    static func chainPresetsDirectoryURL(
+        rootDirectoryURL: URL? = nil,
+        fileManager: FileManager = .default
+    ) throws -> URL {
+        try ensureDirectories(
+            rootDirectoryURL: rootDirectoryURL,
+            fileManager: fileManager
+        ).chainPresets
     }
 
-    static func parameterPresetsDirectoryURL(fileManager: FileManager = .default) throws -> URL {
-        try ensureDirectories(fileManager: fileManager).parameterPresets
+    static func parameterPresetsDirectoryURL(
+        rootDirectoryURL: URL? = nil,
+        fileManager: FileManager = .default
+    ) throws -> URL {
+        try ensureDirectories(
+            rootDirectoryURL: rootDirectoryURL,
+            fileManager: fileManager
+        ).parameterPresets
+    }
+
+    private static func storageRootDirectoryURL(
+        rootDirectoryURL: URL?,
+        fileManager: FileManager
+    ) throws -> URL {
+        if let rootDirectoryURL {
+            return rootDirectoryURL
+        }
+
+        let musicDirectory = try musicDirectoryURL(fileManager: fileManager)
+        return musicDirectory.appendingPathComponent(appFolderName, isDirectory: true)
     }
 
     private static func musicDirectoryURL(fileManager: FileManager) throws -> URL {

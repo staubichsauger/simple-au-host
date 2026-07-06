@@ -2,23 +2,36 @@ import XCTest
 @testable import SimpleAUHost
 
 final class SessionStoreTests: XCTestCase {
+    private var temporaryRoots: [URL] = []
+
+    override func tearDownWithError() throws {
+        let roots = temporaryRoots
+        temporaryRoots = []
+        for root in roots {
+            try? FileManager.default.removeItem(at: root)
+        }
+        try super.tearDownWithError()
+    }
+
     func testManagedSessionsOnlyListsSessionFiles() throws {
         let fileManager = FileManager.default
-        let sessions = try SAHManagedSessionStore.sessionsDirectoryURL(fileManager: fileManager)
+        let root = makeTemporaryManagedStorageRoot()
+        let sessions = try SAHManagedSessionStore.sessionsDirectoryURL(
+            rootDirectoryURL: root,
+            fileManager: fileManager
+        )
         let suffix = UUID().uuidString
         let validSession = sessions.appendingPathComponent("UnitTest-\(suffix).sahsession")
         let ignoredFile = sessions.appendingPathComponent("UnitTest-\(suffix).txt")
         let ignoredDirectory = sessions.appendingPathComponent("UnitTest-\(suffix)-Folder.sahsession", isDirectory: true)
-        defer {
-            try? fileManager.removeItem(at: validSession)
-            try? fileManager.removeItem(at: ignoredFile)
-            try? fileManager.removeItem(at: ignoredDirectory)
-        }
         try Data("{}".utf8).write(to: validSession)
         try Data("{}".utf8).write(to: ignoredFile)
         try fileManager.createDirectory(at: ignoredDirectory, withIntermediateDirectories: true)
 
-        let managedSessions = try SAHManagedSessionStore.managedSessions(fileManager: fileManager)
+        let managedSessions = try SAHManagedSessionStore.managedSessions(
+            rootDirectoryURL: root,
+            fileManager: fileManager
+        )
         let managedNames = Set(managedSessions.map(\.url.lastPathComponent))
 
         XCTAssertTrue(managedNames.contains(validSession.lastPathComponent))
@@ -220,5 +233,14 @@ final class SessionStoreTests: XCTestCase {
         }
 
         wait(for: [producerDone, consumerDone], timeout: 30)
+    }
+
+    private func makeTemporaryManagedStorageRoot() -> URL {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "SimpleAUHostTests-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        temporaryRoots.append(root)
+        return root
     }
 }
