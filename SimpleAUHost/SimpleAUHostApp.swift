@@ -5,10 +5,6 @@ struct SimpleAUHostApp: App {
     @NSApplicationDelegateAdaptor(SimpleAUHostAppDelegate.self) private var appDelegate
     private let closeCoordinator = AppCloseCoordinator()
 
-    init() {
-        Thread.current.qualityOfService = .userInteractive
-    }
-
     var body: some Scene {
         WindowGroup {
             MultiTrackView(closeCoordinator: closeCoordinator)

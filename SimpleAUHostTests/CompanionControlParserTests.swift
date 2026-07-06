@@ -44,6 +44,22 @@ final class CompanionControlParserTests: XCTestCase {
         }
     }
 
+    func testParseRequestReturnsIncompleteUntilDeclaredBodyArrives() {
+        let body = #"{"enabled":true}"#
+        let partialBody = #"{"enabled""#
+        let rawRequest = """
+        POST /api/v1/actions/waves-tune/enabled HTTP/1.1\r
+        Host: localhost:52719\r
+        Content-Length: \(Data(body.utf8).count)\r
+        \r
+        \(partialBody)
+        """
+
+        guard case .incomplete = parseCompanionControlHTTPRequest(from: Data(rawRequest.utf8)) else {
+            return XCTFail("Expected an incomplete request.")
+        }
+    }
+
     func testParseRequestRejectsMalformedHeaderLine() {
         let data = Data("GET /health HTTP/1.1\r\nBad Header\r\n\r\n".utf8)
 
