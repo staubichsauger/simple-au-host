@@ -428,6 +428,11 @@ final class AudioHostingPriorityController {
 /// addresses. Passing class stored properties inout (`&mutex`) to C is not
 /// guaranteed to pin the property's address and is unsupported for
 /// `pthread_mutex_t`/`pthread_cond_t`.
+///
+/// The mutex uses `PTHREAD_PRIO_INHERIT` because `signal()` is called from the
+/// realtime audio callbacks: without priority inheritance the realtime thread
+/// could block behind a preempted lower-priority worker holding the mutex
+/// (priority inversion → audible dropout).
 final class AudioWorkerWakeup {
     private let mutex: UnsafeMutablePointer<pthread_mutex_t> = .allocate(capacity: 1)
     private let condition: UnsafeMutablePointer<pthread_cond_t> = .allocate(capacity: 1)
@@ -436,7 +441,11 @@ final class AudioWorkerWakeup {
     init() {
         mutex.initialize(to: pthread_mutex_t())
         condition.initialize(to: pthread_cond_t())
-        pthread_mutex_init(mutex, nil)
+        var mutexAttributes = pthread_mutexattr_t()
+        pthread_mutexattr_init(&mutexAttributes)
+        pthread_mutexattr_setprotocol(&mutexAttributes, PTHREAD_PRIO_INHERIT)
+        pthread_mutex_init(mutex, &mutexAttributes)
+        pthread_mutexattr_destroy(&mutexAttributes)
         pthread_cond_init(condition, nil)
     }
 

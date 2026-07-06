@@ -1849,6 +1849,10 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
     private let stagedOutputWakeup = AudioWorkerWakeup()
     private let stagedOutputExitGroup = DispatchGroup()
     private var runtimeStatus: String?
+    /// Lock-free mirror of `runtimeStatus != nil` for the audio callbacks, which
+    /// must not take `runtimeStateLock` (see the note on that lock). Non-zero
+    /// means the runtime has been invalidated and callbacks should output silence.
+    private let runtimeInvalidatedFlag = AtomicCounter()
     private var stagedOutputThread: Thread?
     private var shouldRunStagedOutputWorker = false
     private var stagedOutputPrimed = false
@@ -2496,7 +2500,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         if let status = statusForInvalidCallbackFrameCount(Int(inNumberFrames)) {
             return status
         }
-        if runtimeStatusMessage() != nil {
+        if runtimeInvalidatedFlag.load() != 0 {
             return noErr
         }
         peakInputCallbackFrames.storeMax(UInt64(inNumberFrames))
@@ -2564,7 +2568,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         if let status = statusForInvalidCallbackFrameCount(frameCount) {
             return status
         }
-        if runtimeStatusMessage() != nil {
+        if runtimeInvalidatedFlag.load() != 0 {
             return noErr
         }
         peakOutputCallbackFrames.storeMax(UInt64(inNumberFrames))
@@ -2867,6 +2871,7 @@ private extension MultiTrackAudioHostController {
             runtimeStatus = message
         }
         runtimeStateLock.unlock()
+        runtimeInvalidatedFlag.storeMax(1)
         signalBufferedWorkers()
         stagedOutputWakeup.signal()
     }
@@ -2875,6 +2880,7 @@ private extension MultiTrackAudioHostController {
         runtimeStateLock.lock()
         runtimeStatus = nil
         runtimeStateLock.unlock()
+        runtimeInvalidatedFlag.reset()
     }
 
     func statusForInvalidCallbackFrameCount(_ frameCount: Int) -> OSStatus? {
