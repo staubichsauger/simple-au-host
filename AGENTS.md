@@ -36,7 +36,7 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
   - `~/Music/SAH/Sessions`
   - `~/Music/SAH/Chain Presets`
   - `~/Music/SAH/Parameter Presets`
-- `CompanionControl.swift` implements the local HTTP control server used by the multi-track Waves Tune workflow.
+- `CompanionControl.swift` implements the local HTTP control server used by the multi-track tune workflow.
 - The realtime engine lives under `SimpleAUHost/Audio/`:
   - `AudioHostController.swift` provides shared device and Audio Unit catalog helpers used by the app.
   - `MultiTrackAudioHostController.swift` implements the multi-track engine.
@@ -66,7 +66,7 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 - Enabled tracks must use exclusive output channels. The view model validates output routing before the engine starts, so each track writes only to its configured hardware output span and no final-stage track summing is expected.
 - Stereo support in multi-track mode is per-track. Plugin compatibility for mono vs stereo tracks is checked when each track runtime creates its Audio Unit instance.
 - Multi-track sessions can be saved, loaded, and tracked for unsaved changes; closing the main window or quitting the app routes through `AppCloseCoordinator` so the user can save or discard changes.
-- The multi-track flow also exposes a local Companion control API at `http://127.0.0.1:52719` for Waves Tune key staging/apply actions.
+- The multi-track flow also exposes a local Companion control API at `http://127.0.0.1:52719` for tune key staging/apply actions.
 
 ## Working on the project
 - Prefer changing the view models when adjusting validation, persistence, session state, Companion control behavior, or UI-derived configuration; prefer changing the controllers only for realtime audio behavior, device routing, or Audio Unit hosting.

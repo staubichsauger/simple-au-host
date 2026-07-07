@@ -62,7 +62,7 @@ Keep your volume low the first time you test a route. Live audio routing can cre
 - Saves and loads sessions
 - Saves chain presets and parameter presets
 - Protects unsaved session changes when closing the app
-- Provides local Bitfocus Companion control for Waves Tune show workflows
+- Provides local Bitfocus Companion control for tune show workflows
 
 Managed files are stored in your Music folder:
 
@@ -78,15 +78,15 @@ Use chain presets when you want to reuse a complete plugin chain on another trac
 
 Use parameter presets when you want to reuse settings for a compatible chain without replacing the whole session.
 
-## Waves Tune and Companion
+## Tune and Companion
 
 SimpleAUHost includes a local control API for Bitfocus Companion and similar control tools. It is intended for the same Mac as the app and defaults to:
 
 `http://127.0.0.1:52719`
 
-The included Companion module scaffold lives in `companion/simple-au-host/`. It supports Waves Tune on/off control, staged key changes, applying staged keys, panic, and next/previous song actions.
+The included Companion module scaffold lives in `companion/simple-au-host/`. It supports tune on/off control, staged key changes, applying staged keys, panic, and next/previous song actions.
 
-You only need this if you use Companion or Waves Tune Real-Time in a show control setup.
+You only need this if you use Companion or tuner plugins in a show control setup.
 
 ## Troubleshooting
 

@@ -4,8 +4,8 @@ This Bitfocus Companion module targets the built-in local HTTP control API expos
 
 ## Supported actions
 
-- Waves Tune on/off
-- Waves Tune toggle
+- Tune on/off
+- Tune toggle
 - set note letter
 - set accidental
 - set scale mode
@@ -17,7 +17,7 @@ This Bitfocus Companion module targets the built-in local HTTP control API expos
 
 ## Supported feedbacks
 
-- Waves Tune enabled
+- Tune enabled
 - engine running
 - staged key differs from applied key
 - staged note letter is
@@ -32,7 +32,7 @@ This Bitfocus Companion module targets the built-in local HTTP control API expos
 - `$(simpleauhost:session_name)`
 - `$(simpleauhost:status_message)`
 - `$(simpleauhost:engine_running)`
-- `$(simpleauhost:waves_tune_enabled)`
+- `$(simpleauhost:tune_enabled)`
 - `$(simpleauhost:active_key_title)`
 - `$(simpleauhost:staged_key_title)`
 - `$(simpleauhost:applied_key_title)`

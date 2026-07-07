@@ -80,7 +80,7 @@ default 20 ms). Add SLT-specific values on the same enum:
 Match with a ±0.25 ms tolerance like the Waves preset detection. Tune these
 by ear later; keep them in one place on the enum.
 
-### 3. ViewModel wiring (`MultiTrackViewModel+WavesTune.swift`)
+### 3. ViewModel wiring (`MultiTrackViewModel+Tune.swift`)
 - `isWavesTuneRealtimePlugin` → generalize to `isTunerPlugin` =
   Waves match || SLT match (used by `configuredWavesTuneRealtimeInsertCount`,
   `performTracks`, `trackHasConfiguredWavesTuneRealtimeInsert`).
@@ -95,7 +95,7 @@ by ear later; keep them in one place on the enum.
 
 ### 4. HTTP API / Companion
 No breaking changes required — all existing endpoints
-(`/api/v1/actions/waves-tune/...`) now affect SLT instances too because they
+(`/api/v1/actions/tune/...`) now affect SLT instances too because they
 funnel through the generalized ViewModel actions. Optional polish (later):
 - Add `simpleLiveTuneInsertCount` to the state payload (apiVersion bump).
 - Rename action paths/labels to `tuner/…` with backward-compatible aliases.
@@ -103,7 +103,7 @@ funnel through the generalized ViewModel actions. Optional polish (later):
   Stream Deck control for them turns out useful live.
 
 ### 5. UI
-- `WavesTuneControls.swift` / Perform tab: works as-is once the ViewModel is
+- `TuneControls.swift` / Perform tab: works as-is once the ViewModel is
   generalized. Optionally retitle "Waves Tune" → "Tuner".
 - Optional (phase 2): an SLT detail section with Tolerance / Vibrato / Gate
   sliders, applied via the adapter — decide after using it live.
@@ -127,4 +127,4 @@ funnel through the generalized ViewModel actions. Optional polish (later):
 4. Toggle tune on/off from Stream Deck → SLT bypass parameter flips,
    no click on re-enable.
 5. Song prev/next from Stream Deck applies the song key to SLT.
-6. Mixed session (Waves + SLT on different tracks) → one button drives both.
+6. Mixed session (Waves Tune + SLT on different tracks) → one button drives both.

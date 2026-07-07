@@ -35,8 +35,24 @@ final class SimpleLiveTuneMappingTests: XCTestCase {
         XCTAssertTrue(SimpleLiveTuneParameterMap.matches(plugin))
     }
 
+    func testPluginIdentityFallsBackToCompactName() {
+        let plugin = AudioUnitPluginInfo(
+            id: "fake.simplelivetune",
+            name: "Staubichsauger: SimpleLiveTune",
+            componentDescription: AudioComponentDescription(
+                componentType: 0,
+                componentSubType: 0,
+                componentManufacturer: 0,
+                componentFlags: 0,
+                componentFlagsMask: 0
+            )
+        )
+
+        XCTAssertTrue(SimpleLiveTuneParameterMap.matches(plugin))
+    }
+
     func testScaleModeMapsToSimpleLiveTuneValues() {
-        let cases: [(WavesTuneScaleMode, Int)] = [
+        let cases: [(TuneScaleMode, Int)] = [
             (.chromatic, 0),
             (.major, 1),
             (.minor, 2)
@@ -48,7 +64,7 @@ final class SimpleLiveTuneMappingTests: XCTestCase {
     }
 
     func testKeySelectionMapsToSemitoneIndex() {
-        let cases: [(WavesTuneNoteLetter, WavesTuneAccidental, Int)] = [
+        let cases: [(TuneNoteLetter, TuneAccidental, Int)] = [
             (.c, .natural, 0),
             (.c, .sharp, 1),
             (.d, .flat, 1),
@@ -69,7 +85,7 @@ final class SimpleLiveTuneMappingTests: XCTestCase {
         ]
 
         for (noteLetter, accidental, expectedValue) in cases {
-            let selection = WavesTuneKeySelection(
+            let selection = TuneKeySelection(
                 scaleMode: .major,
                 noteLetter: noteLetter,
                 accidental: accidental
@@ -80,7 +96,7 @@ final class SimpleLiveTuneMappingTests: XCTestCase {
     }
 
     func testKeySelectionNormalizesUnsupportedAccidentalsBeforeAdapterMapping() {
-        let cases: [(WavesTuneNoteLetter, WavesTuneAccidental, Int)] = [
+        let cases: [(TuneNoteLetter, TuneAccidental, Int)] = [
             (.c, .flat, 0),
             (.e, .sharp, 4),
             (.f, .flat, 5),
@@ -88,7 +104,7 @@ final class SimpleLiveTuneMappingTests: XCTestCase {
         ]
 
         for (noteLetter, accidental, expectedValue) in cases {
-            let selection = WavesTuneKeySelection(
+            let selection = TuneKeySelection(
                 scaleMode: .minor,
                 noteLetter: noteLetter,
                 accidental: accidental
@@ -100,7 +116,7 @@ final class SimpleLiveTuneMappingTests: XCTestCase {
     }
 
     func testStrengthPresetMapsToSimpleLiveTuneMilliseconds() {
-        let cases: [(WavesTuneStrengthPreset, Float, Float)] = [
+        let cases: [(TuneStrengthPreset, Float, Float)] = [
             (.fast, 15, 50),
             (.standard, 20, 60),
             (.slow, 40, 90)
@@ -110,7 +126,7 @@ final class SimpleLiveTuneMappingTests: XCTestCase {
             XCTAssertEqual(preset.simpleLiveTuneRetuneSpeed, expectedRetuneSpeed)
             XCTAssertEqual(preset.simpleLiveTuneNoteTransition, expectedNoteTransition)
             XCTAssertEqual(
-                WavesTuneStrengthPreset.matchingSimpleLiveTuneValues(
+                TuneStrengthPreset.matchingSimpleLiveTuneValues(
                     retuneSpeed: expectedRetuneSpeed,
                     noteTransition: expectedNoteTransition
                 ),
@@ -121,18 +137,112 @@ final class SimpleLiveTuneMappingTests: XCTestCase {
 
     func testStrengthPresetDetectionUsesTolerance() {
         XCTAssertEqual(
-            WavesTuneStrengthPreset.matchingSimpleLiveTuneValues(
+            TuneStrengthPreset.matchingSimpleLiveTuneValues(
                 retuneSpeed: 20.2,
                 noteTransition: 59.8
             ),
             .standard
         )
         XCTAssertEqual(
-            WavesTuneStrengthPreset.matchingSimpleLiveTuneValues(
+            TuneStrengthPreset.matchingSimpleLiveTuneValues(
                 retuneSpeed: 20.3,
                 noteTransition: 60
             ),
             .custom
         )
+    }
+
+    func testKeyParameterResolutionFallsBackToNames() throws {
+        let control = FakeSimpleLiveTuneParameterControl(parameterNames: [
+            10: "Key",
+            11: "Scale",
+            12: "Retune",
+            13: "Transition",
+            14: "Bypass"
+        ])
+
+        let parameterIDs = try SimpleLiveTuneParameterMap.resolveKeyParameterIDs(for: control)
+
+        XCTAssertEqual(parameterIDs.key, 10)
+        XCTAssertEqual(parameterIDs.scale, 11)
+        XCTAssertEqual(try SimpleLiveTuneParameterMap.resolveBypassParameterID(for: control), 14)
+    }
+
+    func testStrengthParameterResolutionFallsBackToNames() throws {
+        let control = FakeSimpleLiveTuneParameterControl(parameterNames: [
+            10: "Key",
+            11: "Scale",
+            12: "Retune",
+            13: "Transition",
+            14: "Bypass"
+        ])
+
+        let parameterIDs = try SimpleLiveTuneParameterMap.resolveStrengthParameterIDs(for: control)
+
+        XCTAssertEqual(parameterIDs.retuneSpeed, 12)
+        XCTAssertEqual(parameterIDs.noteTransition, 13)
+    }
+
+    func testParameterResolutionPrefersHardcodedIDsWhenAdvertised() throws {
+        let control = FakeSimpleLiveTuneParameterControl(parameterNames: [
+            10: "Key",
+            11: "Scale",
+            SimpleLiveTuneParameterMap.keyParameterID: "SLT Key"
+        ])
+
+        let parameterIDs = try SimpleLiveTuneParameterMap.resolveKeyParameterIDs(for: control)
+
+        XCTAssertEqual(parameterIDs.key, SimpleLiveTuneParameterMap.keyParameterID)
+        XCTAssertEqual(parameterIDs.scale, 11)
+    }
+}
+
+private final class FakeSimpleLiveTuneParameterControl: PluginParameterControl {
+    let pluginInfo = AudioUnitPluginInfo(
+        id: "fake.simple.live.tune",
+        name: "SimpleLiveTune",
+        componentDescription: AudioComponentDescription(
+            componentType: 0,
+            componentSubType: 0,
+            componentManufacturer: 0,
+            componentFlags: 0,
+            componentFlagsMask: 0
+        )
+    )
+
+    private let parameterNames: [AudioUnitParameterID: String]
+
+    init(parameterNames: [AudioUnitParameterID: String]) {
+        self.parameterNames = parameterNames
+    }
+
+    func setBypass(_ isBypassed: Bool, failureMessage: String) throws {}
+
+    func setParameter(
+        _ parameterID: AudioUnitParameterID,
+        value: AudioUnitParameterValue,
+        failureMessage: String
+    ) throws {}
+
+    func availableParameterIDs() throws -> [AudioUnitParameterID] {
+        parameterNames.keys.sorted()
+    }
+
+    func parameterDisplayName(for parameterID: AudioUnitParameterID) throws -> String {
+        guard let name = parameterNames[parameterID] else {
+            throw AudioHostError("Missing fake parameter \(parameterID).")
+        }
+        return name
+    }
+
+    func displayedParameterValue(for parameterID: AudioUnitParameterID) throws -> Float {
+        throw AudioHostError("Fake control does not provide displayed values.")
+    }
+
+    func parameterValue(
+        for parameterID: AudioUnitParameterID,
+        string: String
+    ) throws -> AudioUnitParameterValue? {
+        nil
     }
 }

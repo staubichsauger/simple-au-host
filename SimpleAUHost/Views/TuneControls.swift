@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct WavesTuneControlPane: View {
+struct TuneControlPane: View {
     @ObservedObject var viewModel: MultiTrackViewModel
     let songSummary: String
     let showMissingInsertHint: Bool
@@ -10,22 +10,22 @@ struct WavesTuneControlPane: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                WavesTuneMetricCard(
+                TuneMetricCard(
                     title: "Instances",
-                    value: "\(viewModel.configuredWavesTuneRealtimeInsertCount)",
-                    tint: viewModel.configuredWavesTuneRealtimeInsertCount > 0 ? StudioTheme.accent : StudioTheme.mutedText
+                    value: "\(viewModel.configuredTuneInsertCount)",
+                    tint: viewModel.configuredTuneInsertCount > 0 ? StudioTheme.accent : StudioTheme.mutedText
                 )
-                WavesTuneMetricCard(title: "Applied", value: viewModel.appliedWavesTuneKeyTitle)
-                WavesTuneMetricCard(
+                TuneMetricCard(title: "Applied", value: viewModel.appliedTuneKeyTitle)
+                TuneMetricCard(
                     title: "State",
-                    value: viewModel.wavesTuneState.isEnabled ? "Active" : "Bypassed",
-                    tint: viewModel.wavesTuneState.isEnabled ? StudioTheme.accent : StudioTheme.warning
+                    value: viewModel.tuneState.isEnabled ? "Active" : "Bypassed",
+                    tint: viewModel.tuneState.isEnabled ? StudioTheme.accent : StudioTheme.warning
                 )
             }
 
             Toggle("Tune Active", isOn: Binding(
-                get: { viewModel.wavesTuneState.isEnabled },
-                set: { viewModel.setWavesTuneEnabled($0) }
+                get: { viewModel.tuneState.isEnabled },
+                set: { viewModel.setTuneEnabled($0) }
             ))
             .toggleStyle(.switch)
 
@@ -33,7 +33,7 @@ struct WavesTuneControlPane: View {
                 HStack(alignment: .center, spacing: 8) {
                     VStack(alignment: .leading, spacing: 2) {
                         StudioFieldLabel("Setlist")
-                        Text(viewModel.selectedWavesTuneSongTitle)
+                        Text(viewModel.selectedTuneSongTitle)
                             .font(.system(size: 13, weight: .semibold, design: .default))
                             .foregroundStyle(StudioTheme.strongText)
                         Text(songSummary)
@@ -45,27 +45,27 @@ struct WavesTuneControlPane: View {
 
                     HStack(spacing: 8) {
                         Button("Key Panic") {
-                            viewModel.triggerWavesTuneKeyPanic()
+                            viewModel.triggerTuneKeyPanic()
                         }
                         .buttonStyle(StudioDestructiveButtonStyle())
 
                         Button {
-                            viewModel.stepWavesTuneSong(direction: -1)
+                            viewModel.stepTuneSong(direction: -1)
                         } label: {
                             Image(systemName: "chevron.left")
                                 .frame(width: 16, height: 16)
                         }
                         .buttonStyle(StudioSecondaryButtonStyle())
-                        .disabled(!viewModel.canSelectPreviousWavesTuneSong)
+                        .disabled(!viewModel.canSelectPreviousTuneSong)
 
                         Button {
-                            viewModel.stepWavesTuneSong(direction: 1)
+                            viewModel.stepTuneSong(direction: 1)
                         } label: {
                             Image(systemName: "chevron.right")
                                 .frame(width: 16, height: 16)
                         }
                         .buttonStyle(StudioSecondaryButtonStyle())
-                        .disabled(!viewModel.canSelectNextWavesTuneSong)
+                        .disabled(!viewModel.canSelectNextTuneSong)
 
                         Button("Add Song") {
                             onAddSong()
@@ -74,14 +74,14 @@ struct WavesTuneControlPane: View {
                     }
                 }
 
-                if viewModel.wavesTuneSongs.isEmpty {
+                if viewModel.tuneSongs.isEmpty {
                     Text("Add songs in show order. Selecting a song or stepping next/previous applies its key immediately.")
                         .font(.caption)
                         .foregroundStyle(StudioTheme.mutedText)
                 } else {
                     VStack(spacing: 8) {
-                        ForEach(Array(viewModel.wavesTuneSongs.enumerated()), id: \.element.id) { index, song in
-                            WavesTuneSongRow(
+                        ForEach(Array(viewModel.tuneSongs.enumerated()), id: \.element.id) { index, song in
+                            TuneSongRow(
                                 viewModel: viewModel,
                                 song: song,
                                 index: index,
@@ -92,15 +92,15 @@ struct WavesTuneControlPane: View {
                 }
             }
 
-            WavesTuneKeyControls(
-                key: viewModel.wavesTuneState.stagedKey,
-                setScaleMode: { viewModel.setWavesTuneScaleMode($0) },
-                setAccidental: { viewModel.setWavesTuneAccidental($0) },
-                setNoteLetter: { viewModel.setWavesTuneNoteLetter($0) }
+            TuneKeyControls(
+                key: viewModel.tuneState.stagedKey,
+                setScaleMode: { viewModel.setTuneScaleMode($0) },
+                setAccidental: { viewModel.setTuneAccidental($0) },
+                setNoteLetter: { viewModel.setTuneNoteLetter($0) }
             )
 
-            if showMissingInsertHint && viewModel.configuredWavesTuneRealtimeInsertCount == 0 {
-                Text("Add a Waves Tune Real-Time insert to any enabled track to use these controls.")
+            if showMissingInsertHint && viewModel.configuredTuneInsertCount == 0 {
+                Text("Add a tuner insert to any enabled track to use these controls.")
                     .font(.system(size: 10))
                     .foregroundStyle(StudioTheme.mutedText)
             }
@@ -111,7 +111,7 @@ struct WavesTuneControlPane: View {
                         .font(.system(size: 9, weight: .medium, design: .default))
                         .tracking(1.0)
                         .foregroundStyle(StudioTheme.mutedText)
-                    Text(viewModel.stagedWavesTuneKeyTitle)
+                    Text(viewModel.stagedTuneKeyTitle)
                         .font(.system(size: 13, weight: .semibold, design: .default))
                         .foregroundStyle(StudioTheme.strongText)
                 }
@@ -119,24 +119,24 @@ struct WavesTuneControlPane: View {
                 Spacer()
 
                 Button("Save Song Key") {
-                    viewModel.saveStagedKeyToSelectedWavesTuneSong()
+                    viewModel.saveStagedKeyToSelectedTuneSong()
                 }
                 .buttonStyle(StudioSecondaryButtonStyle())
-                .disabled(!viewModel.canSaveStagedKeyToSelectedWavesTuneSong)
+                .disabled(!viewModel.canSaveStagedKeyToSelectedTuneSong)
 
                 Button("Apply") {
-                    viewModel.applyStagedWavesTuneKey()
+                    viewModel.applyStagedTuneKey()
                 }
                 .buttonStyle(StudioPrimaryButtonStyle())
-                .disabled(!viewModel.canApplyStagedWavesTuneKey)
+                .disabled(!viewModel.canApplyStagedTuneKey)
             }
         }
     }
 }
 
-struct WavesTuneAddSongSheet: View {
+struct TuneAddSongSheet: View {
     @Binding var title: String
-    @Binding var key: WavesTuneKeySelection
+    @Binding var key: TuneKeySelection
     let onCancel: () -> Void
     let onConfirm: () -> Void
 
@@ -168,7 +168,7 @@ struct WavesTuneAddSongSheet: View {
                     )
             }
 
-            WavesTuneKeyControls(
+            TuneKeyControls(
                 key: key,
                 setScaleMode: { key.scaleMode = $0 },
                 setAccidental: { key.accidental = $0 },
@@ -209,11 +209,11 @@ struct WavesTuneAddSongSheet: View {
     }
 }
 
-struct WavesTuneKeyControls: View {
-    let key: WavesTuneKeySelection
-    let setScaleMode: (WavesTuneScaleMode) -> Void
-    let setAccidental: (WavesTuneAccidental) -> Void
-    let setNoteLetter: (WavesTuneNoteLetter) -> Void
+struct TuneKeyControls: View {
+    let key: TuneKeySelection
+    let setScaleMode: (TuneScaleMode) -> Void
+    let setAccidental: (TuneAccidental) -> Void
+    let setNoteLetter: (TuneNoteLetter) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -224,7 +224,7 @@ struct WavesTuneKeyControls: View {
                         get: { key.scaleMode },
                         set: { setScaleMode($0) }
                     )) {
-                        ForEach(WavesTuneScaleMode.allCases) { scaleMode in
+                        ForEach(TuneScaleMode.allCases) { scaleMode in
                             Text(scaleMode.title).tag(scaleMode)
                         }
                     }
@@ -234,12 +234,12 @@ struct WavesTuneKeyControls: View {
                 VStack(alignment: .leading, spacing: 6) {
                     StudioFieldLabel("Accidental")
                     HStack(spacing: 4) {
-                        ForEach(WavesTuneAccidental.allCases) { accidental in
-                            let isAllowed = WavesTuneKeySelection.supports(
+                        ForEach(TuneAccidental.allCases) { accidental in
+                            let isAllowed = TuneKeySelection.supports(
                                 accidental: accidental,
                                 for: key.noteLetter
                             )
-                            WavesTuneChoiceButton(
+                            TuneChoiceButton(
                                 title: accidental.title,
                                 isSelected: key.accidental == accidental,
                                 isEnabled: isAllowed
@@ -253,8 +253,8 @@ struct WavesTuneKeyControls: View {
             }
 
             HStack(spacing: 4) {
-                ForEach(WavesTuneNoteLetter.allCases) { noteLetter in
-                    WavesTuneChoiceButton(
+                ForEach(TuneNoteLetter.allCases) { noteLetter in
+                    TuneChoiceButton(
                         title: noteLetter.title,
                         isSelected: key.noteLetter == noteLetter
                     ) {
@@ -266,19 +266,19 @@ struct WavesTuneKeyControls: View {
     }
 }
 
-struct WavesTuneSongRow: View {
+struct TuneSongRow: View {
     @ObservedObject var viewModel: MultiTrackViewModel
-    let song: WavesTuneSongEntry
+    let song: TuneSongEntry
     let index: Int
     let isEditable: Bool
 
     var body: some View {
-        let isSelected = viewModel.wavesTuneState.selectedSongID == song.id
+        let isSelected = viewModel.tuneState.selectedSongID == song.id
 
         return VStack(alignment: .leading, spacing: isEditable ? 6 : 5) {
             HStack(spacing: 6) {
                 Button {
-                    viewModel.selectWavesTuneSong(song.id)
+                    viewModel.selectTuneSong(song.id)
                 } label: {
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "play.circle")
                         .font(.system(size: 13, weight: .medium))
@@ -296,7 +296,7 @@ struct WavesTuneSongRow: View {
                         "Song \(index + 1)",
                         text: Binding(
                             get: { song.title },
-                            set: { viewModel.updateWavesTuneSongTitle(song.id, title: $0) }
+                            set: { viewModel.updateTuneSongTitle(song.id, title: $0) }
                         )
                     )
                     .textFieldStyle(.plain)
@@ -313,7 +313,7 @@ struct WavesTuneSongRow: View {
 
                 if isEditable {
                     Button(song.key.title) {
-                        viewModel.selectWavesTuneSong(song.id)
+                        viewModel.selectTuneSong(song.id)
                     }
                     .buttonStyle(.plain)
                     .font(.system(size: 10, weight: .medium, design: .default))
@@ -331,22 +331,22 @@ struct WavesTuneSongRow: View {
                         .foregroundStyle(isSelected ? StudioTheme.accent : StudioTheme.strongText)
                 }
 
-                WavesTuneSongIconButton(systemName: "chevron.up", help: "Move song up") {
-                    viewModel.moveWavesTuneSong(song.id, direction: -1)
+                TuneSongIconButton(systemName: "chevron.up", help: "Move song up") {
+                    viewModel.moveTuneSong(song.id, direction: -1)
                 }
                 .disabled(index == 0)
 
-                WavesTuneSongIconButton(systemName: "chevron.down", help: "Move song down") {
-                    viewModel.moveWavesTuneSong(song.id, direction: 1)
+                TuneSongIconButton(systemName: "chevron.down", help: "Move song down") {
+                    viewModel.moveTuneSong(song.id, direction: 1)
                 }
-                .disabled(index >= viewModel.wavesTuneSongs.count - 1)
+                .disabled(index >= viewModel.tuneSongs.count - 1)
 
-                WavesTuneSongIconButton(systemName: "plus.square.on.square", help: "Duplicate song") {
-                    viewModel.duplicateWavesTuneSong(song.id)
+                TuneSongIconButton(systemName: "plus.square.on.square", help: "Duplicate song") {
+                    viewModel.duplicateTuneSong(song.id)
                 }
 
-                WavesTuneSongIconButton(systemName: "trash", help: "Remove song") {
-                    viewModel.removeWavesTuneSong(song.id)
+                TuneSongIconButton(systemName: "trash", help: "Remove song") {
+                    viewModel.removeTuneSong(song.id)
                 }
                 .foregroundStyle(StudioTheme.warning)
             }
@@ -356,7 +356,7 @@ struct WavesTuneSongRow: View {
                     "Notes",
                     text: Binding(
                         get: { song.notes },
-                        set: { viewModel.updateWavesTuneSongNotes(song.id, notes: $0) }
+                        set: { viewModel.updateTuneSongNotes(song.id, notes: $0) }
                     )
                 )
                 .textFieldStyle(.plain)
@@ -393,7 +393,7 @@ struct WavesTuneSongRow: View {
     }
 }
 
-struct WavesTuneMetricCard: View {
+struct TuneMetricCard: View {
     let title: String
     let value: String
     let tint: Color
@@ -428,7 +428,7 @@ struct WavesTuneMetricCard: View {
     }
 }
 
-private struct WavesTuneChoiceButton: View {
+private struct TuneChoiceButton: View {
     let title: String
     let isSelected: Bool
     let isEnabled: Bool
@@ -468,7 +468,7 @@ private struct WavesTuneChoiceButton: View {
     }
 }
 
-private struct WavesTuneSongIconButton: View {
+private struct TuneSongIconButton: View {
     let systemName: String
     let help: String
     let action: () -> Void

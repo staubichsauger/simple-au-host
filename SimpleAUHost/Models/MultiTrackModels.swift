@@ -163,7 +163,7 @@ struct MultiTrackTrackConfiguration: Identifiable, Codable, Hashable {
     var inputStartChannel: Int
     var outputStartChannel: Int
     var latencyClass: TrackLatencyClass
-    var wavesTuneStrength: WavesTuneStrengthPreset
+    var tuneStrength: TuneStrengthPreset
     var plugins: [PluginInsert]
     var isEnabled: Bool
 
@@ -174,7 +174,7 @@ struct MultiTrackTrackConfiguration: Identifiable, Codable, Hashable {
         case inputStartChannel
         case outputStartChannel
         case latencyClass
-        case wavesTuneStrength
+        case tuneStrength
         case plugins
         case isEnabled
     }
@@ -186,7 +186,7 @@ struct MultiTrackTrackConfiguration: Identifiable, Codable, Hashable {
         inputStartChannel: Int = 1,
         outputStartChannel: Int = 1,
         latencyClass: TrackLatencyClass = .realtime,
-        wavesTuneStrength: WavesTuneStrengthPreset = .standard,
+        tuneStrength: TuneStrengthPreset = .standard,
         plugins: [PluginInsert] = [],
         isEnabled: Bool = true
     ) {
@@ -196,7 +196,7 @@ struct MultiTrackTrackConfiguration: Identifiable, Codable, Hashable {
         self.inputStartChannel = inputStartChannel
         self.outputStartChannel = outputStartChannel
         self.latencyClass = latencyClass
-        self.wavesTuneStrength = wavesTuneStrength
+        self.tuneStrength = tuneStrength
         self.plugins = plugins
         self.isEnabled = isEnabled
     }
@@ -209,7 +209,7 @@ struct MultiTrackTrackConfiguration: Identifiable, Codable, Hashable {
         inputStartChannel = try container.decode(Int.self, forKey: .inputStartChannel)
         outputStartChannel = try container.decode(Int.self, forKey: .outputStartChannel)
         latencyClass = try container.decode(TrackLatencyClass.self, forKey: .latencyClass)
-        wavesTuneStrength = try container.decodeIfPresent(WavesTuneStrengthPreset.self, forKey: .wavesTuneStrength) ?? .standard
+        tuneStrength = try container.decodeIfPresent(TuneStrengthPreset.self, forKey: .tuneStrength) ?? .standard
         plugins = try container.decode([PluginInsert].self, forKey: .plugins)
         isEnabled = try container.decode(Bool.self, forKey: .isEnabled)
     }
@@ -222,7 +222,7 @@ struct MultiTrackTrackConfiguration: Identifiable, Codable, Hashable {
         try container.encode(inputStartChannel, forKey: .inputStartChannel)
         try container.encode(outputStartChannel, forKey: .outputStartChannel)
         try container.encode(latencyClass, forKey: .latencyClass)
-        try container.encode(wavesTuneStrength, forKey: .wavesTuneStrength)
+        try container.encode(tuneStrength, forKey: .tuneStrength)
         try container.encode(plugins, forKey: .plugins)
         try container.encode(isEnabled, forKey: .isEnabled)
     }
@@ -249,7 +249,7 @@ struct MultiTrackHostConfiguration {
 }
 
 struct MultiTrackSessionFile: Codable {
-    static let currentFormatVersion = 3
+    static let currentFormatVersion = 4
 
     var formatVersion: Int = currentFormatVersion
     var name: String
@@ -258,7 +258,62 @@ struct MultiTrackSessionFile: Codable {
     var bufferSize: Int
     var latencyBufferSettings: MultiTrackLatencyBufferSettings
     var tracks: [MultiTrackTrackConfiguration]
-    var wavesTuneState: MultiTrackWavesTuneState?
+    var tuneState: MultiTrackTuneState?
+
+    private enum CodingKeys: String, CodingKey {
+        case formatVersion
+        case name
+        case inputDeviceUID
+        case outputDeviceUID
+        case bufferSize
+        case latencyBufferSettings
+        case tracks
+        case tuneState
+    }
+
+    init(
+        formatVersion: Int = currentFormatVersion,
+        name: String,
+        inputDeviceUID: String?,
+        outputDeviceUID: String?,
+        bufferSize: Int,
+        latencyBufferSettings: MultiTrackLatencyBufferSettings,
+        tracks: [MultiTrackTrackConfiguration],
+        tuneState: MultiTrackTuneState?
+    ) {
+        self.formatVersion = formatVersion
+        self.name = name
+        self.inputDeviceUID = inputDeviceUID
+        self.outputDeviceUID = outputDeviceUID
+        self.bufferSize = bufferSize
+        self.latencyBufferSettings = latencyBufferSettings
+        self.tracks = tracks
+        self.tuneState = tuneState
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        formatVersion = try container.decodeIfPresent(Int.self, forKey: .formatVersion) ?? Self.currentFormatVersion
+        name = try container.decode(String.self, forKey: .name)
+        inputDeviceUID = try container.decodeIfPresent(String.self, forKey: .inputDeviceUID)
+        outputDeviceUID = try container.decodeIfPresent(String.self, forKey: .outputDeviceUID)
+        bufferSize = try container.decode(Int.self, forKey: .bufferSize)
+        latencyBufferSettings = try container.decode(MultiTrackLatencyBufferSettings.self, forKey: .latencyBufferSettings)
+        tracks = try container.decode([MultiTrackTrackConfiguration].self, forKey: .tracks)
+        tuneState = try container.decodeIfPresent(MultiTrackTuneState.self, forKey: .tuneState)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(formatVersion, forKey: .formatVersion)
+        try container.encode(name, forKey: .name)
+        try container.encodeIfPresent(inputDeviceUID, forKey: .inputDeviceUID)
+        try container.encodeIfPresent(outputDeviceUID, forKey: .outputDeviceUID)
+        try container.encode(bufferSize, forKey: .bufferSize)
+        try container.encode(latencyBufferSettings, forKey: .latencyBufferSettings)
+        try container.encode(tracks, forKey: .tracks)
+        try container.encodeIfPresent(tuneState, forKey: .tuneState)
+    }
 
     func validateFormatVersion() throws {
         guard formatVersion <= Self.currentFormatVersion else {

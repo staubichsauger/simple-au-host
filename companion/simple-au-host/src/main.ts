@@ -21,7 +21,7 @@ interface SimpleAUHostKeyState {
 	rootTitle: string
 }
 
-interface SimpleAUHostWavesTuneState {
+interface SimpleAUHostTuneState {
 	isEnabled: boolean
 	configuredInsertCount: number
 	canApplyStagedKey: boolean
@@ -43,7 +43,7 @@ interface SimpleAUHostState {
 	sessionName: string
 	statusMessage: string
 	isRunning: boolean
-	wavesTune: SimpleAUHostWavesTuneState
+	tune: SimpleAUHostTuneState
 }
 
 interface SimpleAUHostCommandResponse {
@@ -178,7 +178,7 @@ class SimpleAUHostModule extends InstanceBase<ModuleConfig> {
 	private updateActions(): void {
 		this.setActionDefinitions({
 			set_enabled: {
-				name: 'Set Waves Tune On/Off',
+				name: 'Set Tune On/Off',
 				options: [
 					{
 						type: 'dropdown',
@@ -192,16 +192,16 @@ class SimpleAUHostModule extends InstanceBase<ModuleConfig> {
 					},
 				],
 				callback: async (event) => {
-					await this.postAction('/api/v1/actions/waves-tune/enabled', {
+					await this.postAction('/api/v1/actions/tune/enabled', {
 						enabled: event.options.enabled === 'on',
 					})
 				},
 			},
 			toggle_enabled: {
-				name: 'Toggle Waves Tune On/Off',
+				name: 'Toggle Tune On/Off',
 				options: [],
 				callback: async () => {
-					await this.postAction('/api/v1/actions/waves-tune/toggle-enabled')
+					await this.postAction('/api/v1/actions/tune/toggle-enabled')
 				},
 			},
 			set_staged_key: {
@@ -223,7 +223,7 @@ class SimpleAUHostModule extends InstanceBase<ModuleConfig> {
 					},
 				],
 				callback: async (event) => {
-					await this.postAction('/api/v1/actions/waves-tune/staged-key', {
+					await this.postAction('/api/v1/actions/tune/staged-key', {
 						root: event.options.root,
 						scaleMode: event.options.scaleMode,
 					})
@@ -241,7 +241,7 @@ class SimpleAUHostModule extends InstanceBase<ModuleConfig> {
 					},
 				],
 				callback: async (event) => {
-					await this.postAction('/api/v1/actions/waves-tune/note-letter', {
+					await this.postAction('/api/v1/actions/tune/note-letter', {
 						noteLetter: event.options.noteLetter,
 					})
 				},
@@ -258,7 +258,7 @@ class SimpleAUHostModule extends InstanceBase<ModuleConfig> {
 					},
 				],
 				callback: async (event) => {
-					await this.postAction('/api/v1/actions/waves-tune/accidental', {
+					await this.postAction('/api/v1/actions/tune/accidental', {
 						accidental: event.options.accidental,
 					})
 				},
@@ -275,7 +275,7 @@ class SimpleAUHostModule extends InstanceBase<ModuleConfig> {
 					},
 				],
 				callback: async (event) => {
-					await this.postAction('/api/v1/actions/waves-tune/scale-mode', {
+					await this.postAction('/api/v1/actions/tune/scale-mode', {
 						scaleMode: event.options.scaleMode,
 					})
 				},
@@ -284,28 +284,28 @@ class SimpleAUHostModule extends InstanceBase<ModuleConfig> {
 				name: 'Apply Staged Key',
 				options: [],
 				callback: async () => {
-					await this.postAction('/api/v1/actions/waves-tune/apply')
+					await this.postAction('/api/v1/actions/tune/apply')
 				},
 			},
 			key_panic: {
 				name: 'Key Panic',
 				options: [],
 				callback: async () => {
-					await this.postAction('/api/v1/actions/waves-tune/panic')
+					await this.postAction('/api/v1/actions/tune/panic')
 				},
 			},
 			next_song: {
 				name: 'Next Song',
 				options: [],
 				callback: async () => {
-					await this.postAction('/api/v1/actions/waves-tune/step-song', { direction: 1 })
+					await this.postAction('/api/v1/actions/tune/step-song', { direction: 1 })
 				},
 			},
 			previous_song: {
 				name: 'Previous Song',
 				options: [],
 				callback: async () => {
-					await this.postAction('/api/v1/actions/waves-tune/step-song', { direction: -1 })
+					await this.postAction('/api/v1/actions/tune/step-song', { direction: -1 })
 				},
 			},
 		})
@@ -313,8 +313,8 @@ class SimpleAUHostModule extends InstanceBase<ModuleConfig> {
 
 	private updateFeedbacks(): void {
 		this.setFeedbackDefinitions({
-			waves_tune_enabled: {
-				name: 'Waves Tune Enabled',
+			tune_enabled: {
+				name: 'Tune Enabled',
 				type: 'boolean',
 				defaultStyle: {
 					bgcolor: combineRgb(32, 128, 64),
@@ -322,7 +322,7 @@ class SimpleAUHostModule extends InstanceBase<ModuleConfig> {
 				},
 				options: [],
 				callback: () => {
-					return this.state?.wavesTune.isEnabled ?? false
+					return this.state?.tune.isEnabled ?? false
 				},
 			},
 			engine_running: {
@@ -346,7 +346,7 @@ class SimpleAUHostModule extends InstanceBase<ModuleConfig> {
 				},
 				options: [],
 				callback: () => {
-					return this.state?.wavesTune.canApplyStagedKey ?? false
+					return this.state?.tune.canApplyStagedKey ?? false
 				},
 			},
 			staged_note_letter_is: {
@@ -366,7 +366,7 @@ class SimpleAUHostModule extends InstanceBase<ModuleConfig> {
 					},
 				],
 				callback: (feedback) => {
-					return this.state?.wavesTune.stagedKey.noteLetter === optionString(feedback.options.noteLetter)
+					return this.state?.tune.stagedKey.noteLetter === optionString(feedback.options.noteLetter)
 				},
 			},
 			staged_accidental_is: {
@@ -386,7 +386,7 @@ class SimpleAUHostModule extends InstanceBase<ModuleConfig> {
 					},
 				],
 				callback: (feedback) => {
-					return this.state?.wavesTune.stagedKey.accidental === optionString(feedback.options.accidental)
+					return this.state?.tune.stagedKey.accidental === optionString(feedback.options.accidental)
 				},
 			},
 			staged_scale_mode_is: {
@@ -406,7 +406,7 @@ class SimpleAUHostModule extends InstanceBase<ModuleConfig> {
 					},
 				],
 				callback: (feedback) => {
-					return this.state?.wavesTune.stagedKey.scaleMode === optionString(feedback.options.scaleMode)
+					return this.state?.tune.stagedKey.scaleMode === optionString(feedback.options.scaleMode)
 				},
 			},
 			active_key_is: {
@@ -434,7 +434,7 @@ class SimpleAUHostModule extends InstanceBase<ModuleConfig> {
 				],
 				callback: (feedback) => {
 					return keyMatches(
-						this.state?.wavesTune.appliedKey,
+						this.state?.tune.appliedKey,
 						optionString(feedback.options.root),
 						optionString(feedback.options.scaleMode)
 					)
@@ -465,7 +465,7 @@ class SimpleAUHostModule extends InstanceBase<ModuleConfig> {
 				],
 				callback: (feedback) => {
 					return keyMatches(
-						this.state?.wavesTune.previousSongKey,
+						this.state?.tune.previousSongKey,
 						optionString(feedback.options.root),
 						optionString(feedback.options.scaleMode)
 					)
@@ -496,7 +496,7 @@ class SimpleAUHostModule extends InstanceBase<ModuleConfig> {
 				],
 				callback: (feedback) => {
 					return keyMatches(
-						this.state?.wavesTune.nextSongKey,
+						this.state?.tune.nextSongKey,
 						optionString(feedback.options.root),
 						optionString(feedback.options.scaleMode)
 					)
@@ -510,7 +510,7 @@ class SimpleAUHostModule extends InstanceBase<ModuleConfig> {
 			{ variableId: 'session_name', name: 'Current session name' },
 			{ variableId: 'status_message', name: 'Current status message' },
 			{ variableId: 'engine_running', name: 'Engine running flag' },
-			{ variableId: 'waves_tune_enabled', name: 'Waves Tune enabled flag' },
+			{ variableId: 'tune_enabled', name: 'Tune enabled flag' },
 			{ variableId: 'active_key_title', name: 'Currently active key title' },
 			{ variableId: 'staged_key_title', name: 'Staged key title' },
 			{ variableId: 'applied_key_title', name: 'Applied key title' },
@@ -527,26 +527,26 @@ class SimpleAUHostModule extends InstanceBase<ModuleConfig> {
 
 	private updateVariableValues(): void {
 		const songPosition =
-			this.state?.wavesTune.selectedSongIndex !== null && this.state?.wavesTune.selectedSongIndex !== undefined
-				? String(this.state.wavesTune.selectedSongIndex + 1)
+			this.state?.tune.selectedSongIndex !== null && this.state?.tune.selectedSongIndex !== undefined
+				? String(this.state.tune.selectedSongIndex + 1)
 				: ''
 
 		this.setVariableValues({
 			session_name: this.state?.sessionName ?? '',
 			status_message: this.state?.statusMessage ?? '',
 			engine_running: this.state?.isRunning ? 'true' : 'false',
-			waves_tune_enabled: this.state?.wavesTune.isEnabled ? 'true' : 'false',
-			active_key_title: this.state?.wavesTune.appliedKey.title ?? '',
-			staged_key_title: this.state?.wavesTune.stagedKey.title ?? '',
-			applied_key_title: this.state?.wavesTune.appliedKey.title ?? '',
-			staged_note_letter: formatNoteLetter(this.state?.wavesTune.stagedKey.noteLetter),
-			staged_scale_mode: capitalizeLabel(this.state?.wavesTune.stagedKey.scaleMode),
-			staged_accidental: capitalizeLabel(this.state?.wavesTune.stagedKey.accidental),
-			selected_song_title: this.state?.wavesTune.selectedSongTitle ?? '',
-			previous_song_key_title: this.state?.wavesTune.previousSongKey?.title ?? '',
-			next_song_key_title: this.state?.wavesTune.nextSongKey?.title ?? '',
+			tune_enabled: this.state?.tune.isEnabled ? 'true' : 'false',
+			active_key_title: this.state?.tune.appliedKey.title ?? '',
+			staged_key_title: this.state?.tune.stagedKey.title ?? '',
+			applied_key_title: this.state?.tune.appliedKey.title ?? '',
+			staged_note_letter: formatNoteLetter(this.state?.tune.stagedKey.noteLetter),
+			staged_scale_mode: capitalizeLabel(this.state?.tune.stagedKey.scaleMode),
+			staged_accidental: capitalizeLabel(this.state?.tune.stagedKey.accidental),
+			selected_song_title: this.state?.tune.selectedSongTitle ?? '',
+			previous_song_key_title: this.state?.tune.previousSongKey?.title ?? '',
+			next_song_key_title: this.state?.tune.nextSongKey?.title ?? '',
 			song_position: songPosition,
-			song_count: this.state ? String(this.state.wavesTune.songCount) : '0',
+			song_count: this.state ? String(this.state.tune.songCount) : '0',
 		})
 		this.checkFeedbacks()
 	}

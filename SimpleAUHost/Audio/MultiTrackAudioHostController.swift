@@ -351,9 +351,9 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         return runtime.applySerializedPluginStates(statesByInsertID)
     }
 
-    func setWavesTuneRealtimeBypassed(_ isBypassed: Bool) throws -> Int {
+    func setTuneBypassed(_ isBypassed: Bool) throws -> Int {
         guard configuration != nil else {
-            throw AudioHostError("Start the engine before changing Waves Tune bypass.")
+            throw AudioHostError("Start the engine before changing tune bypass.")
         }
 
         return try currentTrackRuntimes().reduce(into: 0) { count, runtime in
@@ -362,9 +362,9 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         }
     }
 
-    func applyWavesTuneRealtimeKeySelection(_ selection: WavesTuneKeySelection) throws -> Int {
+    func applyTuneKeySelection(_ selection: TuneKeySelection) throws -> Int {
         guard configuration != nil else {
-            throw AudioHostError("Start the engine before applying Waves Tune settings.")
+            throw AudioHostError("Start the engine before applying tune settings.")
         }
 
         let normalizedSelection = selection.normalized
@@ -374,12 +374,12 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         }
     }
 
-    func applyWavesTuneRealtimeStrength(
-        _ strength: WavesTuneStrengthPreset,
+    func applyTuneStrength(
+        _ strength: TuneStrengthPreset,
         to trackID: UUID
     ) throws -> Int {
         guard configuration != nil else {
-            throw AudioHostError("Start the engine before applying Waves Tune strength.")
+            throw AudioHostError("Start the engine before applying tune strength.")
         }
 
         guard let runtime = currentTrackRuntimes().first(where: { $0.configuration.id == trackID }) else {
@@ -390,11 +390,11 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             + runtime.applySimpleLiveTuneStrength(strength)
     }
 
-    func currentWavesTuneRealtimeStrengthPreset(
+    func currentTuneStrengthPreset(
         for trackID: UUID
-    ) throws -> WavesTuneStrengthPreset? {
+    ) throws -> TuneStrengthPreset? {
         guard configuration != nil else {
-            throw AudioHostError("Start the engine before reading Waves Tune strength.")
+            throw AudioHostError("Start the engine before reading tune strength.")
         }
 
         guard let runtime = currentTrackRuntimes().first(where: { $0.configuration.id == trackID }) else {

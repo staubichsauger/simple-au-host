@@ -267,7 +267,7 @@ struct MultiTrackView: View {
             backing: .buffered,
             defer: false
         )
-        panel.title = "Waves Tune Control"
+        panel.title = "Tune Control"
         panel.contentViewController = hostingController
         panel.isFloatingPanel = true
         panel.hidesOnDeactivate = false

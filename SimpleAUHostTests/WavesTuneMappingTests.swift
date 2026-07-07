@@ -4,14 +4,14 @@ import XCTest
 
 final class WavesTuneMappingTests: XCTestCase {
     func testPluginScaleTypeValueCoversSupportedScaleModes() {
-        let cases: [(WavesTuneScaleMode, Int)] = [
+        let cases: [(TuneScaleMode, Int)] = [
             (.chromatic, 1),
             (.major, 2),
             (.minor, 3)
         ]
 
         for (scaleMode, expectedValue) in cases {
-            let selection = WavesTuneKeySelection(scaleMode: scaleMode)
+            let selection = TuneKeySelection(scaleMode: scaleMode)
 
             XCTAssertEqual(
                 selection.pluginScaleTypeValue,
@@ -22,7 +22,7 @@ final class WavesTuneMappingTests: XCTestCase {
     }
 
     func testPluginScaleRootValueCoversSupportedRoots() {
-        let cases: [(WavesTuneNoteLetter, WavesTuneAccidental, Int)] = [
+        let cases: [(TuneNoteLetter, TuneAccidental, Int)] = [
             (.c, .natural, 0),
             (.c, .sharp, 1),
             (.d, .flat, 2),
@@ -43,7 +43,7 @@ final class WavesTuneMappingTests: XCTestCase {
         ]
 
         for (noteLetter, accidental, expectedValue) in cases {
-            let selection = WavesTuneKeySelection(
+            let selection = TuneKeySelection(
                 scaleMode: .major,
                 noteLetter: noteLetter,
                 accidental: accidental
@@ -58,7 +58,7 @@ final class WavesTuneMappingTests: XCTestCase {
     }
 
     func testPluginScaleRootValueNormalizesUnsupportedAccidentals() {
-        let cases: [(WavesTuneNoteLetter, WavesTuneAccidental, Int)] = [
+        let cases: [(TuneNoteLetter, TuneAccidental, Int)] = [
             (.c, .flat, 0),
             (.e, .sharp, 6),
             (.f, .flat, 7),
@@ -66,7 +66,7 @@ final class WavesTuneMappingTests: XCTestCase {
         ]
 
         for (noteLetter, accidental, expectedValue) in cases {
-            let selection = WavesTuneKeySelection(
+            let selection = TuneKeySelection(
                 scaleMode: .minor,
                 noteLetter: noteLetter,
                 accidental: accidental
@@ -78,7 +78,7 @@ final class WavesTuneMappingTests: XCTestCase {
     }
 
     func testCompanionControlRootChoiceParsesSupportedApiRoots() {
-        let cases: [(String, WavesTuneNoteLetter, WavesTuneAccidental)] = [
+        let cases: [(String, TuneNoteLetter, TuneAccidental)] = [
             ("c", .c, .natural),
             ("c#", .c, .sharp),
             ("db", .d, .flat),

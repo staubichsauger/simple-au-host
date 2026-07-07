@@ -10,9 +10,9 @@ struct PerformTabView: View {
     let saveSessionAs: () -> Bool
     let requestSessionLoad: (URL) -> Void
 
-    @State private var showsAddWavesTuneSongSheet = false
-    @State private var draftWavesTuneSongTitle = ""
-    @State private var draftWavesTuneSongKey = WavesTuneKeySelection()
+    @State private var showsAddTuneSongSheet = false
+    @State private var draftTuneSongTitle = ""
+    @State private var draftTuneSongKey = TuneKeySelection()
 
     var body: some View {
         HSplitView {
@@ -24,12 +24,12 @@ struct PerformTabView: View {
             performTuningPane
                 .frame(minWidth: 460, idealWidth: 560, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .sheet(isPresented: $showsAddWavesTuneSongSheet) {
-            WavesTuneAddSongSheet(
-                title: $draftWavesTuneSongTitle,
-                key: $draftWavesTuneSongKey,
-                onCancel: dismissAddWavesTuneSongSheet,
-                onConfirm: confirmAddWavesTuneSong
+        .sheet(isPresented: $showsAddTuneSongSheet) {
+            TuneAddSongSheet(
+                title: $draftTuneSongTitle,
+                key: $draftTuneSongKey,
+                onCancel: dismissAddTuneSongSheet,
+                onConfirm: confirmAddTuneSong
             )
         }
     }
@@ -63,11 +63,11 @@ struct PerformTabView: View {
 
     private var performEmptyState: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("No Waves Tune Tracks")
+            Text("No Tune Tracks")
                 .font(.system(size: 16, weight: .semibold, design: .default))
                 .foregroundStyle(StudioTheme.strongText)
 
-            Text("Load Waves Tune Real-Time on a track in Rack to create a perform card here.")
+            Text("Load Waves Tune Real-Time or Simple Live Tune on a track in Rack to create a perform card here.")
                 .font(.system(size: 12, weight: .regular, design: .default))
                 .foregroundStyle(StudioTheme.mutedText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -119,11 +119,11 @@ struct PerformTabView: View {
             Picker(
                 "Tune Strength",
                 selection: Binding(
-                    get: { track.wavesTuneStrength },
-                    set: { viewModel.setWavesTuneStrength($0, for: track.id) }
+                    get: { track.tuneStrength },
+                    set: { viewModel.setTuneStrength($0, for: track.id) }
                 )
             ) {
-                ForEach(WavesTuneStrengthPreset.allCases) { preset in
+                ForEach(TuneStrengthPreset.allCases) { preset in
                     Text(preset.title).tag(preset)
                 }
             }
@@ -131,8 +131,8 @@ struct PerformTabView: View {
             .controlSize(.small)
             .labelsHidden()
 
-            if let speed = track.wavesTuneStrength.speed,
-               let noteTransition = track.wavesTuneStrength.noteTransition {
+            if let speed = track.tuneStrength.speed,
+               let noteTransition = track.tuneStrength.noteTransition {
                 Text("\(Int(speed)) spd \u{00B7} \(Int(noteTransition)) trans")
                     .font(.system(size: 10, weight: .regular, design: .default))
                     .foregroundStyle(StudioTheme.mutedText)
@@ -156,23 +156,23 @@ struct PerformTabView: View {
     private var performTuningPane: some View {
         VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Waves Tune Control")
+                Text("Tune Control")
                     .font(.system(size: 14, weight: .semibold, design: .default))
                     .foregroundStyle(StudioTheme.strongText)
 
-                Text("Global key staging and setlist control for the current show.")
+                Text("Global tune key staging and setlist control for the current show.")
                     .font(.system(size: 11, weight: .regular, design: .default))
                     .foregroundStyle(StudioTheme.mutedText)
                     .lineLimit(2)
             }
 
             ScrollView {
-                WavesTuneControlPane(
+                TuneControlPane(
                     viewModel: viewModel,
-                    songSummary: selectedWavesTuneSongSummary,
+                    songSummary: selectedTuneSongSummary,
                     showMissingInsertHint: true,
                     showsEditableSongRows: true,
-                    onAddSong: presentAddWavesTuneSongSheet
+                    onAddSong: presentAddTuneSongSheet
                 )
                 .padding(.bottom, 4)
             }
@@ -309,38 +309,38 @@ struct PerformTabView: View {
         )
     }
 
-    private var selectedWavesTuneSongSummary: String {
-        if viewModel.wavesTuneSongs.isEmpty {
+    private var selectedTuneSongSummary: String {
+        if viewModel.tuneSongs.isEmpty {
             return "No songs yet. Add one to build the setlist."
         }
 
-        if let selectedIndex = viewModel.selectedWavesTuneSongIndex {
-            return "Song \(selectedIndex + 1) of \(viewModel.wavesTuneSongs.count) - \(viewModel.selectedWavesTuneSongKeyTitle)"
+        if let selectedIndex = viewModel.selectedTuneSongIndex {
+            return "Song \(selectedIndex + 1) of \(viewModel.tuneSongs.count) - \(viewModel.selectedTuneSongKeyTitle)"
         }
 
         return "Select a song to make it live."
     }
 
-    private var canConfirmAddWavesTuneSong: Bool {
-        !draftWavesTuneSongTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    private var canConfirmAddTuneSong: Bool {
+        !draftTuneSongTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    private func presentAddWavesTuneSongSheet() {
-        draftWavesTuneSongTitle = ""
-        draftWavesTuneSongKey = WavesTuneKeySelection()
-        showsAddWavesTuneSongSheet = true
+    private func presentAddTuneSongSheet() {
+        draftTuneSongTitle = ""
+        draftTuneSongKey = TuneKeySelection()
+        showsAddTuneSongSheet = true
     }
 
-    private func dismissAddWavesTuneSongSheet() {
-        showsAddWavesTuneSongSheet = false
+    private func dismissAddTuneSongSheet() {
+        showsAddTuneSongSheet = false
     }
 
-    private func confirmAddWavesTuneSong() {
-        guard canConfirmAddWavesTuneSong else { return }
-        viewModel.addWavesTuneSong(
-            title: draftWavesTuneSongTitle,
-            key: draftWavesTuneSongKey
+    private func confirmAddTuneSong() {
+        guard canConfirmAddTuneSong else { return }
+        viewModel.addTuneSong(
+            title: draftTuneSongTitle,
+            key: draftTuneSongKey
         )
-        dismissAddWavesTuneSongSheet()
+        dismissAddTuneSongSheet()
     }
 }

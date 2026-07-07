@@ -280,7 +280,7 @@ struct SetupTabView: View {
 
                 Text(
                     "Companion can poll `GET /api/v1/state` and trigger POST actions under " +
-                        "`/api/v1/actions/waves-tune/...`. The displayed endpoint uses 127.0.0.1, " +
+                        "`/api/v1/actions/tune/...`. The displayed endpoint uses 127.0.0.1, " +
                         "which is the intended address when Companion runs on the same Mac."
                 )
                     .font(.caption)

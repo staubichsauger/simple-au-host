@@ -66,7 +66,7 @@ extension MultiTrackViewModel {
         broadcastPrerollMultiplier = latencyBufferSettings.broadcastPrerollMultiplier
         tracks = []
         addTrack(layout: .mono)
-        wavesTuneState = MultiTrackWavesTuneState()
+        tuneState = MultiTrackTuneState()
         currentSessionURL = nil
         isCurrentSessionStartupTemplate = false
         sessionReloadRetryContext = nil
@@ -244,8 +244,8 @@ extension MultiTrackViewModel {
 
         currentSessionURL = sourceURL
         currentSessionName = sourceURL.map(sessionDisplayName(for:)) ?? session.name
-        wavesTuneState = session.wavesTuneState ?? MultiTrackWavesTuneState()
-        wavesTuneState.normalize()
+        tuneState = session.tuneState ?? MultiTrackTuneState()
+        tuneState.normalize()
 
         sanitizeTracks(clampTrackRouting: false)
         updateSessionWarnings()
@@ -303,7 +303,7 @@ extension MultiTrackViewModel {
             bufferSize: selectedBufferSize,
             latencyBufferSettings: latencyBufferSettings,
             tracks: tracks,
-            wavesTuneState: wavesTuneState.normalized
+            tuneState: tuneState.normalized
         )
     }
 

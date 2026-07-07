@@ -135,7 +135,7 @@ extension MultiTrackAudioHostController.TrackRuntime {
         }
     }
 
-    func applyWavesTuneRealtimeKeySelection(_ selection: WavesTuneKeySelection) throws -> Int {
+    func applyWavesTuneRealtimeKeySelection(_ selection: TuneKeySelection) throws -> Int {
         let normalizedSelection = selection.normalized
         return try applyToWavesTuneRealtimeControls { control in
             try control.setParameter(
@@ -151,7 +151,7 @@ extension MultiTrackAudioHostController.TrackRuntime {
         }
     }
 
-    func applyWavesTuneRealtimeStrength(_ strength: WavesTuneStrengthPreset) throws -> Int {
+    func applyWavesTuneRealtimeStrength(_ strength: TuneStrengthPreset) throws -> Int {
         guard let speed = strength.speed,
               let noteTransition = strength.noteTransition else {
             return 0
@@ -182,12 +182,12 @@ extension MultiTrackAudioHostController.TrackRuntime {
         }
     }
 
-    func currentWavesTuneRealtimeStrengthPreset() throws -> WavesTuneStrengthPreset? {
-        var resolvedPreset: WavesTuneStrengthPreset?
+    func currentWavesTuneRealtimeStrengthPreset() throws -> TuneStrengthPreset? {
+        var resolvedPreset: TuneStrengthPreset?
 
         for control in plugins where WavesTuneRealtimeParameterMap.matches(control.pluginInfo) {
             let values = try WavesTuneRealtimeParameterMap.strengthValues(for: control)
-            let preset = WavesTuneStrengthPreset.matchingDisplayValues(
+            let preset = TuneStrengthPreset.matchingDisplayValues(
                 speed: values.speed,
                 noteTransition: values.noteTransition
             )

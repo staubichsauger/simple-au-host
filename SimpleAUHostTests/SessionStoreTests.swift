@@ -39,7 +39,7 @@ final class SessionStoreTests: XCTestCase {
         XCTAssertFalse(managedNames.contains(ignoredDirectory.lastPathComponent))
     }
 
-    func testWavesTuneSongNotesDecodeAsEmptyForOlderFiles() throws {
+    func testTuneSongNotesDecodeAsEmptyForOlderFiles() throws {
         let json = """
         {
           "id": "00000000-0000-0000-0000-000000000001",
@@ -52,7 +52,7 @@ final class SessionStoreTests: XCTestCase {
         }
         """
 
-        let song = try JSONDecoder().decode(WavesTuneSongEntry.self, from: Data(json.utf8))
+        let song = try JSONDecoder().decode(TuneSongEntry.self, from: Data(json.utf8))
 
         XCTAssertEqual(song.notes, "")
         XCTAssertEqual(song.key.title, "C Major")
@@ -81,7 +81,7 @@ final class SessionStoreTests: XCTestCase {
             bufferSize: 128,
             latencyBufferSettings: .init(bufferedFrames: 256, broadcastFrames: 512),
             tracks: [],
-            wavesTuneState: nil
+            tuneState: nil
         )
         session.formatVersion = MultiTrackSessionFile.currentFormatVersion + 1
 
@@ -121,7 +121,7 @@ final class SessionStoreTests: XCTestCase {
             bufferSize: 128,
             latencyBufferSettings: .init(bufferedFrames: 256, broadcastFrames: 512),
             tracks: [],
-            wavesTuneState: nil
+            tuneState: nil
         )
         let chainPreset = MultiTrackChainPresetFile(
             name: "Current Chain",
@@ -134,6 +134,7 @@ final class SessionStoreTests: XCTestCase {
         )
 
         XCTAssertEqual(session.formatVersion, MultiTrackSessionFile.currentFormatVersion)
+        XCTAssertEqual(MultiTrackSessionFile.currentFormatVersion, 4)
         XCTAssertEqual(chainPreset.formatVersion, MultiTrackChainPresetFile.currentFormatVersion)
         XCTAssertEqual(parameterPreset.formatVersion, MultiTrackParameterPresetFile.currentFormatVersion)
     }

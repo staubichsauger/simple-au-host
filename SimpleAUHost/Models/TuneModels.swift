@@ -1,6 +1,6 @@
 import Foundation
 
-enum WavesTuneScaleMode: String, CaseIterable, Codable, Identifiable {
+enum TuneScaleMode: String, CaseIterable, Codable, Identifiable {
     case chromatic
     case major
     case minor
@@ -32,7 +32,7 @@ enum WavesTuneScaleMode: String, CaseIterable, Codable, Identifiable {
     }
 }
 
-enum WavesTuneNoteLetter: String, CaseIterable, Codable, Identifiable {
+enum TuneNoteLetter: String, CaseIterable, Codable, Identifiable {
     case c
     case d
     case e
@@ -46,7 +46,7 @@ enum WavesTuneNoteLetter: String, CaseIterable, Codable, Identifiable {
     var title: String { rawValue.uppercased() }
 }
 
-enum WavesTuneAccidental: String, CaseIterable, Codable, Identifiable {
+enum TuneAccidental: String, CaseIterable, Codable, Identifiable {
     case flat
     case natural
     case sharp
@@ -70,10 +70,10 @@ enum WavesTuneAccidental: String, CaseIterable, Codable, Identifiable {
     }
 }
 
-struct WavesTuneKeySelection: Codable, Hashable {
-    var scaleMode: WavesTuneScaleMode = .chromatic
-    var noteLetter: WavesTuneNoteLetter = .c
-    var accidental: WavesTuneAccidental = .natural
+struct TuneKeySelection: Codable, Hashable {
+    var scaleMode: TuneScaleMode = .chromatic
+    var noteLetter: TuneNoteLetter = .c
+    var accidental: TuneAccidental = .natural
 
     var title: String {
         if scaleMode == .chromatic {
@@ -132,7 +132,7 @@ struct WavesTuneKeySelection: Codable, Hashable {
         return (letterSemitone + accidentalOffset + 12) % 12
     }
 
-    var normalized: WavesTuneKeySelection {
+    var normalized: TuneKeySelection {
         var selection = self
         selection.normalize()
         return selection
@@ -145,8 +145,8 @@ struct WavesTuneKeySelection: Codable, Hashable {
     }
 
     static func supports(
-        accidental: WavesTuneAccidental,
-        for noteLetter: WavesTuneNoteLetter
+        accidental: TuneAccidental,
+        for noteLetter: TuneNoteLetter
     ) -> Bool {
         switch (noteLetter, accidental) {
         case (_, .natural):
@@ -161,16 +161,16 @@ struct WavesTuneKeySelection: Codable, Hashable {
     }
 }
 
-struct WavesTuneSongEntry: Identifiable, Codable, Hashable {
+struct TuneSongEntry: Identifiable, Codable, Hashable {
     let id: UUID
     var title: String
-    var key: WavesTuneKeySelection
+    var key: TuneKeySelection
     var notes: String
 
     init(
         id: UUID = UUID(),
         title: String,
-        key: WavesTuneKeySelection = WavesTuneKeySelection(),
+        key: TuneKeySelection = TuneKeySelection(),
         notes: String = ""
     ) {
         self.id = id
@@ -190,25 +190,25 @@ struct WavesTuneSongEntry: Identifiable, Codable, Hashable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
         title = try container.decode(String.self, forKey: .title)
-        key = try container.decode(WavesTuneKeySelection.self, forKey: .key)
+        key = try container.decode(TuneKeySelection.self, forKey: .key)
         notes = try container.decodeIfPresent(String.self, forKey: .notes) ?? ""
     }
 
-    var normalized: WavesTuneSongEntry {
+    var normalized: TuneSongEntry {
         var song = self
         song.key = key.normalized
         return song
     }
 }
 
-struct MultiTrackWavesTuneState: Codable, Hashable {
+struct MultiTrackTuneState: Codable, Hashable {
     var isEnabled = true
-    var stagedKey = WavesTuneKeySelection()
-    var appliedKey = WavesTuneKeySelection()
-    var songs: [WavesTuneSongEntry] = []
+    var stagedKey = TuneKeySelection()
+    var appliedKey = TuneKeySelection()
+    var songs: [TuneSongEntry] = []
     var selectedSongID: UUID?
 
-    var normalized: MultiTrackWavesTuneState {
+    var normalized: MultiTrackTuneState {
         var state = self
         state.normalize()
         return state
@@ -224,7 +224,7 @@ struct MultiTrackWavesTuneState: Codable, Hashable {
     }
 }
 
-enum WavesTuneStrengthPreset: String, CaseIterable, Codable, Identifiable {
+enum TuneStrengthPreset: String, CaseIterable, Codable, Identifiable {
     case fast
     case standard
     case slow
@@ -308,8 +308,8 @@ enum WavesTuneStrengthPreset: String, CaseIterable, Codable, Identifiable {
     static func matchingDisplayValues(
         speed: Float,
         noteTransition: Float
-    ) -> WavesTuneStrengthPreset {
-        for preset in [WavesTuneStrengthPreset.fast, .standard, .slow] {
+    ) -> TuneStrengthPreset {
+        for preset in [TuneStrengthPreset.fast, .standard, .slow] {
             guard let presetSpeed = preset.speed,
                   let presetTransition = preset.noteTransition else {
                 continue
@@ -326,8 +326,8 @@ enum WavesTuneStrengthPreset: String, CaseIterable, Codable, Identifiable {
     static func matchingSimpleLiveTuneValues(
         retuneSpeed: Float,
         noteTransition: Float
-    ) -> WavesTuneStrengthPreset {
-        for preset in [WavesTuneStrengthPreset.fast, .standard, .slow] {
+    ) -> TuneStrengthPreset {
+        for preset in [TuneStrengthPreset.fast, .standard, .slow] {
             guard let presetRetuneSpeed = preset.simpleLiveTuneRetuneSpeed,
                   let presetNoteTransition = preset.simpleLiveTuneNoteTransition else {
                 continue

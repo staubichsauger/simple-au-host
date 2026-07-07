@@ -85,14 +85,14 @@ The main UI/view-model split is centered on multi-track mode:
 - `MultiTrackView.swift` and `MultiTrackViewModel.swift` drive the app UI and session workflow.
 - `AppCloseCoordinator.swift` owns the macOS window and app close confirmation flow for unsaved multi-track sessions.
 - `ManagedSessionStore.swift` manages app-owned storage directories under `~/Music/SAH`.
-- `CompanionControl.swift` implements the local HTTP control server used by the multi-track Waves Tune workflow.
+- `CompanionControl.swift` implements the local HTTP control server used by the multi-track tune workflow.
 
 The realtime engine lives under `SimpleAUHost/Audio/`:
 
 - `AudioHostController.swift` provides shared device and Audio Unit catalog helpers used by the app.
 - `MultiTrackAudioHostController.swift` implements the multi-track engine.
 
-`MultiTrackModels.swift` defines the persistent/configuration model for tracks, layouts, latency classes, and Waves Tune state.
+`MultiTrackModels.swift` defines the persistent/configuration model for tracks, layouts, latency classes, and tune state.
 
 `SimpleAUHost/Support/FloatRingBuffer.{h,c}` provides the lock-free C ring buffer and atomic counters used by the audio engine. Swift accesses it through `SimpleAUHost/Support/SimpleAUHost-Bridging-Header.h`.
 
@@ -135,7 +135,7 @@ Stereo support in multi-track mode is per-track. Plugin compatibility for mono v
 
 Multi-track sessions can be saved, loaded, and tracked for unsaved changes. Closing the main window or quitting the app routes through `AppCloseCoordinator` so the user can save or discard changes.
 
-The multi-track flow also exposes a local Companion control API at `http://127.0.0.1:52719` for Waves Tune key staging and apply actions.
+The multi-track flow also exposes a local Companion control API at `http://127.0.0.1:52719` for tune key staging and apply actions.
 
 ## Working on the Project
 

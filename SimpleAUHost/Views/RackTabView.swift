@@ -28,9 +28,9 @@ struct RackTabView: View {
     @State private var selectedRackTrackID: UUID?
     @State private var selectedRackPluginID: UUID?
     @State private var rackPluginSelectionRequest: RackTabPluginSelectionRequest?
-    @State private var showsAddWavesTuneSongSheet = false
-    @State private var draftWavesTuneSongTitle = ""
-    @State private var draftWavesTuneSongKey = WavesTuneKeySelection()
+    @State private var showsAddTuneSongSheet = false
+    @State private var draftTuneSongTitle = ""
+    @State private var draftTuneSongKey = TuneKeySelection()
 
     var body: some View {
         HSplitView {
@@ -68,12 +68,12 @@ struct RackTabView: View {
         .onChange(of: viewModel.isRunning) { _, _ in
             refreshEmbeddedPluginPane()
         }
-        .sheet(isPresented: $showsAddWavesTuneSongSheet) {
-            WavesTuneAddSongSheet(
-                title: $draftWavesTuneSongTitle,
-                key: $draftWavesTuneSongKey,
-                onCancel: dismissAddWavesTuneSongSheet,
-                onConfirm: confirmAddWavesTuneSong
+        .sheet(isPresented: $showsAddTuneSongSheet) {
+            TuneAddSongSheet(
+                title: $draftTuneSongTitle,
+                key: $draftTuneSongKey,
+                onCancel: dismissAddTuneSongSheet,
+                onConfirm: confirmAddTuneSong
             )
         }
         .sheet(item: $rackPluginSelectionRequest) { request in
@@ -199,7 +199,7 @@ struct RackTabView: View {
         case .plugin:
             selectedTrack?.name ?? "Plugin View"
         case .tuning:
-            "Waves Tune Control"
+            "Tune Control"
         }
     }
 
@@ -224,12 +224,12 @@ struct RackTabView: View {
 
     private var tuningInspectorBody: some View {
         ScrollView {
-            WavesTuneControlPane(
+            TuneControlPane(
                 viewModel: viewModel,
-                songSummary: selectedWavesTuneSongSummary,
+                songSummary: selectedTuneSongSummary,
                 showMissingInsertHint: true,
                 showsEditableSongRows: true,
-                onAddSong: presentAddWavesTuneSongSheet
+                onAddSong: presentAddTuneSongSheet
             )
             .padding(.bottom, 4)
         }
@@ -689,39 +689,39 @@ struct RackTabView: View {
         .disabled(viewModel.isRunning)
     }
 
-    private var selectedWavesTuneSongSummary: String {
-        if viewModel.wavesTuneSongs.isEmpty {
+    private var selectedTuneSongSummary: String {
+        if viewModel.tuneSongs.isEmpty {
             return "No songs yet. Add one to build the setlist."
         }
 
-        if let selectedIndex = viewModel.selectedWavesTuneSongIndex {
-            return "Song \(selectedIndex + 1) of \(viewModel.wavesTuneSongs.count) - \(viewModel.selectedWavesTuneSongKeyTitle)"
+        if let selectedIndex = viewModel.selectedTuneSongIndex {
+            return "Song \(selectedIndex + 1) of \(viewModel.tuneSongs.count) - \(viewModel.selectedTuneSongKeyTitle)"
         }
 
         return "Select a song to make it live."
     }
 
-    private var canConfirmAddWavesTuneSong: Bool {
-        !draftWavesTuneSongTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    private var canConfirmAddTuneSong: Bool {
+        !draftTuneSongTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    private func presentAddWavesTuneSongSheet() {
-        draftWavesTuneSongTitle = ""
-        draftWavesTuneSongKey = WavesTuneKeySelection()
-        showsAddWavesTuneSongSheet = true
+    private func presentAddTuneSongSheet() {
+        draftTuneSongTitle = ""
+        draftTuneSongKey = TuneKeySelection()
+        showsAddTuneSongSheet = true
     }
 
-    private func dismissAddWavesTuneSongSheet() {
-        showsAddWavesTuneSongSheet = false
+    private func dismissAddTuneSongSheet() {
+        showsAddTuneSongSheet = false
     }
 
-    private func confirmAddWavesTuneSong() {
-        guard canConfirmAddWavesTuneSong else { return }
-        viewModel.addWavesTuneSong(
-            title: draftWavesTuneSongTitle,
-            key: draftWavesTuneSongKey
+    private func confirmAddTuneSong() {
+        guard canConfirmAddTuneSong else { return }
+        viewModel.addTuneSong(
+            title: draftTuneSongTitle,
+            key: draftTuneSongKey
         )
-        dismissAddWavesTuneSongSheet()
+        dismissAddTuneSongSheet()
     }
 
 }

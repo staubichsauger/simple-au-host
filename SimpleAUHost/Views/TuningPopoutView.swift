@@ -4,11 +4,11 @@ struct TuningPopoutView: View {
     @ObservedObject var viewModel: MultiTrackViewModel
     @State private var showsAddSongSheet = false
     @State private var draftSongTitle = ""
-    @State private var draftSongKey = WavesTuneKeySelection()
+    @State private var draftSongKey = TuneKeySelection()
 
     var body: some View {
         ScrollView {
-            WavesTuneControlPane(
+            TuneControlPane(
                 viewModel: viewModel,
                 songSummary: songSummary,
                 showMissingInsertHint: false,
@@ -21,7 +21,7 @@ struct TuningPopoutView: View {
         .background(StudioTheme.panelFill)
         .preferredColorScheme(.dark)
         .sheet(isPresented: $showsAddSongSheet) {
-            WavesTuneAddSongSheet(
+            TuneAddSongSheet(
                 title: $draftSongTitle,
                 key: $draftSongKey,
                 onCancel: { showsAddSongSheet = false },
@@ -31,25 +31,25 @@ struct TuningPopoutView: View {
     }
 
     private var songSummary: String {
-        if viewModel.wavesTuneSongs.isEmpty {
+        if viewModel.tuneSongs.isEmpty {
             return "No songs yet. Add one to build the setlist."
         }
-        if let idx = viewModel.selectedWavesTuneSongIndex {
-            return "Song \(idx + 1) of \(viewModel.wavesTuneSongs.count) - \(viewModel.selectedWavesTuneSongKeyTitle)"
+        if let idx = viewModel.selectedTuneSongIndex {
+            return "Song \(idx + 1) of \(viewModel.tuneSongs.count) - \(viewModel.selectedTuneSongKeyTitle)"
         }
         return "Select a song to make it live."
     }
 
     private func presentAddSongSheet() {
         draftSongTitle = ""
-        draftSongKey = WavesTuneKeySelection()
+        draftSongKey = TuneKeySelection()
         showsAddSongSheet = true
     }
 
     private func confirmAddSong() {
         let title = draftSongTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { return }
-        viewModel.addWavesTuneSong(title: title, key: draftSongKey)
+        viewModel.addTuneSong(title: title, key: draftSongKey)
         showsAddSongSheet = false
     }
 }

@@ -79,7 +79,7 @@ final class MultiTrackViewModel: ObservableObject {
     @Published var lastSavedSessionURL: URL?
     @Published var companionControlEndpointURLString = CompanionControlDefaults.baseURLString
     @Published var companionControlStatus = "Starting local Companion control API..."
-    @Published var wavesTuneState = MultiTrackWavesTuneState()
+    @Published var tuneState = MultiTrackTuneState()
     @Published private var trackPluginLatencyFrames: [UUID: Int] = [:]
 
     private let catalog = AudioHostController()
@@ -277,7 +277,7 @@ final class MultiTrackViewModel: ObservableObject {
 
             sanitizeTracks(clampTrackRouting: false)
             sanitizeLatencyBufferSettings()
-            wavesTuneState.normalize()
+            tuneState.normalize()
             updateSessionWarnings()
             managedSessions = sessions
             updateSessionNameIfNeeded()
@@ -568,9 +568,9 @@ final class MultiTrackViewModel: ObservableObject {
             do {
                 let configuration = try self.makeConfiguration()
                 try self.controller.start(configuration: configuration)
-                _ = try self.controller.setWavesTuneRealtimeBypassed(!self.wavesTuneState.isEnabled)
-                _ = try self.controller.applyWavesTuneRealtimeKeySelection(self.wavesTuneState.appliedKey.normalized)
-                self.syncWavesTuneStrengthSelectionsFromRunningEngine()
+                _ = try self.controller.setTuneBypassed(!self.tuneState.isEnabled)
+                _ = try self.controller.applyTuneKeySelection(self.tuneState.appliedKey.normalized)
+                self.syncTuneStrengthSelectionsFromRunningEngine()
                 self.isRunning = true
                 self.refreshTrackPluginLatencyFrames()
                 self.refreshPublishedTelemetry()
@@ -1006,7 +1006,7 @@ private extension MultiTrackViewModel {
             }
             .store(in: &persistenceCancellables)
 
-        $wavesTuneState
+        $tuneState
             .dropFirst()
             .sink { [weak self] _ in
                 self?.markSessionAsEdited()

@@ -18,7 +18,7 @@ final class CompanionControlParserTests: XCTestCase {
     func testParseCompletePostRequestWithBody() {
         let body = #"{"enabled":true}"#
         let rawRequest = """
-        POST /api/v1/actions/waves-tune/enabled HTTP/1.1\r
+        POST /api/v1/actions/tune/enabled HTTP/1.1\r
         Host: localhost:52719\r
         Content-Type: application/json; charset=utf-8\r
         Content-Length: \(Data(body.utf8).count)\r
@@ -31,7 +31,7 @@ final class CompanionControlParserTests: XCTestCase {
         }
 
         XCTAssertEqual(request.method, "POST")
-        XCTAssertEqual(request.path, "/api/v1/actions/waves-tune/enabled")
+        XCTAssertEqual(request.path, "/api/v1/actions/tune/enabled")
         XCTAssertEqual(request.headers["content-type"], "application/json; charset=utf-8")
         XCTAssertEqual(String(data: request.body, encoding: .utf8), body)
     }
@@ -48,7 +48,7 @@ final class CompanionControlParserTests: XCTestCase {
         let body = #"{"enabled":true}"#
         let partialBody = #"{"enabled""#
         let rawRequest = """
-        POST /api/v1/actions/waves-tune/enabled HTTP/1.1\r
+        POST /api/v1/actions/tune/enabled HTTP/1.1\r
         Host: localhost:52719\r
         Content-Length: \(Data(body.utf8).count)\r
         \r

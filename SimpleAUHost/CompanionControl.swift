@@ -24,7 +24,7 @@ struct CompanionControlKeySnapshot: Codable, Sendable {
     let title: String
     let rootTitle: String
 
-    init(selection: WavesTuneKeySelection) {
+    init(selection: TuneKeySelection) {
         let normalized = selection.normalized
         scaleMode = normalized.scaleMode.rawValue
         noteLetter = normalized.noteLetter.rawValue
@@ -34,7 +34,7 @@ struct CompanionControlKeySnapshot: Codable, Sendable {
     }
 }
 
-struct CompanionControlWavesTuneSnapshot: Codable, Sendable {
+struct CompanionControlTuneSnapshot: Codable, Sendable {
     let isEnabled: Bool
     let configuredInsertCount: Int
     let canApplyStagedKey: Bool
@@ -56,7 +56,7 @@ struct CompanionControlStateSnapshot: Codable, Sendable {
     let sessionName: String
     let statusMessage: String
     let isRunning: Bool
-    let wavesTune: CompanionControlWavesTuneSnapshot
+    let tune: CompanionControlTuneSnapshot
 }
 
 struct CompanionControlCommandResponse: Codable, Sendable {

@@ -10,10 +10,10 @@
 		14006CFBCD20618425A956AD /* AudioToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3C01A2877205B69CBC0C74A2 /* AudioToolbox.framework */; };
 		1A0731248AF3DC6EA4476DAB /* CompanionControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 968B457E902FCA9D5C48BB18 /* CompanionControl.swift */; };
 		1CF066997170997077E1A422 /* MultiTrackViewModel+CompanionControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC82547D9481A8ACA1AE7092 /* MultiTrackViewModel+CompanionControl.swift */; };
-		22AB6A35A583D205D0EAFE11 /* MultiTrackViewModel+WavesTune.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E3FDFCFDFE6F5BB4461564D /* MultiTrackViewModel+WavesTune.swift */; };
+		22AB6A35A583D205D0EAFE11 /* MultiTrackViewModel+Tune.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E3FDFCFDFE6F5BB4461564D /* MultiTrackViewModel+Tune.swift */; };
 		236448C282B6E15FA4D8723C /* StudioTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CF36A964213946E97B23FC7 /* StudioTheme.swift */; };
 		26461A70B5DBAA27A0D0AE4D /* MultiTrackAudioHostController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 907616E833D51D8D6FE5502E /* MultiTrackAudioHostController.swift */; };
-		2DA407A8005E8D574AC7563B /* WavesTuneControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C9BC6B00B04232CABD253B /* WavesTuneControls.swift */; };
+		2DA407A8005E8D574AC7563B /* TuneControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C9BC6B00B04232CABD253B /* TuneControls.swift */; };
 		30E77BD6E729B6A282763047 /* SimpleLiveTuneMappingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B34F20E49A67755C98D89492 /* SimpleLiveTuneMappingTests.swift */; };
 		3393D966BCB1DB5A118E1E81 /* MultiTrackModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADFD68D9171E92B596BBFD73 /* MultiTrackModels.swift */; };
 		33A77FBDDC691BE5B25785DC /* RealtimeSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A0F8D1AAAD6FA1EEB5BB61A /* RealtimeSupport.swift */; };
@@ -24,7 +24,7 @@
 		5427799ABCA002A01D430C4B /* ManagedSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF1AF7EF2ABF9840F38873DA /* ManagedSessionStore.swift */; };
 		58E70733817514AA56B4B415 /* AudioHostController.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE3A1C4E2349E802C98811DE /* AudioHostController.swift */; };
 		61AE28557CCBB18C21306282 /* RackTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 492ADA7B6C5ABE595E0A1397 /* RackTabView.swift */; };
-		7365C0938CFA7AC5D01654BA /* WavesTuneModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABF0658A0FB4CCCA8E26F995 /* WavesTuneModels.swift */; };
+		7365C0938CFA7AC5D01654BA /* TuneModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABF0658A0FB4CCCA8E26F995 /* TuneModels.swift */; };
 		7C204375628314A61D377A9E /* EngineStartFailureAlertModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A8ADD2C6B9E5FDD36419946 /* EngineStartFailureAlertModifier.swift */; };
 		7EDD4336C565B7ACD5D9C517 /* TuningPopoutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D57D110F10A08E1D5310B582 /* TuningPopoutView.swift */; };
 		7F638E65E16611C30595430D /* AudioEngineTelemetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED9643EB3F2C06BEE4A90C85 /* AudioEngineTelemetry.swift */; };
@@ -69,7 +69,7 @@
 		0B17703DBEEB31A201FD55EA /* TrackRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackRuntime.swift; sourceTree = "<group>"; };
 		18761B649069432C044D9E00 /* SimpleAUHost-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "SimpleAUHost-Bridging-Header.h"; sourceTree = "<group>"; };
 		19F26043BD5EAAD1BECA221C /* WavesTuneMappingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WavesTuneMappingTests.swift; sourceTree = "<group>"; };
-		1E3FDFCFDFE6F5BB4461564D /* MultiTrackViewModel+WavesTune.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MultiTrackViewModel+WavesTune.swift"; sourceTree = "<group>"; };
+		1E3FDFCFDFE6F5BB4461564D /* MultiTrackViewModel+Tune.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MultiTrackViewModel+Tune.swift"; sourceTree = "<group>"; };
 		20E21EB074E21DA3BE9A2242 /* BufferedTrackWorkerShard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BufferedTrackWorkerShard.swift; sourceTree = "<group>"; };
 		249213DF2813BD877B8CF6B6 /* EngineTelemetryFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineTelemetryFormatter.swift; sourceTree = "<group>"; };
 		2B2D3D79507244C560BDD5E7 /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
@@ -93,9 +93,9 @@
 		907616E833D51D8D6FE5502E /* MultiTrackAudioHostController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiTrackAudioHostController.swift; sourceTree = "<group>"; };
 		968B457E902FCA9D5C48BB18 /* CompanionControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionControl.swift; sourceTree = "<group>"; };
 		9827D35B900C92850EF1326F /* EmbeddedPluginEditorContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbeddedPluginEditorContainer.swift; sourceTree = "<group>"; };
-		A1C9BC6B00B04232CABD253B /* WavesTuneControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WavesTuneControls.swift; sourceTree = "<group>"; };
+		A1C9BC6B00B04232CABD253B /* TuneControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TuneControls.swift; sourceTree = "<group>"; };
 		A66BCE5A1B811CB9B105BA83 /* AppCloseCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCloseCoordinator.swift; sourceTree = "<group>"; };
-		ABF0658A0FB4CCCA8E26F995 /* WavesTuneModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WavesTuneModels.swift; sourceTree = "<group>"; };
+		ABF0658A0FB4CCCA8E26F995 /* TuneModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TuneModels.swift; sourceTree = "<group>"; };
 		ADFD68D9171E92B596BBFD73 /* MultiTrackModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiTrackModels.swift; sourceTree = "<group>"; };
 		B34F20E49A67755C98D89492 /* SimpleLiveTuneMappingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimpleLiveTuneMappingTests.swift; sourceTree = "<group>"; };
 		B64A84293CEFFAB45A362F0F /* SimpleAUHostTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SimpleAUHostTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -147,7 +147,7 @@
 				CAAC86A1A4DB946D3764181D /* ShowTabView.swift */,
 				6CF36A964213946E97B23FC7 /* StudioTheme.swift */,
 				D57D110F10A08E1D5310B582 /* TuningPopoutView.swift */,
-				A1C9BC6B00B04232CABD253B /* WavesTuneControls.swift */,
+				A1C9BC6B00B04232CABD253B /* TuneControls.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -178,7 +178,7 @@
 				CC82547D9481A8ACA1AE7092 /* MultiTrackViewModel+CompanionControl.swift */,
 				3ADE605D87AF80E4A954B67D /* MultiTrackViewModel+Presets.swift */,
 				E394BD0410D7AEFD62D5F328 /* MultiTrackViewModel+Session.swift */,
-				1E3FDFCFDFE6F5BB4461564D /* MultiTrackViewModel+WavesTune.swift */,
+				1E3FDFCFDFE6F5BB4461564D /* MultiTrackViewModel+Tune.swift */,
 				7639C2A3653F734181E973DC /* StartupPreferencesStore.swift */,
 			);
 			path = ViewModel;
@@ -228,7 +228,7 @@
 			isa = PBXGroup;
 			children = (
 				ADFD68D9171E92B596BBFD73 /* MultiTrackModels.swift */,
-				ABF0658A0FB4CCCA8E26F995 /* WavesTuneModels.swift */,
+				ABF0658A0FB4CCCA8E26F995 /* TuneModels.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -373,7 +373,7 @@
 				1CF066997170997077E1A422 /* MultiTrackViewModel+CompanionControl.swift in Sources */,
 				C4BB7DC4FC419714ECAA6F48 /* MultiTrackViewModel+Presets.swift in Sources */,
 				C8A541DD77F734BD7EDA0BD4 /* MultiTrackViewModel+Session.swift in Sources */,
-				22AB6A35A583D205D0EAFE11 /* MultiTrackViewModel+WavesTune.swift in Sources */,
+				22AB6A35A583D205D0EAFE11 /* MultiTrackViewModel+Tune.swift in Sources */,
 				40C421678F8182177557C069 /* MultiTrackViewModel.swift in Sources */,
 				AFBA8047C521DF1FC6CB6F64 /* PerformTabView.swift in Sources */,
 				C0ADDF7BACFEDD7B627649FE /* PluginEditorHosting.swift in Sources */,
@@ -389,8 +389,8 @@
 				236448C282B6E15FA4D8723C /* StudioTheme.swift in Sources */,
 				9DBC604B1414919ECC03498B /* TrackRuntime.swift in Sources */,
 				7EDD4336C565B7ACD5D9C517 /* TuningPopoutView.swift in Sources */,
-				2DA407A8005E8D574AC7563B /* WavesTuneControls.swift in Sources */,
-				7365C0938CFA7AC5D01654BA /* WavesTuneModels.swift in Sources */,
+				2DA407A8005E8D574AC7563B /* TuneControls.swift in Sources */,
+				7365C0938CFA7AC5D01654BA /* TuneModels.swift in Sources */,
 				3D9F9147A5B8540B66B73CE8 /* WavesTuneRealtimeAdapter.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

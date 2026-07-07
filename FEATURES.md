@@ -45,13 +45,13 @@ Current workflow support:
 - save and load full track chain presets
 - save and load parameter-only presets for compatible chains
 
-## Waves Tune / Companion Control
+## Tune / Companion Control
 
 Multi-track mode includes a local control surface intended for Bitfocus Companion and similar same-machine control workflows.
 
 - local HTTP API on `127.0.0.1:52719`
 - connection/status feedback in the app
-- Waves Tune staged key editing
+- Tune staged key editing
 - apply staged key
 - panic action
 - next/previous song stepping

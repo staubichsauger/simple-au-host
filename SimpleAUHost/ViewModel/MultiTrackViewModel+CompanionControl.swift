@@ -8,31 +8,31 @@ private enum CompanionControlTimestampFormatter {
 extension MultiTrackViewModel {
     func companionControlStateSnapshot() -> CompanionControlStateSnapshot {
         CompanionControlStateSnapshot(
-            apiVersion: 1,
+            apiVersion: 2,
             appMode: "multiTrack",
             timestamp: CompanionControlTimestampFormatter.iso8601Formatter.string(from: Date()),
             sessionName: currentSessionDisplayName,
             statusMessage: statusMessage,
             isRunning: isRunning,
-            wavesTune: CompanionControlWavesTuneSnapshot(
-                isEnabled: wavesTuneState.isEnabled,
-                configuredInsertCount: configuredWavesTuneRealtimeInsertCount,
-                canApplyStagedKey: canApplyStagedWavesTuneKey,
-                stagedKey: CompanionControlKeySnapshot(selection: wavesTuneState.stagedKey),
-                appliedKey: CompanionControlKeySnapshot(selection: wavesTuneState.appliedKey),
-                selectedSongTitle: selectedWavesTuneSongIndex.map {
-                    wavesTuneSongDisplayTitle(for: wavesTuneState.songs[$0], index: $0)
+            tune: CompanionControlTuneSnapshot(
+                isEnabled: tuneState.isEnabled,
+                configuredInsertCount: configuredTuneInsertCount,
+                canApplyStagedKey: canApplyStagedTuneKey,
+                stagedKey: CompanionControlKeySnapshot(selection: tuneState.stagedKey),
+                appliedKey: CompanionControlKeySnapshot(selection: tuneState.appliedKey),
+                selectedSongTitle: selectedTuneSongIndex.map {
+                    tuneSongDisplayTitle(for: tuneState.songs[$0], index: $0)
                 },
-                selectedSongIndex: selectedWavesTuneSongIndex,
-                songCount: wavesTuneState.songs.count,
-                previousSongKey: previousWavesTuneSongIndex.map {
-                    CompanionControlKeySnapshot(selection: wavesTuneState.songs[$0].key)
+                selectedSongIndex: selectedTuneSongIndex,
+                songCount: tuneState.songs.count,
+                previousSongKey: previousTuneSongIndex.map {
+                    CompanionControlKeySnapshot(selection: tuneState.songs[$0].key)
                 },
-                nextSongKey: nextWavesTuneSongIndex.map {
-                    CompanionControlKeySnapshot(selection: wavesTuneState.songs[$0].key)
+                nextSongKey: nextTuneSongIndex.map {
+                    CompanionControlKeySnapshot(selection: tuneState.songs[$0].key)
                 },
-                canSelectPreviousSong: canSelectPreviousWavesTuneSong,
-                canSelectNextSong: canSelectNextWavesTuneSong
+                canSelectPreviousSong: canSelectPreviousTuneSong,
+                canSelectNextSong: canSelectNextTuneSong
             )
         )
     }
@@ -48,7 +48,7 @@ extension MultiTrackViewModel {
                 statusCode: 200,
                 value: CompanionControlHealthResponse(
                     ok: true,
-                    apiVersion: 1,
+                    apiVersion: 2,
                     appMode: "multiTrack"
                 )
             )
@@ -56,70 +56,70 @@ extension MultiTrackViewModel {
         case ("GET", "/api/v1/state"):
             return .json(statusCode: 200, value: companionControlStateSnapshot())
 
-        case ("POST", "/api/v1/actions/waves-tune/enabled"):
+        case ("POST", "/api/v1/actions/tune/enabled"):
             do {
                 let payload = try decodeCompanionControlRequest(CompanionControlSetEnabledRequest.self, from: request.body)
-                setWavesTuneEnabled(payload.enabled)
+                setTuneEnabled(payload.enabled)
                 return companionControlCommandHTTPResponse()
             } catch {
                 return companionControlErrorHTTPResponse(statusCode: 400, message: error.localizedDescription)
             }
 
-        case ("POST", "/api/v1/actions/waves-tune/toggle-enabled"):
-            setWavesTuneEnabled(!wavesTuneState.isEnabled)
+        case ("POST", "/api/v1/actions/tune/toggle-enabled"):
+            setTuneEnabled(!tuneState.isEnabled)
             return companionControlCommandHTTPResponse()
 
-        case ("POST", "/api/v1/actions/waves-tune/staged-key"):
+        case ("POST", "/api/v1/actions/tune/staged-key"):
             do {
                 let payload = try decodeCompanionControlRequest(CompanionControlSetStagedKeyRequest.self, from: request.body)
-                try setCompanionControlStagedWavesTuneKey(root: payload.root, scaleMode: payload.scaleMode)
+                try setCompanionControlStagedTuneKey(root: payload.root, scaleMode: payload.scaleMode)
                 return companionControlCommandHTTPResponse()
             } catch {
                 return companionControlErrorHTTPResponse(statusCode: 400, message: error.localizedDescription)
             }
 
-        case ("POST", "/api/v1/actions/waves-tune/scale-mode"):
+        case ("POST", "/api/v1/actions/tune/scale-mode"):
             do {
                 let payload = try decodeCompanionControlRequest(CompanionControlSetScaleModeRequest.self, from: request.body)
-                try setCompanionControlWavesTuneScaleMode(payload.scaleMode)
+                try setCompanionControlTuneScaleMode(payload.scaleMode)
                 return companionControlCommandHTTPResponse()
             } catch {
                 return companionControlErrorHTTPResponse(statusCode: 400, message: error.localizedDescription)
             }
 
-        case ("POST", "/api/v1/actions/waves-tune/note-letter"):
+        case ("POST", "/api/v1/actions/tune/note-letter"):
             do {
                 let payload = try decodeCompanionControlRequest(CompanionControlSetNoteLetterRequest.self, from: request.body)
-                try setCompanionControlWavesTuneNoteLetter(payload.noteLetter)
+                try setCompanionControlTuneNoteLetter(payload.noteLetter)
                 return companionControlCommandHTTPResponse()
             } catch {
                 return companionControlErrorHTTPResponse(statusCode: 400, message: error.localizedDescription)
             }
 
-        case ("POST", "/api/v1/actions/waves-tune/accidental"):
+        case ("POST", "/api/v1/actions/tune/accidental"):
             do {
                 let payload = try decodeCompanionControlRequest(CompanionControlSetAccidentalRequest.self, from: request.body)
-                try setCompanionControlWavesTuneAccidental(payload.accidental)
+                try setCompanionControlTuneAccidental(payload.accidental)
                 return companionControlCommandHTTPResponse()
             } catch {
                 return companionControlErrorHTTPResponse(statusCode: 400, message: error.localizedDescription)
             }
 
-        case ("POST", "/api/v1/actions/waves-tune/apply"):
-            applyStagedWavesTuneKey()
+        case ("POST", "/api/v1/actions/tune/apply"):
+            applyStagedTuneKey()
             return companionControlCommandHTTPResponse()
 
-        case ("POST", "/api/v1/actions/waves-tune/panic"):
-            triggerWavesTuneKeyPanic()
+        case ("POST", "/api/v1/actions/tune/panic"):
+            triggerTuneKeyPanic()
             return companionControlCommandHTTPResponse()
 
-        case ("POST", "/api/v1/actions/waves-tune/step-song"):
+        case ("POST", "/api/v1/actions/tune/step-song"):
             do {
                 let payload = try decodeCompanionControlRequest(CompanionControlStepSongRequest.self, from: request.body)
                 guard payload.direction == -1 || payload.direction == 1 else {
                     throw AudioHostError("Song step direction must be -1 or 1.")
                 }
-                stepWavesTuneSong(direction: payload.direction)
+                stepTuneSong(direction: payload.direction)
                 return companionControlCommandHTTPResponse()
             } catch {
                 return companionControlErrorHTTPResponse(statusCode: 400, message: error.localizedDescription)
@@ -240,59 +240,59 @@ extension MultiTrackViewModel {
         }
     }
 
-    private func setCompanionControlStagedWavesTuneKey(
+    private func setCompanionControlStagedTuneKey(
         root: String,
         scaleMode: String
     ) throws {
         guard let rootChoice = CompanionControlRootChoice(rawValue: root.lowercased()) else {
-            throw AudioHostError("Unsupported Waves Tune root: \(root).")
+            throw AudioHostError("Unsupported tune root: \(root).")
         }
-        guard let scaleMode = WavesTuneScaleMode(rawValue: scaleMode.lowercased()) else {
-            throw AudioHostError("Unsupported Waves Tune scale mode: \(scaleMode).")
+        guard let scaleMode = TuneScaleMode(rawValue: scaleMode.lowercased()) else {
+            throw AudioHostError("Unsupported tune scale mode: \(scaleMode).")
         }
 
-        wavesTuneState.stagedKey = WavesTuneKeySelection(
+        tuneState.stagedKey = TuneKeySelection(
             scaleMode: scaleMode,
             noteLetter: rootChoice.noteLetter,
             accidental: rootChoice.accidental
         ).normalized
-        statusMessage = "Staged Waves Tune key \(wavesTuneState.stagedKey.title)."
+        statusMessage = "Staged tune key \(tuneState.stagedKey.title)."
     }
 
-    private func setCompanionControlWavesTuneScaleMode(_ scaleMode: String) throws {
-        guard let scaleMode = WavesTuneScaleMode(rawValue: scaleMode.lowercased()) else {
-            throw AudioHostError("Unsupported Waves Tune scale mode: \(scaleMode).")
+    private func setCompanionControlTuneScaleMode(_ scaleMode: String) throws {
+        guard let scaleMode = TuneScaleMode(rawValue: scaleMode.lowercased()) else {
+            throw AudioHostError("Unsupported tune scale mode: \(scaleMode).")
         }
 
-        wavesTuneState.stagedKey.scaleMode = scaleMode
-        statusMessage = "Staged Waves Tune scale \(wavesTuneState.stagedKey.title)."
+        tuneState.stagedKey.scaleMode = scaleMode
+        statusMessage = "Staged tune scale \(tuneState.stagedKey.title)."
     }
 
-    private func setCompanionControlWavesTuneNoteLetter(_ noteLetter: String) throws {
-        guard let noteLetter = WavesTuneNoteLetter(rawValue: noteLetter.lowercased()) else {
-            throw AudioHostError("Unsupported Waves Tune note letter: \(noteLetter).")
+    private func setCompanionControlTuneNoteLetter(_ noteLetter: String) throws {
+        guard let noteLetter = TuneNoteLetter(rawValue: noteLetter.lowercased()) else {
+            throw AudioHostError("Unsupported tune note letter: \(noteLetter).")
         }
 
-        wavesTuneState.stagedKey.noteLetter = noteLetter
-        wavesTuneState.stagedKey.normalize()
-        statusMessage = "Staged Waves Tune root \(wavesTuneState.stagedKey.title)."
+        tuneState.stagedKey.noteLetter = noteLetter
+        tuneState.stagedKey.normalize()
+        statusMessage = "Staged tune root \(tuneState.stagedKey.title)."
     }
 
-    private func setCompanionControlWavesTuneAccidental(_ accidental: String) throws {
-        guard let accidental = WavesTuneAccidental(rawValue: accidental.lowercased()) else {
-            throw AudioHostError("Unsupported Waves Tune accidental: \(accidental).")
+    private func setCompanionControlTuneAccidental(_ accidental: String) throws {
+        guard let accidental = TuneAccidental(rawValue: accidental.lowercased()) else {
+            throw AudioHostError("Unsupported tune accidental: \(accidental).")
         }
-        guard WavesTuneKeySelection.supports(
+        guard TuneKeySelection.supports(
             accidental: accidental,
-            for: wavesTuneState.stagedKey.noteLetter
+            for: tuneState.stagedKey.noteLetter
         ) else {
             throw AudioHostError(
-                "\(wavesTuneState.stagedKey.noteLetter.title) does not support \(accidental.title)."
+                "\(tuneState.stagedKey.noteLetter.title) does not support \(accidental.title)."
             )
         }
 
-        wavesTuneState.stagedKey.accidental = accidental
-        statusMessage = "Staged Waves Tune root \(wavesTuneState.stagedKey.title)."
+        tuneState.stagedKey.accidental = accidental
+        statusMessage = "Staged tune root \(tuneState.stagedKey.title)."
     }
 }
 
@@ -315,7 +315,7 @@ enum CompanionControlRootChoice: String {
     case bFlat = "bb"
     case b
 
-    var noteLetter: WavesTuneNoteLetter {
+    var noteLetter: TuneNoteLetter {
         switch self {
         case .c, .cSharp:
             .c
@@ -334,7 +334,7 @@ enum CompanionControlRootChoice: String {
         }
     }
 
-    var accidental: WavesTuneAccidental {
+    var accidental: TuneAccidental {
         switch self {
         case .c, .d, .e, .f, .g, .a, .b:
             .natural
