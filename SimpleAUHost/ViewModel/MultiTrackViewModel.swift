@@ -901,7 +901,24 @@ final class MultiTrackViewModel: ObservableObject {
         }
     }
 
-    private func refreshPublishedTelemetry() {
+    static let templateDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+    private static let latencyFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.minimumFractionDigits = 1
+        formatter.maximumFractionDigits = 1
+        return formatter
+    }()
+    private static let startupDropoutGracePeriod: Duration = .seconds(1)
+}
+
+private extension MultiTrackViewModel {
+    func refreshPublishedTelemetry() {
         refreshTrackPluginLatencyFrames()
         applyTelemetrySnapshot(
             dropoutCount: controller.audioDropoutCount(),
@@ -910,7 +927,7 @@ final class MultiTrackViewModel: ObservableObject {
         )
     }
 
-    private func refreshTrackPluginLatencyFrames() {
+    func refreshTrackPluginLatencyFrames() {
         guard isRunning else {
             trackPluginLatencyFrames = [:]
             return
@@ -923,7 +940,7 @@ final class MultiTrackViewModel: ObservableObject {
         )
     }
 
-    private func applyTelemetrySnapshot(
+    func applyTelemetrySnapshot(
         dropoutCount: UInt64,
         droppedFrameCount: UInt64,
         telemetry: AudioEngineTelemetrySnapshot
@@ -939,7 +956,7 @@ final class MultiTrackViewModel: ObservableObject {
         broadcastTelemetrySummary = formattedTelemetry.broadcastTelemetrySummary
     }
 
-    private func setupSessionChangeObservers() {
+    func setupSessionChangeObservers() {
         $selectedInputDeviceID
             .dropFirst()
             .sink { [weak self] _ in
@@ -997,7 +1014,7 @@ final class MultiTrackViewModel: ObservableObject {
             .store(in: &persistenceCancellables)
     }
 
-    private func markSessionAsEdited() {
+    func markSessionAsEdited() {
         guard !isApplyingSessionState else { return }
         hasUnsavedChanges = true
     }
@@ -1007,7 +1024,7 @@ final class MultiTrackViewModel: ObservableObject {
     /// invalidated by `AudioHostController`; this refresh updates the published
     /// plugin list, track validation, and session warnings. Debounced because
     /// the system can post the notification in bursts.
-    private func setupPluginRegistrationObserver() {
+    func setupPluginRegistrationObserver() {
         NotificationCenter.default
             .publisher(for: .audioComponentRegistrationsChanged)
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
@@ -1018,19 +1035,4 @@ final class MultiTrackViewModel: ObservableObject {
             }
             .store(in: &persistenceCancellables)
     }
-
-    static let templateDateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter
-    }()
-    private static let latencyFormatter: NumberFormatter = {
-        let formatter = NumberFormatter()
-        formatter.minimumFractionDigits = 1
-        formatter.maximumFractionDigits = 1
-        return formatter
-    }()
-    private static let startupDropoutGracePeriod: Duration = .seconds(1)
 }

@@ -724,7 +724,10 @@ struct RackTabView: View {
         dismissAddWavesTuneSongSheet()
     }
 
-    private func syncRackSelection() {
+}
+
+private extension RackTabView {
+    func syncRackSelection() {
         guard !viewModel.tracks.isEmpty else {
             selectedRackTrackID = nil
             selectedRackPluginID = nil

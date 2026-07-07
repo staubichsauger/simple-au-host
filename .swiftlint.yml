@@ -12,18 +12,18 @@ excluded:
   - DerivedData
 
 line_length:
-  warning: 500
-  error: 800
+  warning: 180
+  error: 240
   ignores_comments: true
   ignores_urls: true
 
 file_length:
-  warning: 1500
-  error: 2200
+  warning: 1300
+  error: 1800
 
 type_body_length:
-  warning: 1000
-  error: 1400
+  warning: 800
+  error: 1100
 
 function_body_length:
   warning: 120

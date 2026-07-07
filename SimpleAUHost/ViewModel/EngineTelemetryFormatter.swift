@@ -13,12 +13,36 @@ enum EngineTelemetryFormatter {
     static func strings(for telemetry: AudioEngineTelemetrySnapshot) -> EngineTelemetryStrings {
         EngineTelemetryStrings(
             telemetrySummary: "Callbacks in/out: \(telemetry.peakInputCallbackFrames) / \(telemetry.peakOutputCallbackFrames) frames",
-            ringTelemetrySummary: "Peak ring occupancy in/out: \(occupancyString(telemetry.peakInputRingOccupancyFrames, capacity: telemetry.inputRingCapacityFrames)) / \(occupancyString(telemetry.peakOutputRingOccupancyFrames, capacity: telemetry.outputRingCapacityFrames))",
-            workerTelemetrySummary: "Workers: \(telemetry.workerShardCount) shards, track/shard render avg \(telemetry.averageTrackRenderDurationMicros) / \(telemetry.averageShardRenderDurationMicros) us, peak \(telemetry.peakTrackRenderDurationMicros) / \(telemetry.peakShardRenderDurationMicros) us, util \(telemetry.peakShardUtilizationPercent)%, wakeups \(telemetry.peakWorkerWakeupsPerSecond)/s",
+            ringTelemetrySummary: ringString(telemetry),
+            workerTelemetrySummary: workerString(telemetry),
             realtimeTelemetrySummary: realtimeString(telemetry.realtime),
             bufferedTelemetrySummary: bufferedString(label: "Buffered", telemetry.buffered),
             broadcastTelemetrySummary: bufferedString(label: "Broadcast", telemetry.broadcast)
         )
+    }
+
+    private static func ringString(_ telemetry: AudioEngineTelemetrySnapshot) -> String {
+        let inputOccupancy = occupancyString(
+            telemetry.peakInputRingOccupancyFrames,
+            capacity: telemetry.inputRingCapacityFrames
+        )
+        let outputOccupancy = occupancyString(
+            telemetry.peakOutputRingOccupancyFrames,
+            capacity: telemetry.outputRingCapacityFrames
+        )
+
+        return "Peak ring occupancy in/out: \(inputOccupancy) / \(outputOccupancy)"
+    }
+
+    private static func workerString(_ telemetry: AudioEngineTelemetrySnapshot) -> String {
+        [
+            "Workers: \(telemetry.workerShardCount) shards,",
+            "track/shard render avg \(telemetry.averageTrackRenderDurationMicros) /",
+            "\(telemetry.averageShardRenderDurationMicros) us,",
+            "peak \(telemetry.peakTrackRenderDurationMicros) / \(telemetry.peakShardRenderDurationMicros) us,",
+            "util \(telemetry.peakShardUtilizationPercent)%,",
+            "wakeups \(telemetry.peakWorkerWakeupsPerSecond)/s"
+        ].joined(separator: " ")
     }
 
     private static func realtimeString(_ telemetry: LatencyClassTelemetrySnapshot) -> String {
@@ -29,7 +53,15 @@ enum EngineTelemetryFormatter {
         label: String,
         _ telemetry: LatencyClassTelemetrySnapshot
     ) -> String {
-        "\(label): \(telemetry.trackCount) tracks, \(telemetry.workerShardCount) shards, track/shard avg \(telemetry.averageTrackRenderDurationMicros) / \(telemetry.averageShardRenderDurationMicros) us, peak \(telemetry.peakTrackRenderDurationMicros) / \(telemetry.peakShardRenderDurationMicros) us, util \(telemetry.peakShardUtilizationPercent)%, wakeups \(telemetry.peakWorkerWakeupsPerSecond)/s"
+        [
+            "\(label): \(telemetry.trackCount) tracks,",
+            "\(telemetry.workerShardCount) shards,",
+            "track/shard avg \(telemetry.averageTrackRenderDurationMicros) /",
+            "\(telemetry.averageShardRenderDurationMicros) us,",
+            "peak \(telemetry.peakTrackRenderDurationMicros) / \(telemetry.peakShardRenderDurationMicros) us,",
+            "util \(telemetry.peakShardUtilizationPercent)%,",
+            "wakeups \(telemetry.peakWorkerWakeupsPerSecond)/s"
+        ].joined(separator: " ")
     }
 
     private static func occupancyString(_ frames: UInt64, capacity: Int) -> String {

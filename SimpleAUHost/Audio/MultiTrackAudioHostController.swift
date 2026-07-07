@@ -648,7 +648,14 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             "Failed to select multi-track input device"
         )
         try checkStatus(
-            AudioUnitSetProperty(inputUnit, kAudioOutputUnitProperty_SetInputCallback, kAudioUnitScope_Global, 0, &inputCallback, UInt32(MemoryLayout<AURenderCallbackStruct>.size)),
+            AudioUnitSetProperty(
+                inputUnit,
+                kAudioOutputUnitProperty_SetInputCallback,
+                kAudioUnitScope_Global,
+                0,
+                &inputCallback,
+                UInt32(MemoryLayout<AURenderCallbackStruct>.size)
+            ),
             "Failed to install multi-track input callback"
         )
         try checkStatus(
