@@ -10,16 +10,36 @@ enum SimpleLiveTuneParameterMap {
     static let retuneSpeedParameterID: AudioUnitParameterID = 1_213_086_891
     static let noteTransitionParameterID: AudioUnitParameterID = 423_325_013
     static let bypassParameterID: AudioUnitParameterID = 773_352_680
-    private static let keyPreferredNames = ["key"]
-    private static let scalePreferredNames = ["scale"]
-    private static let retuneSpeedPreferredNames = ["retune", "retune speed"]
-    private static let noteTransitionPreferredNames = ["note transition", "transition"]
-    private static let bypassPreferredNames = ["bypass"]
-    private static let keyParameterTokens = ["key"]
-    private static let scaleParameterTokens = ["scale"]
-    private static let retuneSpeedParameterTokens = ["retune"]
-    private static let noteTransitionParameterTokens = ["transition"]
-    private static let bypassParameterTokens = ["bypass"]
+    private static let keyLookup = ParameterLookup(
+        hardcodedID: keyParameterID,
+        preferredNames: ["key"],
+        tokens: ["key"],
+        failureName: "Key"
+    )
+    private static let scaleLookup = ParameterLookup(
+        hardcodedID: scaleParameterID,
+        preferredNames: ["scale"],
+        tokens: ["scale"],
+        failureName: "Scale"
+    )
+    private static let retuneSpeedLookup = ParameterLookup(
+        hardcodedID: retuneSpeedParameterID,
+        preferredNames: ["retune", "retune speed"],
+        tokens: ["retune"],
+        failureName: "Retune Speed"
+    )
+    private static let noteTransitionLookup = ParameterLookup(
+        hardcodedID: noteTransitionParameterID,
+        preferredNames: ["note transition", "transition"],
+        tokens: ["transition"],
+        failureName: "Note Transition"
+    )
+    private static let bypassLookup = ParameterLookup(
+        hardcodedID: bypassParameterID,
+        preferredNames: ["bypass"],
+        tokens: ["bypass"],
+        failureName: "Bypass"
+    )
 
     static func matches(_ plugin: AudioUnitPluginInfo) -> Bool {
         let description = plugin.componentDescription
@@ -48,20 +68,14 @@ enum SimpleLiveTuneParameterMap {
 
         return (
             try resolveParameterID(
-                hardcodedID: keyParameterID,
+                keyLookup,
                 in: control,
-                parameterIDs: parameterIDs,
-                preferredNames: keyPreferredNames,
-                matchingAll: keyParameterTokens,
-                failureName: "Key"
+                parameterIDs: parameterIDs
             ),
             try resolveParameterID(
-                hardcodedID: scaleParameterID,
+                scaleLookup,
                 in: control,
-                parameterIDs: parameterIDs,
-                preferredNames: scalePreferredNames,
-                matchingAll: scaleParameterTokens,
-                failureName: "Scale"
+                parameterIDs: parameterIDs
             )
         )
     }
@@ -74,32 +88,23 @@ enum SimpleLiveTuneParameterMap {
 
         return (
             try resolveParameterID(
-                hardcodedID: retuneSpeedParameterID,
+                retuneSpeedLookup,
                 in: control,
-                parameterIDs: parameterIDs,
-                preferredNames: retuneSpeedPreferredNames,
-                matchingAll: retuneSpeedParameterTokens,
-                failureName: "Retune Speed"
+                parameterIDs: parameterIDs
             ),
             try resolveParameterID(
-                hardcodedID: noteTransitionParameterID,
+                noteTransitionLookup,
                 in: control,
-                parameterIDs: parameterIDs,
-                preferredNames: noteTransitionPreferredNames,
-                matchingAll: noteTransitionParameterTokens,
-                failureName: "Note Transition"
+                parameterIDs: parameterIDs
             )
         )
     }
 
     static func resolveBypassParameterID(for control: any PluginParameterControl) throws -> AudioUnitParameterID {
         try resolveParameterID(
-            hardcodedID: bypassParameterID,
+            bypassLookup,
             in: control,
-            parameterIDs: try control.availableParameterIDs(),
-            preferredNames: bypassPreferredNames,
-            matchingAll: bypassParameterTokens,
-            failureName: "Bypass"
+            parameterIDs: try control.availableParameterIDs()
         )
     }
 
@@ -138,24 +143,21 @@ enum SimpleLiveTuneParameterMap {
     }
 
     private static func resolveParameterID(
-        hardcodedID: AudioUnitParameterID,
+        _ lookup: ParameterLookup,
         in control: any PluginParameterControl,
-        parameterIDs: [AudioUnitParameterID],
-        preferredNames: [String],
-        matchingAll tokens: [String],
-        failureName: String
+        parameterIDs: [AudioUnitParameterID]
     ) throws -> AudioUnitParameterID {
-        if parameterIDs.contains(hardcodedID) {
-            return hardcodedID
+        if parameterIDs.contains(lookup.hardcodedID) {
+            return lookup.hardcodedID
         }
 
         guard let parameterID = try findParameterID(
             in: control,
             parameterIDs: parameterIDs,
-            preferredNames: preferredNames,
-            matchingAll: tokens
+            preferredNames: lookup.preferredNames,
+            matchingAll: lookup.tokens
         ) else {
-            throw AudioHostError("Failed to locate the Simple Live Tune \(failureName) parameter.")
+            throw AudioHostError("Failed to locate the Simple Live Tune \(lookup.failureName) parameter.")
         }
 
         return parameterID
@@ -221,6 +223,13 @@ enum SimpleLiveTuneParameterMap {
         name
             .lowercased()
             .filter { $0.isLetter || $0.isNumber }
+    }
+
+    private struct ParameterLookup {
+        let hardcodedID: AudioUnitParameterID
+        let preferredNames: [String]
+        let tokens: [String]
+        let failureName: String
     }
 }
 
