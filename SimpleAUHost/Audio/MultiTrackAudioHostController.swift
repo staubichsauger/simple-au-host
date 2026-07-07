@@ -358,6 +358,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
 
         return try currentTrackRuntimes().reduce(into: 0) { count, runtime in
             count += try runtime.setWavesTuneRealtimeBypassed(isBypassed)
+            count += try runtime.setSimpleLiveTuneBypassed(isBypassed)
         }
     }
 
@@ -369,6 +370,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         let normalizedSelection = selection.normalized
         return try currentTrackRuntimes().reduce(into: 0) { count, runtime in
             count += try runtime.applyWavesTuneRealtimeKeySelection(normalizedSelection)
+            count += try runtime.applySimpleLiveTuneKeySelection(normalizedSelection)
         }
     }
 
@@ -385,6 +387,7 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
         }
 
         return try runtime.applyWavesTuneRealtimeStrength(strength)
+            + runtime.applySimpleLiveTuneStrength(strength)
     }
 
     func currentWavesTuneRealtimeStrengthPreset(
@@ -398,7 +401,17 @@ final class MultiTrackAudioHostController: @unchecked Sendable {
             throw AudioHostError("This track is not loaded on the running engine.")
         }
 
-        return try runtime.currentWavesTuneRealtimeStrengthPreset()
+        let wavesPreset = try runtime.currentWavesTuneRealtimeStrengthPreset()
+        let simpleLiveTunePreset = try runtime.currentSimpleLiveTuneStrengthPreset()
+
+        switch (wavesPreset, simpleLiveTunePreset) {
+        case (nil, nil):
+            return nil
+        case let (preset?, nil), let (nil, preset?):
+            return preset
+        case let (wavesPreset?, simpleLiveTunePreset?):
+            return wavesPreset == simpleLiveTunePreset ? wavesPreset : .custom
+        }
     }
 
     func beginStop() {

@@ -22,6 +22,14 @@ enum WavesTuneScaleMode: String, CaseIterable, Codable, Identifiable {
         case .minor: 3
         }
     }
+
+    var simpleLiveTunePluginValue: Int {
+        switch self {
+        case .chromatic: 0
+        case .major: 1
+        case .minor: 2
+        }
+    }
 }
 
 enum WavesTuneNoteLetter: String, CaseIterable, Codable, Identifiable {
@@ -104,6 +112,24 @@ struct WavesTuneKeySelection: Codable, Hashable {
         case (.c, .flat), (.e, .sharp), (.f, .flat), (.b, .sharp):
             normalized.pluginScaleRootValue
         }
+    }
+
+    var simpleLiveTuneKeyValue: Int {
+        let letterSemitone = switch noteLetter {
+        case .c: 0
+        case .d: 2
+        case .e: 4
+        case .f: 5
+        case .g: 7
+        case .a: 9
+        case .b: 11
+        }
+        let accidentalOffset = switch accidental {
+        case .flat: -1
+        case .natural: 0
+        case .sharp: 1
+        }
+        return (letterSemitone + accidentalOffset + 12) % 12
     }
 
     var normalized: WavesTuneKeySelection {
@@ -253,6 +279,32 @@ enum WavesTuneStrengthPreset: String, CaseIterable, Codable, Identifiable {
         noteTransition.map { $0 * 10 }
     }
 
+    var simpleLiveTuneRetuneSpeed: Float? {
+        switch self {
+        case .fast:
+            15
+        case .standard:
+            20
+        case .slow:
+            40
+        case .custom:
+            nil
+        }
+    }
+
+    var simpleLiveTuneNoteTransition: Float? {
+        switch self {
+        case .fast:
+            50
+        case .standard:
+            60
+        case .slow:
+            90
+        case .custom:
+            nil
+        }
+    }
+
     static func matchingDisplayValues(
         speed: Float,
         noteTransition: Float
@@ -268,6 +320,24 @@ enum WavesTuneStrengthPreset: String, CaseIterable, Codable, Identifiable {
             }
         }
 
+        return .custom
+    }
+
+    static func matchingSimpleLiveTuneValues(
+        retuneSpeed: Float,
+        noteTransition: Float
+    ) -> WavesTuneStrengthPreset {
+        for preset in [WavesTuneStrengthPreset.fast, .standard, .slow] {
+            guard let presetRetuneSpeed = preset.simpleLiveTuneRetuneSpeed,
+                  let presetNoteTransition = preset.simpleLiveTuneNoteTransition else {
+                continue
+            }
+
+            if abs(retuneSpeed - presetRetuneSpeed) <= 0.25,
+               abs(noteTransition - presetNoteTransition) <= 0.25 {
+                return preset
+            }
+        }
         return .custom
     }
 }

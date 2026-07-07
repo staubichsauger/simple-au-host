@@ -8,7 +8,7 @@ extension MultiTrackViewModel {
                 for insert in track.plugins {
                     guard let pluginID = insert.pluginID,
                           let plugin = plugins.first(where: { $0.id == pluginID }),
-                          isWavesTuneRealtimePlugin(plugin) else {
+                          isTunerPlugin(plugin) else {
                         continue
                     }
                     count += 1
@@ -89,16 +89,16 @@ extension MultiTrackViewModel {
 
         guard isRunning else {
             statusMessage = configuredWavesTuneRealtimeInsertCount > 0
-                ? "Waves Tune will start \(isEnabled ? "enabled" : "bypassed")."
-                : "No Waves Tune Real-Time inserts are configured."
+                ? "Tuner inserts will start \(isEnabled ? "enabled" : "bypassed")."
+                : "No tuner inserts are configured."
             return
         }
 
         do {
             let affectedInstances = try controller.setWavesTuneRealtimeBypassed(!isEnabled)
             statusMessage = affectedInstances > 0
-                ? "Set Waves Tune \(isEnabled ? "active" : "bypassed") on \(affectedInstances) instance(s)."
-                : "No running Waves Tune Real-Time instances were found."
+                ? "Set tuner \(isEnabled ? "active" : "bypassed") on \(affectedInstances) instance(s)."
+                : "No running tuner instances were found."
         } catch {
             statusMessage = error.localizedDescription
         }
@@ -121,7 +121,7 @@ extension MultiTrackViewModel {
         guard isRunning else {
             statusMessage = trackHasConfiguredWavesTuneRealtimeInsert(tracks[trackIndex])
                 ? "\(tracks[trackIndex].name) tune strength saved as \(strength.title)."
-                : "\(tracks[trackIndex].name) does not have Waves Tune Real-Time loaded."
+                : "\(tracks[trackIndex].name) does not have a tuner loaded."
             return
         }
 
@@ -135,7 +135,7 @@ extension MultiTrackViewModel {
             refreshWavesTuneStrengthSelectionFromRunningEngine(for: trackID)
             statusMessage = affectedInstances > 0
                 ? "Set \(tracks[trackIndex].name) to \(tracks[trackIndex].wavesTuneStrength.title) tune strength."
-                : "No running Waves Tune Real-Time instances were found on \(tracks[trackIndex].name)."
+                : "No running tuner instances were found on \(tracks[trackIndex].name)."
         } catch {
             statusMessage = error.localizedDescription
         }
@@ -311,7 +311,7 @@ extension MultiTrackViewModel {
         guard isRunning else {
             statusMessage = configuredWavesTuneRealtimeInsertCount > 0
                 ? offlineMessage
-                : "\(offlineMessage) No Waves Tune Real-Time inserts are configured."
+                : "\(offlineMessage) No tuner inserts are configured."
             return
         }
 
@@ -319,7 +319,7 @@ extension MultiTrackViewModel {
             let affectedInstances = try controller.applyWavesTuneRealtimeKeySelection(normalizedSelection)
             statusMessage = affectedInstances > 0
                 ? onlineMessage(affectedInstances)
-                : "No running Waves Tune Real-Time instances were found."
+                : "No running tuner instances were found."
         } catch {
             statusMessage = error.localizedDescription
         }
@@ -330,8 +330,9 @@ extension MultiTrackViewModel {
         return trimmedTitle.isEmpty ? "Song \(index + 1)" : trimmedTitle
     }
 
-    private func isWavesTuneRealtimePlugin(_ plugin: AudioUnitPluginInfo) -> Bool {
+    private func isTunerPlugin(_ plugin: AudioUnitPluginInfo) -> Bool {
         WavesTuneRealtimeParameterMap.matches(plugin)
+            || SimpleLiveTuneParameterMap.matches(plugin)
     }
 
     private func trackHasConfiguredWavesTuneRealtimeInsert(_ track: MultiTrackTrackConfiguration) -> Bool {
@@ -340,7 +341,7 @@ extension MultiTrackViewModel {
                   let plugin = plugins.first(where: { $0.id == pluginID }) else {
                 return false
             }
-            return isWavesTuneRealtimePlugin(plugin)
+            return isTunerPlugin(plugin)
         }
     }
 
