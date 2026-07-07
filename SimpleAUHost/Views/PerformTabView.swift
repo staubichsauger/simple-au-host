@@ -131,16 +131,10 @@ struct PerformTabView: View {
             .controlSize(.small)
             .labelsHidden()
 
-            if let speed = track.tuneStrength.speed,
-               let noteTransition = track.tuneStrength.noteTransition {
-                Text("\(Int(speed)) spd \u{00B7} \(Int(noteTransition)) trans")
-                    .font(.system(size: 10, weight: .regular, design: .default))
-                    .foregroundStyle(StudioTheme.mutedText)
-            } else {
-                Text("Uses current plugin values")
-                    .font(.system(size: 10, weight: .regular, design: .default))
-                    .foregroundStyle(StudioTheme.mutedText)
-            }
+            Text(viewModel.tuneStrengthParameterSummary(for: track))
+                .font(.system(size: 10, weight: .regular, design: .default))
+                .foregroundStyle(StudioTheme.mutedText)
+                .lineLimit(2)
         }
         .padding(10)
         .background(

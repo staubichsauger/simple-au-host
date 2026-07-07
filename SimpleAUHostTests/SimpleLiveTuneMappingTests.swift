@@ -135,6 +135,22 @@ final class SimpleLiveTuneMappingTests: XCTestCase {
         }
     }
 
+    func testStrengthPresetDisplaysPluginSpecificSummaries() {
+        XCTAssertEqual(
+            TuneStrengthPreset.standard.parameterSummary(for: .wavesTuneRealtime),
+            "20 spd \u{00B7} 90 trans"
+        )
+        XCTAssertEqual(
+            TuneStrengthPreset.standard.parameterSummary(for: .simpleLiveTune),
+            "20 retune \u{00B7} 60 trans"
+        )
+        XCTAssertEqual(
+            TuneStrengthPreset.slow.parameterSummary(for: .simpleLiveTune),
+            "40 retune \u{00B7} 90 trans"
+        )
+        XCTAssertNil(TuneStrengthPreset.custom.parameterSummary(for: .simpleLiveTune))
+    }
+
     func testStrengthPresetDetectionUsesTolerance() {
         XCTAssertEqual(
             TuneStrengthPreset.matchingSimpleLiveTuneValues(

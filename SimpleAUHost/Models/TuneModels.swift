@@ -305,6 +305,26 @@ enum TuneStrengthPreset: String, CaseIterable, Codable, Identifiable {
         }
     }
 
+    func parameterSummary(for profile: TuneStrengthParameterProfile) -> String? {
+        switch profile {
+        case .wavesTuneRealtime:
+            guard let speed, let noteTransition else { return nil }
+            return "\(Int(speed)) spd \u{00B7} \(Int(noteTransition)) trans"
+        case .simpleLiveTune:
+            guard let retuneSpeed = simpleLiveTuneRetuneSpeed,
+                  let noteTransition = simpleLiveTuneNoteTransition else {
+                return nil
+            }
+            return "\(Int(retuneSpeed)) retune \u{00B7} \(Int(noteTransition)) trans"
+        case .mixed:
+            guard let wavesSummary = parameterSummary(for: .wavesTuneRealtime),
+                  let simpleLiveTuneSummary = parameterSummary(for: .simpleLiveTune) else {
+                return nil
+            }
+            return "Waves \(wavesSummary) / SLT \(simpleLiveTuneSummary)"
+        }
+    }
+
     static func matchingDisplayValues(
         speed: Float,
         noteTransition: Float
@@ -340,4 +360,10 @@ enum TuneStrengthPreset: String, CaseIterable, Codable, Identifiable {
         }
         return .custom
     }
+}
+
+enum TuneStrengthParameterProfile {
+    case wavesTuneRealtime
+    case simpleLiveTune
+    case mixed
 }

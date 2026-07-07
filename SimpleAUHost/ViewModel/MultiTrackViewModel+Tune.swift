@@ -84,6 +84,14 @@ extension MultiTrackViewModel {
         selectedTuneSongIndex != nil
     }
 
+    func tuneStrengthParameterSummary(for track: MultiTrackTrackConfiguration) -> String {
+        guard let profile = tuneStrengthParameterProfile(for: track),
+              let summary = track.tuneStrength.parameterSummary(for: profile) else {
+            return "Uses current plugin values"
+        }
+        return summary
+    }
+
     func setTuneEnabled(_ isEnabled: Bool) {
         tuneState.isEnabled = isEnabled
 
@@ -333,6 +341,39 @@ extension MultiTrackViewModel {
     private func isTunerPlugin(_ plugin: AudioUnitPluginInfo) -> Bool {
         WavesTuneRealtimeParameterMap.matches(plugin)
             || SimpleLiveTuneParameterMap.matches(plugin)
+    }
+
+    private func tuneStrengthParameterProfile(
+        for track: MultiTrackTrackConfiguration
+    ) -> TuneStrengthParameterProfile? {
+        var hasWavesTuneRealtime = false
+        var hasSimpleLiveTune = false
+
+        for insert in track.plugins {
+            guard let pluginID = insert.pluginID,
+                  let plugin = plugins.first(where: { $0.id == pluginID }) else {
+                continue
+            }
+
+            if WavesTuneRealtimeParameterMap.matches(plugin) {
+                hasWavesTuneRealtime = true
+            }
+
+            if SimpleLiveTuneParameterMap.matches(plugin) {
+                hasSimpleLiveTune = true
+            }
+        }
+
+        switch (hasWavesTuneRealtime, hasSimpleLiveTune) {
+        case (true, true):
+            return .mixed
+        case (true, false):
+            return .wavesTuneRealtime
+        case (false, true):
+            return .simpleLiveTune
+        case (false, false):
+            return nil
+        }
     }
 
     private func trackHasConfiguredTuneInsert(_ track: MultiTrackTrackConfiguration) -> Bool {
