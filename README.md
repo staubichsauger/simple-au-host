@@ -114,3 +114,11 @@ Stop the engine, lower your output volume, and check that speakers are not feedi
 
 - See `FEATURES.md` for a fuller feature list.
 - See `DEVELOP.md` for build, test, and architecture notes.
+
+## Development
+
+SwiftLint is configured with `.swiftlint.yml`. If you are modifying Swift sources, install SwiftLint and run:
+
+```bash
+make lint
+```

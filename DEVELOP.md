@@ -16,6 +16,7 @@ This document is for people building or modifying SimpleAUHost. If you only want
 
 - macOS 14 or newer
 - Xcode with the macOS SDK
+- SwiftLint, if you want to run local lint checks
 - Microphone permission granted at runtime for live audio testing
 
 ## Build
@@ -26,6 +27,7 @@ Preferred commands:
 - `make run` - build and launch the app bundle
 - `make bundle` - stage the built app into `dist/SimpleAUHost.app`
 - `make package` - create `dist/SimpleAUHost-Release.zip`
+- `make lint` - run SwiftLint with `.swiftlint.yml`
 - `make clean` - remove build and distribution artifacts
 
 Direct Xcode builds:
@@ -43,11 +45,12 @@ xcodebuild -list -project SimpleAUHost.xcodeproj
 
 ## Validation
 
-There is currently no dedicated lint command or SwiftLint configuration.
+SwiftLint is configured in `.swiftlint.yml` for `SimpleAUHost/` and `SimpleAUHostTests/`.
 
-Run a debug build and the unit tests:
+Run SwiftLint, a debug build, and the unit tests:
 
 ```bash
+make lint
 xcodebuild -project SimpleAUHost.xcodeproj -scheme SimpleAUHost -configuration Debug build
 xcodebuild test -project SimpleAUHost.xcodeproj -scheme SimpleAUHost -destination 'platform=macOS'
 ```

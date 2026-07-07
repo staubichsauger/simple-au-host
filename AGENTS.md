@@ -15,8 +15,9 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 
 ## Tests and linting
 - `SimpleAUHostTests` is the unit test target in `SimpleAUHost.xcodeproj`.
-- SwiftLint is configured in `.swiftlint.yml`; run `make lint` when SwiftLint is installed.
-- For validation, run a debug build and the unit tests:
+- SwiftLint is configured in `.swiftlint.yml`; run `make lint` when SwiftLint is installed. The config includes `SimpleAUHost/` and `SimpleAUHostTests/` and excludes build artifacts.
+- For validation, run SwiftLint, a debug build, and the unit tests:
+  - `make lint`
   - `xcodebuild -project SimpleAUHost.xcodeproj -scheme SimpleAUHost -configuration Debug build`
   - `xcodebuild test -project SimpleAUHost.xcodeproj -scheme SimpleAUHost -destination 'platform=macOS'`
 - To keep build outputs local to the repo during agent work, prefer:
