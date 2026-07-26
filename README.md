@@ -117,6 +117,24 @@ Stop the engine, lower your output volume, and check that speakers are not feedi
 - See `FEATURES.md` for a fuller feature list.
 - See `DEVELOP.md` for build, test, and architecture notes.
 
+## License
+
+Copyright (C) 2026 Tim Schweikert
+
+SimpleAUHost, including the Companion module in this repository, is free
+software: you can redistribute it and/or modify it under the terms of the GNU
+General Public License as published by the Free Software Foundation, either
+version 3 of the License, or (at your option) any later version.
+
+Commercial use is permitted. If you distribute the software or a modified
+version, the GPL requires you to make the corresponding source available under
+the same license terms.
+
+This software is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+FOR A PARTICULAR PURPOSE. See the [GNU General Public License](LICENSE) for
+details.
+
 ## Development
 
 SwiftLint is configured with `.swiftlint.yml`. If you are modifying Swift sources, install SwiftLint and run:

@@ -8,7 +8,7 @@
     "build": "rimraf dist && tsc -p tsconfig.build.json",
     "package": "npm run build && companion-module-build && cp pkg.tgz simple-au-host-1.2.0.tgz"
   },
-  "license": "MIT",
+  "license": "GPL-3.0-or-later",
   "dependencies": {
     "@companion-module/base": "1.12.1"
   },
