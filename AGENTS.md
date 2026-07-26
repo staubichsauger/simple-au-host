@@ -13,6 +13,15 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 - `xcodebuild -project SimpleAUHost.xcodeproj -scheme SimpleAUHost -configuration Release build` — release build equivalent to `make build`.
 - `xcodebuild -list -project SimpleAUHost.xcodeproj` — shows the single app target/scheme and available configurations.
 
+## Release packaging
+- Every GitHub release must attach both the macOS app and the Bitfocus Companion module.
+- Use the release version from `CFBundleShortVersionString` in these exact attachment names:
+  - `SimpleAUHost-macOS-App-<version>.zip`
+  - `SimpleAUHost-Bitfocus-Companion-Module-<version>.tgz`
+- Build `dist/SimpleAUHost-Release.zip` with `make clean package`, then copy it to the versioned macOS attachment name above.
+- In `companion/simple-au-host/`, keep `package.json`, `package-lock.json`, and `companion/manifest.json` on the same release version. Run `npm run package`, then copy `simple-au-host-<version>.tgz` to the versioned Companion attachment name above.
+- Upload only the two versioned attachment names to the GitHub release; `SimpleAUHost-Release.zip` and `simple-au-host-<version>.tgz` are intermediate artifacts.
+
 ## Tests and linting
 - `SimpleAUHostTests` is the unit test target in `SimpleAUHost.xcodeproj`.
 - SwiftLint is configured in `.swiftlint.yml`; run `make lint` when SwiftLint is installed. The config includes `SimpleAUHost/` and `SimpleAUHostTests/` and excludes build artifacts.
