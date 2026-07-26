@@ -115,13 +115,32 @@ SimpleAUHost can be configured to:
 
 Template mode protects the prepared source show. An expert can maintain one trusted technical configuration, while an operator loads it as a template, builds the setlist for the current event, and saves a separate dated copy. This is useful for churches and other organizations with changing weekly setlists and rotating volunteer operators.
 
+## Centralized Tuning and Supported Plugins
+
+SimpleAUHost provides a centralized tuning workflow in the Perform view. Operators can manage the current song, tuning on/off, musical key and scale, tuning strength, and the ordered setlist without opening the individual plugin interfaces.
+
+The Perform controls currently provide dedicated parameter-level integration with [Waves Tune Real-Time](https://www.waves.com/plugins/waves-tune-real-time). Waves Tune Real-Time is a separate commercial Audio Unit and must be installed and licensed independently.
+
+For recognized Waves Tune Real-Time instances, SimpleAUHost controls:
+
+- Tune bypass
+- Scale Root and Scale Type
+- Tune Speed
+- Note Transition
+
+Selecting a song, applying a staged key, or changing a tuning-strength preset updates the relevant plugin parameters directly. The workflow does not depend on scenes or serialized plugin snapshots.
+
+SimpleAUHost also contains equivalent integration for [Simple Live Tune](https://github.com/staubichsauger/simple-live-tune), including bypass, key, scale, retune-speed, and note-transition control. Simple Live Tune is still in development and has not been released yet. Its integration is present for development and testing, but the plugin is not currently available as an end-user download.
+
+Waves and Waves Tune Real-Time are trademarks of Waves Audio Ltd. SimpleAUHost is an independent project and is not affiliated with, sponsored by, or endorsed by Waves Audio Ltd.
+
 ## Tune, Setlist, Stream Deck, and Companion
 
 Each saved show can contain an ordered tuning setlist with a name, notes, and musical key for every song. Operators can easily add, duplicate, remove, and reorder songs as the setlist changes from week to week. During the event, selecting the next or previous song applies its key to the supported tuning plugins.
 
 This provides a simple alternative to creating a separate scene or snapshot for every song or key. The operator manages the setlist directly, while the expert-prepared routing, plugin chains, and latency configuration remain unchanged.
 
-SimpleAUHost provides first-class Stream Deck control through its dedicated Bitfocus Companion module. The module communicates with the app through a local control API at:
+The centralized Perform workflow is also exposed through SimpleAUHost's local control API and dedicated Bitfocus Companion module. Companion and Stream Deck act as additional control surfaces for the same tuning state and setlist shown inside the app; they are not required to use the centralized tuning controls. The local API is available at:
 
 `http://127.0.0.1:52719`
 

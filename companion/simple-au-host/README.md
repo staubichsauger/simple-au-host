@@ -8,6 +8,10 @@ Operators can build the song list directly in SimpleAUHost without editing the u
 
 The module connects to the local HTTP control API exposed by SimpleAUHost and provides actions, feedbacks, and variables for the app's actual tuning and setlist state.
 
+The Companion module is an optional remote control for the centralized tuning workflow in SimpleAUHost's Perform view. It does not communicate with Audio Units directly. Actions sent through Companion update the same tuning state, setlist, and supported plugin instances controlled by the app.
+
+SimpleAUHost currently maps that state to installed Waves Tune Real-Time instances. Equivalent integration for the forthcoming Simple Live Tune plugin is already implemented, although Simple Live Tune has not yet been released.
+
 ## Supported actions
 
 - Tune on/off
@@ -58,3 +62,5 @@ cd companion/simple-au-host
 npm install
 npm run build
 ```
+
+Waves and Waves Tune Real-Time are trademarks of Waves Audio Ltd. SimpleAUHost and this Companion module are independent projects and are not affiliated with, sponsored by, or endorsed by Waves Audio Ltd.
