@@ -139,7 +139,7 @@ enum TrackLatencyClass: String, CaseIterable, Codable, Identifiable {
 struct MultiTrackTrackConfiguration: Identifiable, Codable, Hashable {
     struct PluginInsert: Identifiable, Codable, Hashable {
         let id: UUID
-        var pluginID: String?
+        private(set) var pluginID: String?
         var pluginStateData: Data?
 
         init(
@@ -154,6 +154,12 @@ struct MultiTrackTrackConfiguration: Identifiable, Codable, Hashable {
 
         var hasPlugin: Bool {
             pluginID != nil
+        }
+
+        mutating func selectPlugin(_ newPluginID: String?) {
+            guard pluginID != newPluginID else { return }
+            pluginID = newPluginID
+            pluginStateData = nil
         }
     }
 

@@ -807,7 +807,7 @@ private extension RackTabView {
             return
         }
 
-        viewModel.tracks[trackIndex].plugins[pluginIndex].pluginID = newValue
+        viewModel.tracks[trackIndex].plugins[pluginIndex].selectPlugin(newValue)
         selectedRackTrackID = trackID
         selectedRackPluginID = viewModel.tracks[trackIndex].plugins[pluginIndex].id
         refreshEmbeddedPluginPane()

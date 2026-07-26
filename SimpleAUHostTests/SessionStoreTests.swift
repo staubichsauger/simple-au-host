@@ -139,6 +139,31 @@ final class SessionStoreTests: XCTestCase {
         XCTAssertEqual(parameterPreset.formatVersion, MultiTrackParameterPresetFile.currentFormatVersion)
     }
 
+    func testReplacingPluginClearsStateOwnedByPreviousPlugin() {
+        let savedState = Data([0x01, 0x02, 0x03])
+        var insert = MultiTrackTrackConfiguration.PluginInsert(
+            pluginID: "old-plugin",
+            pluginStateData: savedState
+        )
+
+        insert.selectPlugin("new-plugin")
+
+        XCTAssertEqual(insert.pluginID, "new-plugin")
+        XCTAssertNil(insert.pluginStateData)
+    }
+
+    func testReselectingSamePluginPreservesItsState() {
+        let savedState = Data([0x01, 0x02, 0x03])
+        var insert = MultiTrackTrackConfiguration.PluginInsert(
+            pluginID: "same-plugin",
+            pluginStateData: savedState
+        )
+
+        insert.selectPlugin("same-plugin")
+
+        XCTAssertEqual(insert.pluginStateData, savedState)
+    }
+
     func testAtomicCounterOperations() {
         let counter = AtomicCounter()
         XCTAssertEqual(counter.load(), 0)
