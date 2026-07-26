@@ -3,7 +3,7 @@
   "name": "SimpleAUHost",
   "shortname": "simpleauhost",
   "description": "Tuning and Tune control for SimpleAUHost",
-  "version": "0.1.0",
+  "version": "1.2.0",
   "license": "MIT",
   "repository": "https://github.com/staubichsauger/simple-au-host",
   "bugs": "https://github.com/staubichsauger/simple-au-host/issues",

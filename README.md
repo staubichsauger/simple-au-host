@@ -86,6 +86,8 @@ SimpleAUHost includes a local control API for Bitfocus Companion and similar con
 
 The included Companion module scaffold lives in `companion/simple-au-host/`. It supports tune on/off control, staged key changes, applying staged keys, panic, and next/previous song actions.
 
+Download the installable Companion module from the [GitHub releases page](https://github.com/staubichsauger/simple-au-host/releases).
+
 You only need this if you use Companion or tuner plugins in a show control setup.
 
 ## Troubleshooting
