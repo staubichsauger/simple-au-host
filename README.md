@@ -8,6 +8,8 @@ Operators can then handle the parts that change for each event, such as building
 
 SimpleAUHost can automatically load a prepared show, open directly on the Perform tab, and start the audio engine when it launches. A startup show can also be used as a template, preserving the expert's original configuration while the operator saves event-specific copies.
 
+![SimpleAUHost Perform view with two tuning tracks, show management, an editable three-song setlist, and centralized key controls](docs/images/perform.jpg)
+
 ## Download
 
 Download the latest app from:
@@ -92,6 +94,8 @@ SimpleAUHost assigns a latency class to each track:
 - **Broadcast/Post** provides larger blocks and safety preroll for heavy, non-critical broadcast or mastering paths.
 
 This allows a low-latency tuning chain and a heavy livestream mastering chain to run alongside each other without raising the hardware buffer for the entire show.
+
+![SimpleAUHost latency setup with separate realtime, buffered, and broadcast processing block sizes](docs/images/latency-setup.jpg)
 
 ## Sessions and Presets
 
