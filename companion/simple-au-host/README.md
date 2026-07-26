@@ -1,6 +1,12 @@
 # SimpleAUHost Companion Module
 
-This Bitfocus Companion module targets the built-in local HTTP control API exposed by SimpleAUHost in Multi Track mode.
+This module provides first-class Stream Deck control for the live tuning and setlist workflow built into SimpleAUHost.
+
+It is intended for recurring events in which an expert prepares the audio and tuning system while volunteer operators handle the changing weekly setlist and run the show.
+
+Operators can build the song list directly in SimpleAUHost without editing the underlying audio configuration. Each song carries its musical key, and Companion can step through the list while displaying the current song, adjacent keys, and song position. This provides a simpler alternative to representing every song or key as a separate scene or snapshot.
+
+The module connects to the local HTTP control API exposed by SimpleAUHost and provides actions, feedbacks, and variables for the app's actual tuning and setlist state.
 
 ## Supported actions
 
