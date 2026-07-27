@@ -1,6 +1,6 @@
 # Features
 
-This file describes the current user-facing feature set of SimpleAUHost.
+This is the concise feature inventory for SimpleAUHost. See the [complete user guide](docs/user-guide.md) for behavior and workflows.
 
 ## App Mode
 
@@ -47,17 +47,23 @@ Current workflow support:
 
 ## Tune / Companion Control
 
-Multi-track mode includes a local control surface intended for Bitfocus Companion and similar same-machine control workflows.
+Multi-track mode includes a centralized live-tuning workflow and local control surface intended for Bitfocus Companion and similar same-machine control workflows.
 
 - local HTTP API on `127.0.0.1:52719`
 - connection/status feedback in the app
+- ordered show setlist with song titles, notes, and keys
+- direct song selection and next/previous stepping
+- per-track Fast, Standard, Slow, and Custom tune strength
+- direct integration with Waves Tune Real-Time
+- development integration with Simple Live Tune
 - Tune staged key editing
 - apply staged key
 - panic action
 - next/previous song stepping
 - enable/disable control state
+- Companion actions, feedbacks, and variables
 
-The Companion module scaffold for this API lives in `companion/simple-au-host/`.
+The Companion module lives in `companion/simple-au-host/`. Installation and use are covered in [docs/companion.md](docs/companion.md).
 
 ## Operational Constraints
 
@@ -68,6 +74,6 @@ The Companion module scaffold for this API lives in `companion/simple-au-host/`.
 
 ## Project State
 
-- `SimpleAUHostTests` provides current unit coverage for managed session listing and session-model compatibility
-- no dedicated lint setup yet
-- validation should include a debug build and unit tests
+- `SimpleAUHostTests` covers session storage and compatibility, routing validation, tuner mapping, and Companion request parsing
+- SwiftLint is configured in `.swiftlint.yml`
+- validation includes lint, a debug build, and unit tests

@@ -6,7 +6,7 @@ This document is for people building or modifying SimpleAUHost. If you only want
 
 - `SimpleAUHost/` - the macOS SwiftUI app and audio engine
 - `SimpleAUHostTests/` - unit tests
-- `companion/simple-au-host/` - Bitfocus Companion module scaffold for the local control API
+- `companion/simple-au-host/` - Bitfocus Companion module for the local control API
 - `project.yml` - XcodeGen project definition
 - `SimpleAUHost.xcodeproj/` - Xcode project
 - `Makefile` - build, bundle, package, and run helpers
@@ -68,7 +68,7 @@ Single test example:
 xcodebuild test -project SimpleAUHost.xcodeproj -scheme SimpleAUHost -destination 'platform=macOS' -only-testing:SimpleAUHostTests/SessionStoreTests/testManagedSessionsOnlyListsSessionFiles
 ```
 
-To validate the Companion module scaffold:
+To validate the Companion module:
 
 ```bash
 cd companion/simple-au-host

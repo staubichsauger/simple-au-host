@@ -10,13 +10,15 @@ SimpleAUHost can automatically load a prepared show, open directly on the Perfor
 
 ![SimpleAUHost Perform view with two tuning tracks, show management, an editable three-song setlist, and centralized key controls](docs/images/perform.jpg)
 
+**Documentation:** [Open the documentation hub](docs/README.md)
+
 ## Download
 
 Download the latest app from:
 
 https://github.com/staubichsauger/simple-au-host/releases/latest
 
-On the release page, download the `SimpleAUHost-Release.zip` file, unzip it, and move `SimpleAUHost.app` to your Applications folder.
+On the release page, download `SimpleAUHost-macOS-App-<version>.zip`, unzip it, and move `SimpleAUHost.app` to your Applications folder.
 
 SimpleAUHost is not signed yet, so macOS may block it the first time you open it. Only bypass this warning if you trust the downloaded copy.
 
@@ -178,8 +180,13 @@ Stop the engine, lower your output volume, and check that speakers are not feedi
 
 ## More Information
 
-- See `FEATURES.md` for a fuller feature list.
-- See `DEVELOP.md` for build, test, and architecture notes.
+- [Documentation hub](docs/README.md)
+- [Getting started](docs/getting-started.md)
+- [Complete user guide](docs/user-guide.md)
+- [Bitfocus Companion and Stream Deck](docs/companion.md)
+- [Troubleshooting](docs/troubleshooting.md)
+- [Feature inventory](FEATURES.md)
+- [Development and architecture](DEVELOP.md)
 
 ## License
 
